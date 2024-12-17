@@ -23,7 +23,10 @@ function(_check_dependencies_macos)
   set(webrtc_filename "webrtc-VERSION-osx-ARCH.zip")
   set(webrtc_destination "webrtc-VERSION-osx-ARCH")
   set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc)
-
+# add critical error message for debug 
+  
+  message(FATAL_ERROR "need to make similar changes to the windows buildspec.cmake file")
+  
   _check_dependencies()
 
   execute_process(COMMAND "xattr" -r -d com.apple.quarantine "${dependencies_dir}/${destination}"

@@ -11,12 +11,12 @@ target_include_directories(obs-obfuscate INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}"
 
 add_library(obs-comutils INTERFACE)
 add_library(OBS::COMutils ALIAS obs-comutils)
-target_sources(obs-comutils INTERFACE util/windows/ComPtr.hpp)
+target_sources(obs-comutils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/ComPtr.hpp)
 target_include_directories(obs-comutils INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_library(obs-winhandle INTERFACE)
 add_library(OBS::winhandle ALIAS obs-winhandle)
-target_sources(obs-winhandle INTERFACE util/windows/WinHandle.hpp)
+target_sources(obs-winhandle INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/WinHandle.hpp)
 target_include_directories(obs-winhandle INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_sources(
@@ -33,7 +33,6 @@ target_sources(
           util/platform-windows.c
           util/threading-windows.c
           util/threading-windows.h
-          util/windows/CoTaskMemPtr.hpp
           util/windows/device-enum.c
           util/windows/device-enum.h
           util/windows/HRError.hpp
@@ -44,11 +43,11 @@ target_sources(
           util/windows/window-helpers.c
           util/windows/window-helpers.h)
 
-target_sources(
+target_include_directories(
   libobs
-  PUBLIC  util/windows/CoTaskMemPtr.hpp
-          util/windows/HRError.hpp
-          util/windows/WinHandle.hpp
+  PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util/windows>
+  $<INSTALL_INTERFACE:util/windows>
 )
 
 target_compile_options(libobs PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/EHc->)
