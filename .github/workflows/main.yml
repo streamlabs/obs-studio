@@ -4,14 +4,12 @@ on:
   push:
     paths-ignore: ['**.md']
     branches:
-      - "streamlabs"
-      - 'release/**'
-    tags: ['*']
+      - "skippy"
   pull_request:
     paths-ignore: ['**.md']
-    branches: ['streamlabs']
+    branches: ['skippy']
   merge_group:
-    branches: ['streamlabs']
+    branches: ['skippy']
 
 env:
   InstallPath: "packed_build"

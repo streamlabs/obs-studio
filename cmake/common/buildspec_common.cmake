@@ -221,8 +221,13 @@ function(_check_dependencies)
           "${dependencies_dir}/${destination}"
           CACHE PATH "CEF root directory" FORCE)
     elseif(dependency STREQUAL libmediasoupclient)
-      set(libmediasoupclient_subdir "libmediasoupclient_dist")
-
+      if(WIN32)
+        set(libmediasoupclient_subdir "libmediasoupclient_dist")
+      else()
+        set(libmediasoupclient_subdir "libmediasoupclient-VERSION-osx-ARCH")
+        string(REPLACE "VERSION" "${version}" libmediasoupclient_subdir "${libmediasoupclient_subdir}")
+        string(REPLACE "ARCH" "${arch}" libmediasoupclient_subdir "${libmediasoupclient_subdir}")
+      endif()
       set(LIBMEDIASOUPCLIENT_PATH
           "${dependencies_dir}/${libmediasoupclient_subdir}"
           CACHE PATH "libmediasoupclient directory" FORCE)
@@ -234,7 +239,13 @@ function(_check_dependencies)
       set(MEDIASOUP_SDP_LIB_PATH "${dependencies_dir}/${libmediasoupclient_subdir}/lib/sdptransform.lib" CACHE PATH "libmediasoupclient sdp lib directory" FORCE)
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${libmediasoupclient_subdir}")
     elseif(dependency STREQUAL webrtc)
-      set(webrtc_subdir "webrtc_dist")
+      if(WIN32)
+        set(webrtc_subdir "webrtc_dist")
+      elseif(APPLE)
+        set(webrtc_subdir "webrtc-VERSION-osx-ARCH")
+        string(REPLACE "VERSION" "${version}" webrtc_subdir "${webrtc_subdir}")
+        string(REPLACE "ARCH" "${arch}" webrtc_subdir "${webrtc_subdir}")
+      endif()
 
       set(WEBRTC_PATH
           "${dependencies_dir}/${webrtc_subdir}"

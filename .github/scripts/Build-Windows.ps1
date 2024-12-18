@@ -55,12 +55,20 @@ function Build {
     $CmakeArgs = @('--preset', "windows-ci-${Target}")
     $CmakeBuildArgs = @('--build')
     $CmakeInstallArgs = @()
+    $CmakeCheckArgs    = @('--build')
 
     if ( $DebugPreference -eq 'Continue' ) {
         $CmakeArgs += ('--debug-output')
         $CmakeBuildArgs += ('--verbose')
         $CmakeInstallArgs += ('--verbose')
+        $CmakeCheckArgs += ('--verbose')
     }
+
+    $CmakeCheckArgs += @(
+        "build_${Target}"
+        '--target', 'check_dependencies',
+        '--config', $Configuration
+    )
 
     $CmakeBuildArgs += @(
         '--preset', "windows-${Target}"
@@ -80,6 +88,8 @@ function Build {
 
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
+
+    Invoke-External cmake @CmakeCheckArgs
 
     Log-Group "Installing obs-studio..."
     Invoke-External cmake @CmakeInstallArgs
