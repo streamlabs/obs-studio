@@ -170,6 +170,7 @@ jobs:
 
   ubuntu-build:
     name: Ubuntu 🐧
+    if: github.repository == 'obsproject/obs-studio'
     strategy:
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
@@ -241,6 +242,7 @@ jobs:
 
   flatpak-build:
     name: Flatpak 📦
+    if: github.repository == 'obsproject/obs-studio'
     runs-on: ubuntu-22.04
     needs: check-event
     defaults:
