@@ -162,6 +162,15 @@ jobs:
           name: obs-studio-macos-${{ matrix.target }}-${{ needs.check-event.outputs.commitHash }}-dSYMs
           path: ${{ github.workspace }}/build_macos/obs-studio-*-macos-${{ steps.setup.outputs.cpuName }}-dSYMs.tar.xz
 
+      - name: Symbol Server and Sentry Integration
+        uses: ./symsrv-and-sentry.yml
+        with:
+          githubWorkspace: ${{ github.workspace }}
+          repoUserId: stream-labs
+          repoName: obs-studio
+          repoBranch: ${{ github.sha }}
+          buildConfig: RelWithDebInfo
+  
       - uses: actions/cache/save@v4
         if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
         with:
@@ -229,7 +238,7 @@ jobs:
 
       - name: Upload Debug Symbol Artifacts 🪲
         uses: actions/upload-artifact@v4
-        if: ${{ fromJSON(needs.check-event.outputs.package) }}
+        if: github.repository == 'obsproject/obs-studio' && fromJSON(needs.check-event.outputs.package)
         with:
           name: obs-studio-${{ matrix.os }}-x86_64-${{ needs.check-event.outputs.commitHash }}-dbgsym
           path: ${{ github.workspace }}/build_ubuntu/obs-studio-*-x86_64-ubuntu-gnu-dbgsym.ddeb
@@ -366,6 +375,15 @@ jobs:
         with:
           target: x64
           config: ${{ needs.check-event.outputs.config }}
+
+      - name: Symbol Server and Sentry Integration
+        uses: ./symsrv-and-sentry.yml
+        with:
+          githubWorkspace: ${{ github.workspace }}
+          repoUserId: stream-labs
+          repoName: obs-studio
+          repoBranch: ${{ github.sha }}
+          buildConfig: RelWithDebInfo
 
       - name: Package OBS Studio 📀
         uses: ./.github/actions/package-obs
