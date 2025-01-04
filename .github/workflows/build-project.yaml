@@ -163,7 +163,7 @@ jobs:
           path: ${{ github.workspace }}/build_macos/obs-studio-*-macos-${{ steps.setup.outputs.cpuName }}-dSYMs.tar.xz
 
       - name: Symbol Server and Sentry Integration
-        uses: ./symsrv-and-sentry.yml
+        uses: ./.github/actions/symsrv-and-sentry
         with:
           githubWorkspace: ${{ github.workspace }}
           repoUserId: stream-labs
@@ -377,7 +377,7 @@ jobs:
           config: ${{ needs.check-event.outputs.config }}
 
       - name: Symbol Server and Sentry Integration
-        uses: ./symsrv-and-sentry.yml
+        uses: ./.github/actions/symsrv-and-sentry
         with:
           githubWorkspace: ${{ github.workspace }}
           repoUserId: stream-labs
