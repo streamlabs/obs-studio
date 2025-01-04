@@ -91,8 +91,7 @@ runs:
         ${{ inputs.workingDirectory }}/.github/scripts/package-ubuntu ${package_args}
 
     - name: Run Windows packaging
-      if: runner.os == 'Windows'
-      if: ${{ github.repository == 'obsproject/obs-studio' }}
+      if: runner.os == 'Windows' && github.repository == 'obsproject/obs-studio'
       shell: pwsh
       working-directory: ${{ inputs.workingDirectory }}
       run: |
