@@ -18,15 +18,18 @@ function(_check_dependencies_macos)
   set(qt6_destination "obs-deps-qt6-VERSION-ARCH")
   set(cef_filename "cef_binary_VERSION_macos_ARCH_REVISION.tar.xz")
   set(cef_destination "cef_binary_VERSION_macos_ARCH")
+
   set(libmediasoupclient_filename "libmediasoupclient-VERSION-osx-ARCH.zip")
   set(libmediasoupclient_destination "libmediasoupclient-VERSION-osx-ARCH")
   set(webrtc_filename "webrtc-VERSION-osx-ARCH.zip")
   set(webrtc_destination "webrtc-VERSION-osx-ARCH")
-  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc)
-# add critical error message for debug 
-  
-  message(FATAL_ERROR "need to make similar changes to the windows buildspec.cmake file")
-  
+  set(grpc_filename "grpc-release-VERSION.7z")
+  set(grpc_destination "grpc-release-VERSION")
+  set(openssl_filename "openssl-VERSION-ARCH.7z")
+  set(openssl_destination "openssl-VERSION-ARCH")
+
+  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc grpc openssl)
+
   _check_dependencies()
 
   execute_process(COMMAND "xattr" -r -d com.apple.quarantine "${dependencies_dir}/${destination}"
