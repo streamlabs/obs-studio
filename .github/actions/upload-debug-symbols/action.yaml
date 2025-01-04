@@ -38,14 +38,14 @@ runs:
 
     - name: Run symbol server scripts
       if: runner.os != 'macOS'
-      shell: pwsh
+      shell: powershell
       run: |
-        ./symsrv-scripts/main.bat "${{ inputs.githubWorkspace }}/symsrv-scripts" `
-          ".\main.ps1 `
-          -localSourceDir '${{ inputs.githubWorkspace }}' `
-          -repo_userId '${{ inputs.repoUserId }}' `
-          -repo_name '${{ inputs.repoName }}' `
-          -repo_branch '${{ inputs.repoBranch }}' `
+        ./symsrv-scripts/main.bat "${{ inputs.githubWorkspace }}/symsrv-scripts" 
+          ".\main.ps1 
+          -localSourceDir '${{ inputs.githubWorkspace }}' 
+          -repo_userId '${{ inputs.repoUserId }}' 
+          -repo_name '${{ inputs.repoName }}' 
+          -repo_branch '${{ inputs.repoBranch }}' 
           -subModules 'plugins/mediasoup-connector,stream-labs,...'"
       env:
         AWS_SYMB_ACCESS_KEY_ID: ${{ inputs.awsSymbAccessKeyId }}
