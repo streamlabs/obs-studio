@@ -8,10 +8,6 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # Check prerequisites
-if (-not (Test-Path $env:CI)) {
-    throw "This script requires a CI environment."
-}
-
 if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
     throw "7z (7-Zip) is required but not installed or not in PATH."
 }
