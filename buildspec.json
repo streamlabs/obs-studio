@@ -83,9 +83,7 @@
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "gRPC",
             "hashes": {
-                "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C",
-                "macos-x86_64": "D1",
-                "macos-arm64": "D2"
+                "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C"
             },
             "distPath": "grpc_dist"
         }

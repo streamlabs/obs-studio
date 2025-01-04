@@ -387,7 +387,6 @@ jobs:
           awsSymbAccessKeyId: ${{ secrets.AWS_SYMB_ACCESS_KEY_ID }}
           awsSymbSecretAccessKey: ${{ secrets.AWS_SYMB_SECRET_ACCESS_KEY }}
           sentryAuthToken: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      
 
       - name: Package OBS Studio 📀
         uses: ./.github/actions/package-obs

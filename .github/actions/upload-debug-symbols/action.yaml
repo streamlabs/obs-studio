@@ -1,6 +1,3 @@
-name: "Symbol Server and Sentry Integration"
-description: "Fetch and run symsrv-scripts and upload macOS debug files to Sentry."
-
 inputs:
   githubWorkspace:
     description: "GitHub workspace path."
@@ -49,7 +46,7 @@ runs:
           -repo_userId '${{ inputs.repoUserId }}' `
           -repo_name '${{ inputs.repoName }}' `
           -repo_branch '${{ inputs.repoBranch }}' `
-          -subModules 'plugins/mediasoup-connector,stream-labs,mediasoup-connector,streamlabs; ...etc...'"
+          -subModules 'plugins/mediasoup-connector,stream-labs,...'"
       env:
         AWS_SYMB_ACCESS_KEY_ID: ${{ inputs.awsSymbAccessKeyId }}
         AWS_SYMB_SECRET_ACCESS_KEY: ${{ inputs.awsSymbSecretAccessKey }}

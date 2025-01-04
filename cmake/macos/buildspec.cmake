@@ -23,10 +23,8 @@ function(_check_dependencies_macos)
   set(libmediasoupclient_destination "libmediasoupclient-VERSION-osx-ARCH")
   set(webrtc_filename "webrtc-VERSION-osx-ARCH.zip")
   set(webrtc_destination "webrtc-VERSION-osx-ARCH")
-  set(openssl_filename "openssl-VERSION-ARCH.7z")
-  set(openssl_destination "openssl-VERSION-ARCH")
 
-  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc openssl)
+  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc)
 
   _check_dependencies()
 
