@@ -345,6 +345,7 @@ jobs:
     env:
       PACKAGE_NAME: libobs
       OS_TAG: windows-x64
+      InstallPath: "packed_build"
     defaults:
       run:
         shell: pwsh
@@ -400,11 +401,9 @@ jobs:
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
       - name: Tar artifact for deployment 🗜️
-        run: 7z a -r $Env:TARGET_ARTIFACT.7z $Env:INSTALL_PATH
-        shell: pwsh
+        run: 7z a -r ${{env.TARGET_ARTIFACT}}.7z ${{env.InstallPath}}
         env:
           TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ needs.check-event.outputs.config }}-${{ needs.check-event.outputs.commitHash }}
-          INSTALL_PATH: ${{ github.workspace }}/build_x64
 
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@v4
