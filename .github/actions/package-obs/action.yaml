@@ -117,11 +117,6 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       working-directory: ${{ inputs.workingDirectory }}
-      run: |
-        # Run Windows Packaging
-        $PackageArgs = @{
-          Target = '${{ inputs.target }}'
-          Configuration = '${{ inputs.config }}'
-        }
-
-        .github/scripts/Create-Archive.ps1 @PackageArgs
+      run: 7z a -r ${{env.TARGET_ARTIFACT}}.7z ${{env.InstallPath}}
+      env:
+        TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{matrix.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}

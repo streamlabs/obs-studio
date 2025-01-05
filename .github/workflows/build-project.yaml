@@ -342,6 +342,9 @@ jobs:
     name: Windows 🪟
     runs-on: windows-2022
     needs: check-event
+    env:
+      PACKAGE_NAME: libobs
+      OS_TAG: windows-x64
     defaults:
       run:
         shell: pwsh
@@ -376,7 +379,7 @@ jobs:
           target: x64
           config: ${{ needs.check-event.outputs.config }}
 
-      - name: Symbol Server and Sentry Integration
+      - name: Symbol Server and Sentry Integration 🪲
         uses: ./.github/actions/upload-debug-symbols
         with:
           githubWorkspace: ${{ github.workspace }}
@@ -389,11 +392,19 @@ jobs:
           sentryAuthToken: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Package OBS Studio 📀
+        if: github.repository == 'obsproject/obs-studio'
         uses: ./.github/actions/package-obs
         with:
           target: x64
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
+
+      - name: Tar artifact for deployment 🗜️
+        run: 7z a -r $Env:TARGET_ARTIFACT.7z $Env:INSTALL_PATH
+        shell: pwsh
+        env:
+          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ needs.check-event.outputs.config }}-${{ needs.check-event.outputs.commitHash }}
+          INSTALL_PATH: ${{ github.workspace }}/build_x64
 
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@v4
