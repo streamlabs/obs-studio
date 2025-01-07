@@ -5,7 +5,6 @@ on:
     paths-ignore: ['**.md']
     branches:
       - "skippy"
-    tags: ['*']
   pull_request:
     paths-ignore: ['**.md']
     branches: ['skippy']
