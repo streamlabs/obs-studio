@@ -345,7 +345,9 @@ jobs:
     env:
       PACKAGE_NAME: libobs
       OS_TAG: windows-x64
-      InstallPath: "packed_build"
+      InstallPath: "build_x64/install"
+      RELEASE_BUCKET: "obsstudios3.streamlabs.com"
+      ReleaseName: release
     defaults:
       run:
         shell: pwsh
@@ -400,13 +402,33 @@ jobs:
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
-      - name: Tar artifact for deployment 🗜️
-        run: 7z a -r ${{env.TARGET_ARTIFACT}}.7z ${{env.InstallPath}}
-        env:
-          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ needs.check-event.outputs.config }}-${{ needs.check-event.outputs.commitHash }}
-
       - name: Upload Artifacts 📡
+        if: github.repository == 'obsproject/obs-studio'
         uses: actions/upload-artifact@v4
         with:
           name: obs-studio-windows-x64-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_x64/obs-studio-*-windows-x64.zip
+
+      - name: Get the version
+        id: get_version
+        run: |
+          $version = "${{ github.ref }}".Replace("refs/tags/", "")
+          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Package OBS lib 🗜️
+        run: 7z a -r ${{env.TARGET_ARTIFACT}}.7z ${{env.InstallPath}}
+        env:
+          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
+
+      - name: Configure AWS credentials
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{secrets.AWS_RELEASE_ACCESS_KEY_ID}}
+          aws-secret-access-key: ${{secrets.AWS_RELEASE_SECRET_ACCESS_KEY}}
+          aws-region: us-west-2
+      - name: Deploy
+        if: startsWith(github.ref, 'refs/tags/')
+        run: aws s3 cp ${{env.TARGET_ARTIFACT}}.7z s3://${{env.RELEASE_BUCKET}} --acl public-read
+        env:
+          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
+  
