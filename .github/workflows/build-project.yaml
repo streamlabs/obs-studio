@@ -344,7 +344,7 @@ jobs:
     needs: check-event
     env:
       PACKAGE_NAME: libobs
-      OS_TAG: windows-x64
+      OS_TAG: windows64
       InstallPath: "build_x64/install"
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       ReleaseName: release
