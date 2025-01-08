@@ -382,15 +382,15 @@ if(OS_WINDOWS)
   list(
     APPEND
     public_headers
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/threading-windows.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/ComPtr.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/CoTaskMemPtr.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/device-enum.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/HRError.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/win-registry.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/win-version.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/window-helpers.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/WinHandle.hpp)
+    util/threading-windows.h
+    util/windows/ComPtr.hpp
+    util/windows/CoTaskMemPtr.hpp
+    util/windows/device-enum.h
+    util/windows/HRError.hpp
+    util/windows/win-registry.h
+    util/windows/win-version.h
+    util/windows/window-helpers.h
+    util/windows/WinHandle.hpp)
 elseif(OS_MACOS)
   list(APPEND public_headers util/apple/cfstring-utils.h)
 endif()
