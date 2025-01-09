@@ -89,10 +89,15 @@ function Build {
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
 
+    Log-Group "Chech for changes in dependencies..."
     Invoke-External cmake @CmakeCheckArgs
 
     Log-Group "Installing obs-studio..."
     Invoke-External cmake @CmakeInstallArgs
+
+    Log-Group "Installing Development component..."
+    $CmakeInstallDevArgs = $CmakeInstallArgs + @('--component', 'Development')
+    Invoke-External cmake @CmakeInstallDevArgs
 
     Pop-Location -Stack BuildTemp
     Log-Group
