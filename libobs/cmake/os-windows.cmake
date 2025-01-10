@@ -47,7 +47,7 @@ target_include_directories(
   libobs
   PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util/windows>
-  $<INSTALL_INTERFACE:util/windows>
+#  $<INSTALL_INTERFACE:util/windows>
 )
 
 target_compile_options(libobs PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/EHc->)
