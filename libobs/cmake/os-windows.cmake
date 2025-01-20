@@ -70,3 +70,33 @@ target_link_libraries(
 target_link_options(libobs PRIVATE /IGNORE:4098 /SAFESEH:NO)
 
 set_target_properties(libobs PROPERTIES PREFIX "" OUTPUT_NAME "obs")
+
+if(NOT ENABLE_UI)
+    set(DEP_BINARIES
+        $<TARGET_FILE:FFmpeg::avcodec>
+        $<TARGET_FILE:FFmpeg::avformat>
+        $<TARGET_FILE:FFmpeg::avutil>
+        $<TARGET_FILE:FFmpeg::swscale>
+        $<TARGET_FILE:FFmpeg::swresample>
+        $<TARGET_FILE:FFmpeg::avfilter>
+        $<TARGET_FILE:FFmpeg::avdevice>
+
+        $<TARGET_FILE:FFmpeg::ffmpegexe>
+        $<TARGET_FILE:FFmpeg::ffprobeexe>
+
+        $<TARGET_FILE:Libx264::Libx264>
+        $<TARGET_FILE:ZLIB::ZLIB>
+    )
+
+    foreach(DEP_BINARY ${DEP_BINARIES})
+        message(STATUS "Adding custom command to copy ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}")
+
+        add_custom_command(TARGET libobs POST_BUILD 
+          COMMAND "${CMAKE_COMMAND}" -E echo "Copying dependencies binaries ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}" 
+          COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${DEP_BINARY}" "${OBS_EXECUTABLE_DESTINATION}" 
+          COMMENT "." 
+          VERBATIM COMMAND_EXPAND_LISTS)
+    endforeach()
+
+    install(FILES ${DEP_BINARIES} DESTINATION ${OBS_EXECUTABLE_DESTINATION})
+endif()
