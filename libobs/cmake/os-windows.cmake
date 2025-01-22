@@ -87,11 +87,14 @@ set(DEPENDENCY_DLLS
     "$<TARGET_FILE_DIR:ZLIB::ZLIB>/../bin/zlib.dll"
     "$<TARGET_FILE_DIR:Librist::Librist>/../bin/librist.dll"
     "$<TARGET_FILE_DIR:Libsrt::Libsrt>/../bin/srt.dll"
+
+    "$<TARGET_FILE_DIR:CURL::libcurl>/../bin/libcurl.dll"
 )
 set(DEPENDENCY_LIBS
 $<TARGET_FILE:Libsrt::Libsrt>
 $<TARGET_FILE:Librist::Librist>
 $<TARGET_FILE:ZLIB::ZLIB>
+$<TARGET_FILE:CURL::libcurl>
 )
 
 # foreach(DEP_BINARY ${DEPENDENCY_DLLS})
