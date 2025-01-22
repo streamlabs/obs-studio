@@ -71,8 +71,10 @@ target_link_options(libobs PRIVATE /IGNORE:4098 /SAFESEH:NO)
 
 set_target_properties(libobs PROPERTIES PREFIX "" OUTPUT_NAME "obs")
 
+find_package(LibDataChannel 0.20 REQUIRED)
+
 if(NOT ENABLE_UI)
-set(DEPENDENCY_DLLS
+  set(DEPENDENCY_DLLS
     $<TARGET_FILE:FFmpeg::avcodec>
     $<TARGET_FILE:FFmpeg::avformat>
     $<TARGET_FILE:FFmpeg::avutil>
@@ -89,26 +91,27 @@ set(DEPENDENCY_DLLS
     "$<TARGET_FILE_DIR:Libsrt::Libsrt>/../bin/srt.dll"
 
     "$<TARGET_FILE_DIR:CURL::libcurl>/../bin/libcurl.dll"
-)
-set(DEPENDENCY_LIBS
-$<TARGET_FILE:Libsrt::Libsrt>
-$<TARGET_FILE:Librist::Librist>
-$<TARGET_FILE:ZLIB::ZLIB>
-$<TARGET_FILE:CURL::libcurl>
-)
+    "$<TARGET_FILE_DIR:LibDataChannel::LibDataChannel>/../bin/datachannel.dll"
+  )
 
-# foreach(DEP_BINARY ${DEPENDENCY_DLLS})
-#     message(STATUS "Adding custom command to copy ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}")
+  set(DEPENDENCY_LIBS
+    $<TARGET_FILE:Libsrt::Libsrt>
+    $<TARGET_FILE:Librist::Librist>
+    $<TARGET_FILE:ZLIB::ZLIB>
+    $<TARGET_FILE:CURL::libcurl>
+    $<TARGET_FILE:LibDataChannel::LibDataChannel>
+  )
 
-#     add_custom_command(TARGET libobs POST_BUILD
-#         COMMAND "${CMAKE_COMMAND}" -E echo "Copying dependencies binaries ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}"
-#         COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${DEP_BINARY}" "${OBS_EXECUTABLE_DESTINATION}"
-#         COMMENT "."
-#         VERBATIM COMMAND_EXPAND_LISTS
-#     )
-# endforeach()
+  # foreach(DEP_BINARY ${DEPENDENCY_DLLS})
+  # message(STATUS "Adding custom command to copy ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}")
 
-install(FILES ${DEPENDENCY_DLLS} DESTINATION ${OBS_EXECUTABLE_DESTINATION})
-install(FILES ${DEPENDENCY_LIBS} DESTINATION ${OBS_LIBRARY_DESTINATION})
-
+  # add_custom_command(TARGET libobs POST_BUILD
+  # COMMAND "${CMAKE_COMMAND}" -E echo "Copying dependencies binaries ${DEP_BINARY} to ${OBS_EXECUTABLE_DESTINATION}"
+  # COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${DEP_BINARY}" "${OBS_EXECUTABLE_DESTINATION}"
+  # COMMENT "."
+  # VERBATIM COMMAND_EXPAND_LISTS
+  # )
+  # endforeach()
+  install(FILES ${DEPENDENCY_DLLS} DESTINATION ${OBS_EXECUTABLE_DESTINATION})
+  install(FILES ${DEPENDENCY_LIBS} DESTINATION ${OBS_LIBRARY_DESTINATION})
 endif()

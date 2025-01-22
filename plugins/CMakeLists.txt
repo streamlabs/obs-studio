@@ -64,7 +64,7 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   add_obs_plugin(sl-vst PLATFORMS WINDOWS WITH_MESSAGE)
   add_obs_plugin(obs-webrtc)
 
-  check_obs_websocket()
+  #check_obs_websocket()
 
   add_obs_plugin(obs-x264)
   add_obs_plugin(oss-audio PLATFORMS FREEBSD OPENBSD)
