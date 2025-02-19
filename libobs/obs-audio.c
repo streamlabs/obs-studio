@@ -79,7 +79,7 @@ static void mix_audio(struct audio_data_mixes_outputs *mixes,
 	for (size_t canvas_idx = 0; canvas_idx < mixes->outputs.num;
 	     canvas_idx++) {
 		size_t active_canvas_idx = source->info.audio_render? canvas_idx : 0;
-		blog(LOG_INFO, "[SECOND_AUDIO] mix_audio source %s, canvas_idx %d", source->context.name, canvas_idx);
+
 		for (size_t mix_idx = 0; mix_idx < MAX_AUDIO_MIXES; mix_idx++) {
 			for (size_t ch = 0; ch < channels; ch++) {
 				register float *mix =
@@ -669,7 +669,7 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in,
 	if (!audio->buffering_wait_ticks) {
 		for (size_t i = 0; i < audio->root_nodes.num; i++) {
 			obs_source_t *source = audio->root_nodes.array[i];
-			blog(LOG_INFO, "[SECOND_AUDIO] audio_callback source %s", source->context.name);
+
 			if (source->audio_pending)
 				continue;
 

@@ -2756,18 +2756,13 @@ void obs_set_audio_rendering_canvas(struct obs_video_info *ovi)
 {
 	if (!obs)
 		return;
-	blog(LOG_DEBUG, "[SECOND_AUDIO] obs_set_audio_rendering_canvas %p", ovi);
+
 	obs->audio_rendering_canvas = ovi;
 }
 
 struct obs_video_info *obs_get_audio_rendering_canvas(void)
 {
-	if (!obs)
-		return NULL;
-	else {
-		blog(LOG_DEBUG, "[SECOND_AUDIO] obs_get_audio_rendering_canvas %p", obs->audio_rendering_canvas);
-		return obs->audio_rendering_canvas;
-	}
+	return obs ? obs->audio_rendering_canvas : NULL;
 }
 
 void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
@@ -2780,10 +2775,7 @@ void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
 
 struct obs_video_info *obs_get_video_rendering_canvas(void)
 {
-	if (!obs)
-		return NULL;
-	else
-		return obs->video_rendering_canvas;
+	return obs ? obs->video_rendering_canvas : NULL;
 }
 
 void obs_set_replay_buffer_rendering_mode(
