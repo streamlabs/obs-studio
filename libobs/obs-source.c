@@ -5994,6 +5994,10 @@ void obs_source_audio_render(obs_source_t *source, uint32_t mixers,
 		     "[AUDIO_CANVAS] obs_source_audio_render audio_output_buf is NULL for source %s",
 		     source->context.name);
 		return;
+	} else {
+		blog(LOG_INFO,
+		     "[AUDIO_CANVAS] obs_source_audio_render audio_output_buf for source %s , audio_render_do %p",
+		     source->context.name, source->info.audio_render_do);
 	}
 
 	if (source->info.audio_render) {
