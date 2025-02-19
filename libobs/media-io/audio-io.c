@@ -147,7 +147,6 @@ static void do_audio_output(struct audio_output *audio, size_t mix_idx,
 		struct audio_input *input = mix->inputs.array + (input_idx - 1);
 
 		struct obs_encoder *encoder = input->param;
-
 		if (encoder && encoder->video &&
 		    encoder->video->ovi != obs_get_audio_rendering_canvas()) {
 			continue;

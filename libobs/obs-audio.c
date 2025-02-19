@@ -76,7 +76,6 @@ static void mix_audio(struct audio_data_mixes_outputs *mixes,
 
 		total_floats -= start_point;
 	}
-
 	for (size_t canvas_idx = 0; canvas_idx < mixes->outputs.num;
 	     canvas_idx++) {
 		size_t active_canvas_idx = source->info.audio_render? canvas_idx : 0;
