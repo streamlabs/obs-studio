@@ -79,7 +79,7 @@ jobs:
       SPARKLE_VERSION: '1.26.0'
       WEBRTC_VERSION_MAC: 'm94-b240115'
       LIBMEDIASOUPCLIENT_VERSION_MAC: '0b76859-b240116'
-      InstallPath: "build_macos"
+      InstallPath: "packed_build"
       BUILD_DIRECTORY: "build"
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       PACKAGE_NAME: "libobs"

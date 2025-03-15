@@ -122,7 +122,8 @@ build() {
 
   case ${target} {
     macos-*)
-      cmake_args+=(--preset 'macos-ci' -DCMAKE_OSX_ARCHITECTURES:STRING=${target##*-})
+      PACKED_BUILD=$PWD/${InstallPath}
+      cmake_args+=(--preset 'macos-ci' -DCMAKE_OSX_ARCHITECTURES:STRING=${target##*-} -DCMAKE_INSTALL_PREFIX:STRING=${PACKED_BUILD})
 
       typeset -gx NSUnbufferedIO=YES
 
@@ -194,11 +195,10 @@ build() {
       rm -rf OBS.app
       mkdir OBS.app
       ditto UI/${config}/OBS.app OBS.app
-      popd
 
-      log_group "Installing macOS ${product_name}..."
-      cmake --build build_macos --target install --config ${config}
-      ls build_macos
+      log_group "Installing ${product_name}..."
+      cmake --install build_macos --config ${config}
+      popd
       ;;
     ubuntu-*)
       local cmake_bin='/usr/bin/cmake'
