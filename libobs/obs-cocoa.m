@@ -683,40 +683,38 @@ static void handle_monitor_event(obs_hotkeys_platform_t *plat, NSEvent *event)
 static bool init_hotkeys_platform(obs_hotkeys_platform_t **plat_)
 {
     if (!plat_)
-        return false;
+	return false;
 
     *plat_ = bzalloc(sizeof(obs_hotkeys_platform_t));
     obs_hotkeys_platform_t *plat = *plat_;
     if (!plat) {
-        *plat_ = NULL;
-        return false;
+	*plat_ = NULL;
+	return false;
     }
 
     void (^handler)(NSEvent *) = ^(NSEvent *event) {
-        handle_monitor_event(plat, event);
+	handle_monitor_event(plat, event);
     };
     plat->monitor = (__bridge CFTypeRef)
-        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged
-                                               handler:handler];
+	[NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged
+					       handler:handler];
 
     NSEvent *_Nullable (^local_handler)(NSEvent *event) = ^NSEvent *_Nullable(NSEvent *event)
     {
-        handle_monitor_event(plat, event);
+	handle_monitor_event(plat, event);
 
-        return event;
+	return event;
     };
     plat->local_monitor = (__bridge CFTypeRef)
-        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged
-                                              handler:local_handler];
+	[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged
+					      handler:local_handler];
 
     plat->tis = TISCopyCurrentKeyboardLayoutInputSource();
     plat->layout_data = (CFDataRef) TISGetInputSourceProperty(plat->tis, kTISPropertyUnicodeKeyLayoutData);
 
     if (!plat->layout_data) {
-        blog(LOG_ERROR, "hotkeys-cocoa: Failed getting LayoutData");
-    } else {
-        CFRetain(plat->layout_data);
-        plat->layout = (UCKeyboardLayout *) CFDataGetBytePtr(plat->layout_data);
+	blog(LOG_ERROR, "hotkeys-cocoa: Failed getting LayoutData");
+	goto fail;
     }
 
     CFRetain(plat->layout_data);
