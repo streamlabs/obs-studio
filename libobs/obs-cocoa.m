@@ -715,9 +715,6 @@ static bool init_hotkeys_platform(obs_hotkeys_platform_t **plat_)
     if (!plat->layout_data) {
         blog(LOG_ERROR, "hotkeys-cocoa: Failed getting LayoutData");
         goto fail;
-    } else {
-        CFRetain(plat->layout_data);
-        plat->layout = (UCKeyboardLayout *) CFDataGetBytePtr(plat->layout_data);
     }
 
     CFRetain(plat->layout_data);
