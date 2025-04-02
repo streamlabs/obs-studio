@@ -65,8 +65,7 @@ jobs:
       fail-fast: false
       matrix:
         target: [arm64, x86_64]
-        arch: ['x86_64', 'arm64']
-        ReleaseName: [release]
+
     env:
       OS_TAG: "osx"
       MACOSX_DEPLOYMENT_TARGET_X86_64: '10.15'
@@ -84,6 +83,7 @@ jobs:
       BUILD_DIRECTORY: "build"
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       PACKAGE_NAME: "libobs"
+      ReleaseName: release
     defaults:
       run:
         shell: zsh --no-rcs --errexit --pipefail {0}
