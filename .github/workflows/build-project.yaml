@@ -66,12 +66,7 @@ jobs:
       matrix:
         target: [arm64, x86_64]
         arch: ['x86_64', 'arm64']
-        ReleaseName: [release, debug]
-        include:
-        - ReleaseName: release
-          BUILD_CONFIG: RelWithDebInfo
-        - ReleaseName: debug
-          BUILD_CONFIG: Debug
+        ReleaseName: [release]
     env:
       OS_TAG: "osx"
       MACOSX_DEPLOYMENT_TARGET_X86_64: '10.15'
