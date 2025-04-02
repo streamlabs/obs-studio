@@ -132,10 +132,10 @@ jobs:
         with:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
-          codesign: ${{ fromJSON(needs.check-event.outputs.codesign) }}
-          codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
-          codesignTeam: ${{ steps.codesign.outputs.codesignTeam }}
-          provisioningProfileUUID: ${{ steps.codesign.outputs.provisioningProfileUUID }}
+          # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) }}
+          # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
+          # codesignTeam: ${{ steps.codesign.outputs.codesignTeam }}
+          # provisioningProfileUUID: ${{ steps.codesign.outputs.provisioningProfileUUID }}
 
       - name: Package OBS Studio 📀
         uses: ./.github/actions/package-obs
@@ -143,11 +143,11 @@ jobs:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
-          codesign: ${{ fromJSON(needs.check-event.outputs.codesign) && fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
-          codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
-          notarize: ${{ fromJSON(needs.check-event.outputs.notarize) && fromJSON(steps.codesign.outputs.haveNotarizationUser) }}
-          codesignUser: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
-          codesignPass: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) && fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
+          # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
+          # notarize: ${{ fromJSON(needs.check-event.outputs.notarize) && fromJSON(steps.codesign.outputs.haveNotarizationUser) }}
+          # codesignUser: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          # codesignPass: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
 
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@v4
