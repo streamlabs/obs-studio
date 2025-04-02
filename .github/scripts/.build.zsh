@@ -177,16 +177,23 @@ build() {
       )
 
       pushd build_macos
-      if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]] {
-        run_xcodebuild ${archive_args}
-        run_xcodebuild ${export_args}
-      } else {
-        run_xcodebuild ${build_args}
+      # if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]] {
+      #   run_xcodebuild ${archive_args}
+      #   run_xcodebuild ${export_args}
+      # } else {
+      #   run_xcodebuild ${build_args}
 
-        rm -rf OBS.app
-        mkdir OBS.app
-        ditto UI/${config}/OBS.app OBS.app
-      }
+      #   rm -rf OBS.app
+      #   mkdir OBS.app
+      #   ditto UI/${config}/OBS.app OBS.app
+      # }
+
+      # Always build OBS.app, skip -exportArchive which requires TeamID
+      run_xcodebuild ${build_args}
+
+      rm -rf OBS.app
+      mkdir OBS.app
+      ditto UI/${config}/OBS.app OBS.app
       popd
       ;;
     ubuntu-*)
