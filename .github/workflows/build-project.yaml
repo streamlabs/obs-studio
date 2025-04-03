@@ -190,7 +190,6 @@ jobs:
         run:  |
             : Add items into tar file
             cd ${{env.InstallPath}}
-            ls -a
             7z a -r ../${{env.TARGET_ARTIFACT}}.7z *
         env:
           TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{matrix.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.arch }}
