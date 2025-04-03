@@ -65,7 +65,6 @@ jobs:
       fail-fast: false
       matrix:
         target: [arm64, x86_64]
-        arch: ['x86_64', 'arm64']
 
     env:
       OS_TAG: "osx"
@@ -193,7 +192,7 @@ jobs:
             cd ${{env.InstallPath}}
             7z a -r ../${{env.TARGET_ARTIFACT}}.7z *
         env:
-          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{matrix.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.arch }}
+          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{env.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
       - name: Configure AWS credentials
         if: startsWith(github.ref, 'refs/tags/')
         uses: aws-actions/configure-aws-credentials@v2
@@ -205,7 +204,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: aws s3 cp ${{env.TARGET_ARTIFACT}}.7z s3://${{env.RELEASE_BUCKET}} --acl public-read
         env:
-          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{matrix.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.arch }}
+          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{env.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
       - name: 'Upload debug files to Sentry'
         if: startsWith(github.ref, 'refs/tags/')
         run: 'python ./slobs_CI/sentry-osx.py'
