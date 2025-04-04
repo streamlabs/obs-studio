@@ -197,7 +197,7 @@ build() {
       ditto UI/${config}/OBS.app OBS.app
 
       log_group "Installing ${product_name}..."
-      cmake --install build_macos --config ${config}
+      cmake --install . --config ${config}
       popd
       ;;
     ubuntu-*)
