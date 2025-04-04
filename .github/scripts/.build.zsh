@@ -195,6 +195,10 @@ build() {
       mkdir OBS.app
       ditto UI/${config}/OBS.app OBS.app
       popd
+
+      log_group "Installing macOS ${product_name}..."
+      cmake --build build_macos --target install --config ${config}
+      ls build_macos
       ;;
     ubuntu-*)
       local cmake_bin='/usr/bin/cmake'
