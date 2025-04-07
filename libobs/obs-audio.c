@@ -557,19 +557,8 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in,
 	da_resize(audio->render_order, 0);
 	da_resize(audio->root_nodes, 0);
 
-	deque_push_back(&audio->buffered_timestamps, &ts, sizeof(ts));
-	deque_peek_front(&audio->buffered_timestamps, &ts, sizeof(ts));
-	min_ts = ts.start;
-
-	audio_size = AUDIO_OUTPUT_FRAMES * sizeof(float);
-
-#if DEBUG_AUDIO == 1
-	blog(LOG_DEBUG, "ts %llu-%llu", ts.start, ts.end);
-#endif
-
 	/* ------------------------------------------------ */
 	/* build audio render order */
-
 	if (pthread_mutex_trylock(&obs->video.mixes_mutex) == 0) {
 		for (size_t j = 0; j < obs->video.mixes.num; j++) {
 			struct obs_view *view = obs->video.mixes.array[j]->view;
@@ -597,11 +586,20 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in,
 		}
 		pthread_mutex_unlock(&obs->video.mixes_mutex);
 	} else {
-		blog(LOG_WARNING, "Failed to acquire video.mixes_mutex, skipping audio render");
 		return false;
 	}
 
 	pthread_mutex_lock(&data->audio_sources_mutex);
+
+	deque_push_back(&audio->buffered_timestamps, &ts, sizeof(ts));
+	deque_peek_front(&audio->buffered_timestamps, &ts, sizeof(ts));
+	min_ts = ts.start;
+
+	audio_size = AUDIO_OUTPUT_FRAMES * sizeof(float);
+
+#if DEBUG_AUDIO == 1
+	blog(LOG_DEBUG, "ts %llu-%llu", ts.start, ts.end);
+#endif
 
 	source = data->first_audio_source;
 	while (source) {
