@@ -122,8 +122,7 @@ build() {
 
   case ${target} {
     macos-*)
-      PACKED_BUILD=$PWD/${InstallPath}
-      cmake_args+=(--preset 'macos-ci' -DCMAKE_OSX_ARCHITECTURES:STRING=${target##*-} -DCMAKE_INSTALL_PREFIX:STRING=${PACKED_BUILD})
+      cmake_args+=(--preset 'macos-ci' -DCMAKE_OSX_ARCHITECTURES:STRING=${target##*-} -DCMAKE_INSTALL_PREFIX:STRING=${InstallPath})
 
       typeset -gx NSUnbufferedIO=YES
 
