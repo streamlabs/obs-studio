@@ -134,6 +134,8 @@ build() {
 
       log_group "Configuring ${product_name}..."
       cmake -S ${project_root} ${cmake_args}
+      log_group "Build/Install preset ${product_name}..."
+      cmake --build --target install --preset macos
 
       log_group "Building ${product_name}..."
       run_xcodebuild() {
@@ -188,16 +190,6 @@ build() {
       #   mkdir OBS.app
       #   ditto UI/${config}/OBS.app OBS.app
       # }
-
-      # Do not run xcodebuild archive & export steps because we do not codesign streamlabs/obs-studio
-      run_xcodebuild ${build_args}
-
-      rm -rf OBS.app
-      mkdir OBS.app
-      ditto UI/${config}/OBS.app OBS.app
-
-      log_group "Installing ${product_name}..."
-      cmake --install . --config ${config}
       popd
       ;;
     ubuntu-*)
