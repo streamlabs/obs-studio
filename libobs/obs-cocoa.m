@@ -45,8 +45,23 @@ void add_default_module_paths(void)
     NSURL *pluginURL = [[NSBundle mainBundle] builtInPlugInsURL];
     NSString *pluginModulePath = [[pluginURL path] stringByAppendingString:@"/%module%.plugin/Contents/MacOS/"];
     NSString *pluginDataPath = [[pluginURL path] stringByAppendingString:@"/%module%.plugin/Contents/Resources/"];
-
+	
     obs_add_module_path(pluginModulePath.UTF8String, pluginDataPath.UTF8String);
+	
+	{
+		size_t path_length = strlen(pluginModulePath.UTF8String);
+		
+		char *path = bmalloc(path_length + 1);
+		snprintf(path, (path_length + 1), "%s", pluginModulePath.UTF8String);
+		blog(LOG_INFO, "pluginModulePath: %s", path);
+	}
+	{
+		size_t path_length = strlen(pluginDataPath.UTF8String);
+		
+		char *path = bmalloc(path_length + 1);
+		snprintf(path, (path_length + 1), "%s", pluginDataPath.UTF8String);
+		blog(LOG_INFO, "pluginDataPath: %s", path);
+	}
 }
 
 char *find_libobs_data_file(const char *file)
