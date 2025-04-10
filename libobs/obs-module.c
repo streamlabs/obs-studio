@@ -280,9 +280,11 @@ void obs_add_module_path(const char *bin, const char *data)
 {
 	struct obs_module_path omp;
 
-	if (!obs || !bin || !data)
+	if (!obs || !bin || !data) {
+		blog(LOG_INFO, "rno Rejected path cause: %s %d %d %d", bin, !obs, !bin, !data);
 		return;
-
+	}
+	blog(LOG_INFO, "rno added path cause: %s %s", bin, data);
 	omp.bin = bstrdup(bin);
 	omp.data = bstrdup(data);
 	da_push_back(obs->module_paths, &omp);
