@@ -58,6 +58,7 @@ target_link_libraries(
           OBS::glad
           "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,Cocoa.framework>>"
           "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,IOSurface.framework>>"
+          "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,CoreImage.framework>>"
           $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:xcb::xcb>
           $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:X11::x11-xcb>
           $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:OpenGL::EGL>

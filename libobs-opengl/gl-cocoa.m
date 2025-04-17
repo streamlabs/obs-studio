@@ -28,6 +28,44 @@
 
 //#include "util/darray.h"
 
+uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height);
+void saveIOSurfaceToFile(IOSurfaceRef surface, NSString *filePath) {
+    if (!surface || !filePath) {
+	NSLog(@"Invalid input parameters.");
+	return;
+    }
+
+    // Step 1: Create a CIImage from the IOSurfaceRef
+    CIImage *ciImage = [CIImage imageWithIOSurface:surface];
+    if (!ciImage) {
+	NSLog(@"Failed to create CIImage from IOSurfaceRef.");
+	return;
+    }
+
+    // Step 2: Create an NSBitmapImageRep from the CIImage
+    NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc] initWithCIImage:ciImage];
+    if (!bitmapRep) {
+	NSLog(@"Failed to create NSBitmapImageRep.");
+	return;
+    }
+
+    // Step 3: Convert NSBitmapImageRep to NSData in a desired format (e.g., PNG)
+    NSData *imageData = [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    if (!imageData) {
+	NSLog(@"Failed to create image data.");
+	return;
+    }
+
+    // Step 4: Write the NSData to a file
+    NSError *error = nil;
+    BOOL success = [imageData writeToFile:filePath options:NSDataWritingAtomic error:&error];
+    if (!success) {
+	NSLog(@"Failed to write image file: %@", error.localizedDescription);
+    } else {
+	NSLog(@"Successfully saved IOSurfaceRef to file: %@", filePath);
+    }
+}
+
 struct gl_windowinfo {
     NSView *view;
     NSOpenGLContext *context;
@@ -127,6 +165,14 @@ bool gl_platform_init_swapchain(struct gs_swap_chain *swap)
     NSOpenGLContext *context = gl_context_create(parent);
     bool success = context != nil;
     if (success) {
+	if (swap->wi->view)
+	{
+		NSView* view = swap->wi->view;
+		CGFloat w = view.frame.size.width;
+		CGFloat h = view.frame.size.height;
+		swap->device->cur_swap = swap;
+		swap->wi->surfaceID = create_iosurface(swap->device, (uint32_t)w, (uint32_t)h);
+	}
         CGLContextObj parent_obj = [parent CGLContextObj];
         CGLLockContext(parent_obj);
 
@@ -141,6 +187,13 @@ bool gl_platform_init_swapchain(struct gs_swap_chain *swap)
         CGLLockContext(context_obj);
 
         [context makeCurrentContext];
+	if (swap->wi->view)
+	{
+#pragma clang diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+		[context setView:swap->wi->view];
+#pragma clang diagnostic pop
+	}
         GLint interval = 0;
         [context setValues:&interval forParameter:NSOpenGLCPSwapInterval];
         gl_gen_framebuffers(1, &swap->wi->fbo);
@@ -192,6 +245,16 @@ struct gl_windowinfo *gl_windowinfo_create(const struct gs_init_data *info)
         return NULL;
 
     struct gl_windowinfo *wi = bzalloc(sizeof(struct gl_windowinfo));
+
+	if (info->window.view)
+	{
+		wi->view = info->window.view;
+		wi->view.window.colorSpace = NSColorSpace.sRGBColorSpace;
+	    #pragma clang diagnostic push
+	    #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+		wi->view.wantsBestResolutionOpenGLSurface = YES;
+	    #pragma clang diagnostic pop
+	}
 
     return wi;
 }
@@ -314,6 +377,7 @@ void write_iosurface(gs_device_t *device)
     gl_success("glReadPixels");
 
     IOSurfaceUnlock(surface, 0, NULL);
+    //saveIOSurfaceToFile(surface, @"./surf.png");
 }
 
 bool device_is_present_ready(gs_device_t *device)
@@ -330,6 +394,14 @@ void device_present(gs_device_t *device)
     CGLLockContext([device->cur_swap->wi->context CGLContextObj]);
 
     [device->cur_swap->wi->context makeCurrentContext];
+	if (device->cur_swap->info.window.view)
+	{
+		gl_bind_framebuffer(GL_READ_FRAMEBUFFER, device->cur_swap->wi->fbo);
+		gl_bind_framebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		const uint32_t width = device->cur_swap->info.cx;
+		const uint32_t height = device->cur_swap->info.cy;
+		glBlitFramebuffer(0, 0, width, height, 0, height, width, 0, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	}
     write_iosurface(device);
     [device->cur_swap->wi->context flushBuffer];
     glFlush();
@@ -478,6 +550,11 @@ bool gs_texture_rebind_iosurface(gs_texture_t *texture, void *iosurf)
 
 uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
 {
+	if (!device)
+	{
+		blog(LOG_ERROR, "rno create_iosurface was sent a null device");
+		return 0;
+	}
     gs_swapchain_t *swap = device->cur_swap;
     if (!swap)
     {
@@ -488,6 +565,7 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
 	blog(LOG_ERROR, "rno test create_iosurface w %d h %d", width, height);
 
     swap->wi->surfaceID = 0;
+    // Creates a shared IOSurface by setting kIOSurfaceIsGlobal to true
     NSDictionary *surfaceAttributes = [[NSDictionary alloc]
         initWithObjectsAndKeys:[NSNumber numberWithBool:YES], (NSString *) kIOSurfaceIsGlobal,
                                [NSNumber numberWithUnsignedInteger:(NSUInteger) width], (NSString *) kIOSurfaceWidth,
