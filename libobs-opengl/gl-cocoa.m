@@ -480,7 +480,12 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
 {
     gs_swapchain_t *swap = device->cur_swap;
     if (!swap)
-        return 0;
+    {
+	    blog(LOG_ERROR, "rno create_iosurface failed to acquire swap chain");
+	    return 0;
+    }
+	blog(LOG_INFO, "rno create_iosurface w %d h %d", width, height);
+	blog(LOG_ERROR, "rno test create_iosurface w %d h %d", width, height);
 
     swap->wi->surfaceID = 0;
     NSDictionary *surfaceAttributes = [[NSDictionary alloc]
