@@ -28,42 +28,95 @@
 
 //#include "util/darray.h"
 
-uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height);
-void saveIOSurfaceToFile(IOSurfaceRef surface, NSString *filePath) {
-    if (!surface || !filePath) {
-	NSLog(@"Invalid input parameters.");
+void saveCGImageToFile(CGImageRef image, NSString *filePath, CFStringRef fileType) {
+    if (!image || !filePath || !fileType) {
+	NSLog(@"Invalid parameters. Cannot save CGImage.");
 	return;
     }
 
-    // Step 1: Create a CIImage from the IOSurfaceRef
-    CIImage *ciImage = [CIImage imageWithIOSurface:surface];
-    if (!ciImage) {
-	NSLog(@"Failed to create CIImage from IOSurfaceRef.");
+    // Step 1: Create a URL for the file
+    CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:filePath];
+    if (!url) {
+	NSLog(@"Failed to create URL for file path.");
 	return;
     }
 
-    // Step 2: Create an NSBitmapImageRep from the CIImage
-    NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc] initWithCIImage:ciImage];
-    if (!bitmapRep) {
-	NSLog(@"Failed to create NSBitmapImageRep.");
+    // Step 2: Create an Image Destination (Specify format: PNG, JPEG, etc.)
+    CGImageDestinationRef destination = CGImageDestinationCreateWithURL(url, fileType, 1, NULL);
+    if (!destination) {
+	NSLog(@"Failed to create CGImageDestination.");
 	return;
     }
 
-    // Step 3: Convert NSBitmapImageRep to NSData in a desired format (e.g., PNG)
-    NSData *imageData = [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
-    if (!imageData) {
-	NSLog(@"Failed to create image data.");
-	return;
-    }
+    // Step 3: Add Image to the Destination
+    CGImageDestinationAddImage(destination, image, NULL);
 
-    // Step 4: Write the NSData to a file
-    NSError *error = nil;
-    BOOL success = [imageData writeToFile:filePath options:NSDataWritingAtomic error:&error];
-    if (!success) {
-	NSLog(@"Failed to write image file: %@", error.localizedDescription);
+    // Step 4: Finalize the Destination (Save the file)
+    if (!CGImageDestinationFinalize(destination)) {
+	NSLog(@"Failed to write the image to file.");
     } else {
-	NSLog(@"Successfully saved IOSurfaceRef to file: %@", filePath);
+	NSLog(@"Image saved successfully to %@", filePath);
     }
+
+    // Cleanup
+    CFRelease(destination);
+}
+
+void examineIOSurfaceContents(IOSurfaceRef surface) {
+    if (!surface) {
+	NSLog(@"Invalid IOSurfaceRef.");
+	return;
+    }
+
+    // Step 1: Lock the IOSurface (Read-Only)
+    kern_return_t result = IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
+    if (result != KERN_SUCCESS) {
+	NSLog(@"Failed to lock IOSurface.");
+	return;
+    }
+
+    // Step 2: Get the key properties
+    size_t width = IOSurfaceGetWidth(surface);
+    size_t height = IOSurfaceGetHeight(surface);
+    size_t bytesPerRow = IOSurfaceGetBytesPerRow(surface);
+    void *baseAddress = IOSurfaceGetBaseAddress(surface);
+
+    NSLog(@"IOSurface Properties:");
+    NSLog(@"Width: %zu, Height: %zu, Bytes Per Row: %zu", width, height, bytesPerRow);
+
+    // Step 3: Examine pixel data
+    // Assuming 4 bytes per pixel (e.g., RGBA)
+    /*
+    uint8_t *pixels = (uint8_t *)baseAddress;
+    for (size_t y = 0; y < height; y++) {
+	for (size_t x = 0; x < width; x++) {
+	    size_t pixelOffset = y * bytesPerRow + x * 4; // 4 bytes per pixel (e.g., RGBA)
+	    uint8_t red = pixels[pixelOffset];
+	    uint8_t green = pixels[pixelOffset + 1];
+	    uint8_t blue = pixels[pixelOffset + 2];
+	    uint8_t alpha = pixels[pixelOffset + 3];
+
+	    NSLog(@"Pixel (%zu, %zu): R=%u G=%u B=%u A=%u", x, y, red, green, blue, alpha);
+	}
+    }*/
+	CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+	CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, baseAddress, height * bytesPerRow, NULL);
+
+	CGImageRef image = CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace,
+					 kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
+					 provider, NULL, false, kCGRenderingIntentDefault);
+
+	// Save the image to file using Image I/O or Core Graphics (code for this may vary per use case).
+	saveCGImageToFile(image, @"sample.png", kUTTypePNG);
+
+	CGDataProviderRelease(provider);
+	CGColorSpaceRelease(colorSpace);
+	CGImageRelease(image);
+
+    // Step 4: Unlock the IOSurface
+    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+
+    NSLog(@"Completed examining IOSurface.");
 }
 
 struct gl_windowinfo {
@@ -165,14 +218,6 @@ bool gl_platform_init_swapchain(struct gs_swap_chain *swap)
     NSOpenGLContext *context = gl_context_create(parent);
     bool success = context != nil;
     if (success) {
-	if (swap->wi->view)
-	{
-		NSView* view = swap->wi->view;
-		CGFloat w = view.frame.size.width;
-		CGFloat h = view.frame.size.height;
-		swap->device->cur_swap = swap;
-		swap->wi->surfaceID = create_iosurface(swap->device, (uint32_t)w, (uint32_t)h);
-	}
         CGLContextObj parent_obj = [parent CGLContextObj];
         CGLLockContext(parent_obj);
 
@@ -377,7 +422,7 @@ void write_iosurface(gs_device_t *device)
     gl_success("glReadPixels");
 
     IOSurfaceUnlock(surface, 0, NULL);
-    //saveIOSurfaceToFile(surface, @"./surf.png");
+    //examineIOSurfaceContents(surface);
 }
 
 bool device_is_present_ready(gs_device_t *device)
@@ -561,8 +606,7 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
 	    blog(LOG_ERROR, "rno create_iosurface failed to acquire swap chain");
 	    return 0;
     }
-	blog(LOG_INFO, "rno create_iosurface w %d h %d", width, height);
-	blog(LOG_ERROR, "rno test create_iosurface w %d h %d", width, height);
+	blog(LOG_INFO, "rno create_iosurface w %u h %u", width, height);
 
     swap->wi->surfaceID = 0;
     // Creates a shared IOSurface by setting kIOSurfaceIsGlobal to true
@@ -575,7 +619,13 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
     IOSurfaceRef _surfaceRef = IOSurfaceCreate((CFDictionaryRef) surfaceAttributes);
 
     if (_surfaceRef)
-        swap->wi->surfaceID = IOSurfaceGetID(_surfaceRef);
+    {
+	    swap->wi->surfaceID = IOSurfaceGetID(_surfaceRef);
+	    blog(LOG_INFO, "rno swap->wi->surfaceID %u", swap->wi->surfaceID);
+    }
+    else {
+	    blog(LOG_INFO, "IOSurfaceCreate failed");
+    }
 
     [surfaceAttributes release];
 
