@@ -3034,13 +3034,18 @@ uint32_t gs_create_iosurface(uint32_t width, uint32_t height)
 		blog(LOG_ERROR, "rno invalid gs_valid(gs_create_iosurface)");
 		return 0;
 	}
+	if (!graphics)
+	{
+		blog(LOG_ERROR, "rno graphics is null");
+		return 0;
+	}
 	if (!graphics->exports.create_iosurface)
 	{
 		blog(LOG_ERROR, "rno graphics->exports.create_iosurface");
 		return 0;
 	}
 
-	blog(LOG_WARNING, "rno gs_create_iosurface trying width,height");
+	blog(LOG_INFO, "rno gs_create_iosurface trying width,height %u %u", width, height);
 	return graphics->exports.create_iosurface(graphics->device, width,
 						  height);
 }
