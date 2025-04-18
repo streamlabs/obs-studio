@@ -25,99 +25,9 @@
 
 #import <Cocoa/Cocoa.h>
 #import <AppKit/AppKit.h>
+#include "IOSurfaceHelper.h"
 
 //#include "util/darray.h"
-
-void saveCGImageToFile(CGImageRef image, NSString *filePath, CFStringRef fileType) {
-    if (!image || !filePath || !fileType) {
-	NSLog(@"Invalid parameters. Cannot save CGImage.");
-	return;
-    }
-
-    // Step 1: Create a URL for the file
-    CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:filePath];
-    if (!url) {
-	NSLog(@"Failed to create URL for file path.");
-	return;
-    }
-
-    // Step 2: Create an Image Destination (Specify format: PNG, JPEG, etc.)
-    CGImageDestinationRef destination = CGImageDestinationCreateWithURL(url, fileType, 1, NULL);
-    if (!destination) {
-	NSLog(@"Failed to create CGImageDestination.");
-	return;
-    }
-
-    // Step 3: Add Image to the Destination
-    CGImageDestinationAddImage(destination, image, NULL);
-
-    // Step 4: Finalize the Destination (Save the file)
-    if (!CGImageDestinationFinalize(destination)) {
-	NSLog(@"Failed to write the image to file.");
-    } else {
-	NSLog(@"Image saved successfully to %@", filePath);
-    }
-
-    // Cleanup
-    CFRelease(destination);
-}
-
-void examineIOSurfaceContents(IOSurfaceRef surface) {
-    if (!surface) {
-	NSLog(@"Invalid IOSurfaceRef.");
-	return;
-    }
-
-    // Step 1: Lock the IOSurface (Read-Only)
-    kern_return_t result = IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL);
-    if (result != KERN_SUCCESS) {
-	NSLog(@"Failed to lock IOSurface.");
-	return;
-    }
-
-    // Step 2: Get the key properties
-    size_t width = IOSurfaceGetWidth(surface);
-    size_t height = IOSurfaceGetHeight(surface);
-    size_t bytesPerRow = IOSurfaceGetBytesPerRow(surface);
-    void *baseAddress = IOSurfaceGetBaseAddress(surface);
-
-    NSLog(@"IOSurface Properties:");
-    NSLog(@"Width: %zu, Height: %zu, Bytes Per Row: %zu", width, height, bytesPerRow);
-
-    // Step 3: Examine pixel data
-    // Assuming 4 bytes per pixel (e.g., RGBA)
-    /*
-    uint8_t *pixels = (uint8_t *)baseAddress;
-    for (size_t y = 0; y < height; y++) {
-	for (size_t x = 0; x < width; x++) {
-	    size_t pixelOffset = y * bytesPerRow + x * 4; // 4 bytes per pixel (e.g., RGBA)
-	    uint8_t red = pixels[pixelOffset];
-	    uint8_t green = pixels[pixelOffset + 1];
-	    uint8_t blue = pixels[pixelOffset + 2];
-	    uint8_t alpha = pixels[pixelOffset + 3];
-
-	    NSLog(@"Pixel (%zu, %zu): R=%u G=%u B=%u A=%u", x, y, red, green, blue, alpha);
-	}
-    }*/
-	CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-	CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, baseAddress, height * bytesPerRow, NULL);
-
-	CGImageRef image = CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace,
-					 kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little,
-					 provider, NULL, false, kCGRenderingIntentDefault);
-
-	// Save the image to file using Image I/O or Core Graphics (code for this may vary per use case).
-	saveCGImageToFile(image, @"sample.png", kUTTypePNG);
-
-	CGDataProviderRelease(provider);
-	CGColorSpaceRelease(colorSpace);
-	CGImageRelease(image);
-
-    // Step 4: Unlock the IOSurface
-    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
-
-    NSLog(@"Completed examining IOSurface.");
-}
 
 struct gl_windowinfo {
     NSView *view;
@@ -422,7 +332,7 @@ void write_iosurface(gs_device_t *device)
     gl_success("glReadPixels");
 
     IOSurfaceUnlock(surface, 0, NULL);
-    //examineIOSurfaceContents(surface);
+    //writeIOSurfaceContents(surface, @"sample.png");
 }
 
 bool device_is_present_ready(gs_device_t *device)

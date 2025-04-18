@@ -29,6 +29,8 @@ target_sources(
   PRIVATE # cmake-format: sortable
           $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:gl-wayland-egl.c>
           $<$<PLATFORM_ID:Darwin>:gl-cocoa.m>
+          $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.h>
+          $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.m>
           $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-egl-common.c>
           $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-nix.c>
           $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-x11-egl.c>
