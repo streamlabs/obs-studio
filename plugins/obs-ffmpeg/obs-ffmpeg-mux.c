@@ -479,7 +479,8 @@ static inline bool ffmpeg_mux_start_internal(struct ffmpeg_muxer *stream,
 	os_atomic_set_bool(&stream->capturing, true);
 	os_atomic_set_bool(&stream->stopping, false);
 	stream->total_bytes = 0;
-	obs_output_begin_data_capture(stream->output, 0);
+	bool ret = obs_output_begin_data_capture(stream->output, 0);
+	info("obs_output_begin_data_capture %d", ret);
 
 	info("Writing file '%s'...", stream->path.array);
 	return true;
