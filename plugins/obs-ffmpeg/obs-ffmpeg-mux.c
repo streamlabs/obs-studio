@@ -464,6 +464,7 @@ static inline bool ffmpeg_mux_start_internal(struct ffmpeg_muxer *stream,
 		fclose(test_file);
 		os_unlink(path);
 	}
+	info("stream->is_network %d", stream->is_network);
 
 	start_pipe(stream, path);
 
@@ -842,12 +843,16 @@ static void push_back_packet(mux_packets_t *packets,
 static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 {
 	struct ffmpeg_muxer *stream = data;
+	info("ffmpeg_mux_data packet %d split_file %d", stream->split_file_ready, stream->split_file );
 
-	if (!active(stream))
+	if (!active(stream)) {
+		info("ffmpeg_mux_data !active");
 		return;
+	}
 
 	/* encoder failure */
 	if (!packet) {
+		info("ffmpeg_mux_data !packet");
 		deactivate(stream, OBS_OUTPUT_ENCODE_ERROR);
 		return;
 	}
