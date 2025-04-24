@@ -197,11 +197,6 @@ static void *video_thread(void *param)
 	struct video_output *video = param;
 
 	os_set_thread_name("video-io: video thread");
-	static bool bStartedThread = false;
-	if (!bStartedThread) {
-		blog(LOG_INFO, "video-io: video thread start");
-		bStartedThread = true;
-	}
 
 	const char *video_thread_name =
 		profile_store_name(obs_get_profiler_name_store(),
