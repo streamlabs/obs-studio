@@ -132,7 +132,6 @@ static inline bool video_output_cur_frame(struct video_output *video)
 	struct cached_frame_info *frame_info;
 	bool complete;
 	bool skipped;
-	blog(LOG_INFO, "video_output_cur_frame %ld", video->total_frames);
 
 	/* -------------------------------- */
 
@@ -199,21 +198,18 @@ static void *video_thread(void *param)
 
 	os_set_thread_name("video-io: video thread");
 	static bool bStartedThread = false;
+	if (!bStartedThread) {
+		blog(LOG_INFO, "video-io: video thread start");
+		bStartedThread = true;
+	}
 
 	const char *video_thread_name =
 		profile_store_name(obs_get_profiler_name_store(),
 				   "video_thread(%s)", video->info.name);
-	if (!bStartedThread) {
-		blog(LOG_INFO, "video-io: video thread %s start",
-		     video_thread_name);
-		bStartedThread = true;
-	}
+
 	while (os_sem_wait(video->update_semaphore) == 0) {
-		if (video->stop) {
-			blog(LOG_INFO, "video-io: video thread %s stop",
-			     video_thread_name);
+		if (video->stop)
 			break;
-		}
 
 		profile_start(video_thread_name);
 		while (!video->stop && !video_output_cur_frame(video)) {
