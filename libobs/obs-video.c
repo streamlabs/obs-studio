@@ -1030,6 +1030,17 @@ static inline void output_frame(struct obs_core_video_mix *video)
 static inline void output_frames(void)
 {
 	pthread_mutex_lock(&obs->video.mixes_mutex);
+	static long nextFrame = 0;
+	const long timeSpan = 50;
+	static long frameCount = 0;
+	if (frameCount > nextFrame) {
+		nextFrame = frameCount + timeSpan;
+		blog(LOG_INFO, "output_frames frameCount %ld nextFrame %ld",
+		     frameCount, nextFrame);
+		
+	}
+	frameCount++;
+	
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix->view) {
@@ -1301,6 +1312,7 @@ void *obs_graphics_thread(void *param)
 	const char *video_thread_name = profile_store_name(
 		obs_get_profiler_name_store(),
 		"obs_graphics_thread(%g" NBSP "ms)", interval / 1000000.);
+	blog(LOG_INFO, "libobs: graphics thread %s", video_thread_name);
 	profile_register_root(video_thread_name, interval);
 
 	srand((unsigned int)time(NULL));
