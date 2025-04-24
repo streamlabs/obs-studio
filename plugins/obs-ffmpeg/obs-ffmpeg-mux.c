@@ -843,8 +843,7 @@ static void push_back_packet(mux_packets_t *packets,
 static void ffmpeg_mux_data(void *data, struct encoder_packet *packet)
 {
 	struct ffmpeg_muxer *stream = data;
-	info("ffmpeg_mux_data packet %d split_file %d",
-	     stream->split_file_ready, stream->split_file);
+	info("ffmpeg_mux_data packet %d split_file %d", stream->split_file_ready, stream->split_file );
 
 	if (!active(stream)) {
 		info("ffmpeg_mux_data !active");
