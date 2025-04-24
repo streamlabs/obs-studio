@@ -1037,10 +1037,9 @@ static inline void output_frames(void)
 		nextFrame = frameCount + timeSpan;
 		blog(LOG_INFO, "output_frames frameCount %ld nextFrame %ld",
 		     frameCount, nextFrame);
-		
 	}
 	frameCount++;
-	
+
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix->view) {
