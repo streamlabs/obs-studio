@@ -132,14 +132,7 @@ static inline bool video_output_cur_frame(struct video_output *video)
 	struct cached_frame_info *frame_info;
 	bool complete;
 	bool skipped;
-
-	static long nextFrame = 0;
-	const long timeSpan = 50;
-	if (video->total_frames > nextFrame) {
-		nextFrame = video->total_frames + timeSpan;
-		blog(LOG_INFO, "video_output_cur_frame %ld nextFrame %ld",
-		     video->total_frames, nextFrame);
-	}
+	blog(LOG_INFO, "video_output_cur_frame %ld", video->total_frames);
 
 	/* -------------------------------- */
 
