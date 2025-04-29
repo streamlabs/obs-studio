@@ -134,7 +134,9 @@ build() {
       log_group "Configuring ${product_name}..."
       cmake -S ${project_root} ${cmake_args}
       log_group "Build/Install preset ${product_name}..."
+      # Run the install target to construct a packed_build that will be consumed by obs-studio-node.
       cmake --build --target install --preset macos
+      exit 0 # Do not execute the steps below. streamlabs/obs-studio uses the cmake install target.
 
       log_group "Building ${product_name}..."
       run_xcodebuild() {
@@ -179,16 +181,16 @@ build() {
       )
 
       pushd build_macos
-      # if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]] {
-      #   run_xcodebuild ${archive_args}
-      #   run_xcodebuild ${export_args}
-      # } else {
-      #   run_xcodebuild ${build_args}
+      if [[ ${GITHUB_EVENT_NAME} == push && ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]] {
+        run_xcodebuild ${archive_args}
+        run_xcodebuild ${export_args}
+      } else {
+        run_xcodebuild ${build_args}
 
-      #   rm -rf OBS.app
-      #   mkdir OBS.app
-      #   ditto UI/${config}/OBS.app OBS.app
-      # }
+        rm -rf OBS.app
+        mkdir OBS.app
+        ditto UI/${config}/OBS.app OBS.app
+      }
       popd
       ;;
     ubuntu-*)
