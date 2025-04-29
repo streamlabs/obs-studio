@@ -68,19 +68,7 @@ jobs:
 
     env:
       OS_TAG: "osx"
-      MACOSX_DEPLOYMENT_TARGET_X86_64: '10.15'
-      MACOSX_DEPLOYMENT_TARGET_ARM64: '11.0'
-      CEF_BUILD_VERSION_MAC: '5060'
-      CEF_BUILD_REVISION_MAC: 'v4'
-      DEPS_VERSION_MAC: '2023-08-31sl1'
-      QT_DEPS_VERSION_MAC: '20c82a4193784cb321061394789c6d04aabb85e5'
-      VLC_VERSION_MAC: '3.0.8'
-      QT_VERSION_MAC: '6.3.1'
-      SPARKLE_VERSION: '1.26.0'
-      WEBRTC_VERSION_MAC: 'm94-b240115'
-      LIBMEDIASOUPCLIENT_VERSION_MAC: '0b76859-b240116'
       InstallPath: "packed_build"
-      BUILD_DIRECTORY: "build"
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       PACKAGE_NAME: "libobs"
       ReleaseName: release
@@ -155,6 +143,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
+          # Disable the 'codesign' statements below to avoid an error. Do not notarize or codesign (the build agent does not store this information)
           # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) }}
           # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
           # codesignTeam: ${{ steps.codesign.outputs.codesignTeam }}
@@ -166,6 +155,7 @@ jobs:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
+          # Disable the 'codesign' statements below to avoid an error. Do not notarize or codesign (the build agent does not store this information)
           # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) && fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
           # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
           # notarize: ${{ fromJSON(needs.check-event.outputs.notarize) && fromJSON(steps.codesign.outputs.haveNotarizationUser) }}
