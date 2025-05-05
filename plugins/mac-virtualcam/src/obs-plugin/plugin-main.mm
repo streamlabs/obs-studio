@@ -124,8 +124,9 @@ struct virtualcam_data {
 
 static void install_cmio_system_extension(struct virtualcam_data *vcam)
 {
+    // We need to use streamlabs teamID/Bundle identifier here.
     OSSystemExtensionRequest *request = [OSSystemExtensionRequest
-        activationRequestForExtension:@"com.obsproject.obs-studio.mac-camera-extension"
+        activationRequestForExtension:@"com.streamlabs.slobs.mac-camera-extension"
                                 queue:dispatch_get_main_queue()];
     request.delegate = vcam->extensionDelegate;
 

@@ -32,7 +32,7 @@ source_group("Resources" FILES "${_placeholder_location}")
 set_target_properties_obs(
   mac-camera-extension
   PROPERTIES FOLDER plugins
-             OUTPUT_NAME com.obsproject.obs-studio.mac-camera-extension
+             OUTPUT_NAME com.streamlabs.slobs.mac-camera-extension
              RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/../../"
              MACOSX_BUNDLE ON
              MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/Info.plist.in"
@@ -45,8 +45,8 @@ set_target_xcode_properties(
   PROPERTIES SWIFT_VERSION 5.0
              MACOSX_DEPLOYMENT_TARGET 13.0
              CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/entitlements.plist"
-             PRODUCT_NAME com.obsproject.obs-studio.mac-camera-extension
-             PRODUCT_BUNDLE_IDENTIFIER com.obsproject.obs-studio.mac-camera-extension
+             PRODUCT_NAME com.streamlabs.slobs.mac-camera-extension
+             PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-camera-extension
              CURRENT_PROJECT_VERSION ${OBS_BUILD_NUMBER}
              MARKETING_VERSION ${OBS_VERSION_CANONICAL}
              COPY_PHASE_STRIP NO
