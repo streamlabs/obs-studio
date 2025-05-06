@@ -17,7 +17,8 @@ NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
 static bool cmio_extension_supported()
 {
-    if (@available(macOS 13.0, *)) {
+    // ROsborne - set to 12.3. Not sure why it is set to macOS 13 upstream. TODO: Verify this works on macOS 12.3 and submit PR upstream to address
+    if (@available(macOS 12.3, *)) {
         return true;
     } else {
         return false;
