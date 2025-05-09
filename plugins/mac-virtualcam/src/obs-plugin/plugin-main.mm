@@ -83,16 +83,20 @@ struct virtualcam_data {
     int severity;
 
     switch (error.code) {
+        case OSSystemExtensionErrorMissingEntitlement:
         case OSSystemExtensionErrorUnsupportedParentBundleLocation:
             // streamlabs development - Allow development outside of the .app folder. Assume extension installed in this case
             self.installed = YES;
+            severity = LOG_INFO;
+            errorMessage = [NSString stringWithFormat:@"OSSystemExtension bypassed with code %ld (\"%s\")", error.code,
+                                                      error.localizedDescription.UTF8String];
             /*
             self.lastErrorMessage =
                 [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
             errorMessage = self.lastErrorMessage;
             severity = LOG_WARNING;
 		     */
-            return;
+            break;
         default:
             self.lastErrorMessage = error.localizedDescription;
             errorMessage = [NSString stringWithFormat:@"OSSystemExtensionErrorCode %ld (\"%s\")", error.code,
@@ -101,10 +105,7 @@ struct virtualcam_data {
             break;
     }
 
-    if (error.code != OSSystemExtensionErrorUnsupportedParentBundleLocation) {
-        // streamlabs development - Allow development outside of the .app folder. Assume extension installed in this case
-        blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
-    }
+    blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
 }
 
 - (void)request:(nonnull OSSystemExtensionRequest *)request didFinishWithResult:(OSSystemExtensionRequestResult)result
