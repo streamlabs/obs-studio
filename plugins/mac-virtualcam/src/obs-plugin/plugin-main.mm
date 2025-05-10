@@ -15,6 +15,9 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
+static const char *VIRTUAL_CAM_CONNECTED = "start";
+static const char *VIRTUAL_CAM_FAILED = "deactivate";
+
 static bool cmio_extension_supported()
 {
     if (@available(macOS 13.0, *)) {
@@ -22,6 +25,15 @@ static bool cmio_extension_supported()
     } else {
         return false;
     }
+}
+
+static void sendVirtualCamSignal(obs_output_t *output, const char *signal)
+{
+    signal_handler_t *vcamHandler = obs_output_get_signal_handler(output);
+    struct calldata params = {0};
+    calldata_set_ptr(&params, "output", output);
+    signal_handler_signal(vcamHandler, signal, &params);
+    calldata_free(&params);
 }
 
 struct virtualcam_data {
@@ -80,6 +92,7 @@ struct virtualcam_data {
 {
     NSString *errorMessage;
     int severity;
+    const char *signalText = nullptr;
 
     switch (error.code) {
         case OSSystemExtensionErrorMissingEntitlement:
@@ -89,6 +102,7 @@ struct virtualcam_data {
             severity = LOG_INFO;
             errorMessage = [NSString stringWithFormat:@"OSSystemExtension bypassed with code %ld (\"%s\")", error.code,
                                                       error.localizedDescription.UTF8String];
+            signalText = VIRTUAL_CAM_CONNECTED;
             /*
             self.lastErrorMessage =
                 [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
@@ -97,6 +111,7 @@ struct virtualcam_data {
 		     */
             break;
         default:
+            signalText = VIRTUAL_CAM_FAILED;
             self.lastErrorMessage = error.localizedDescription;
             errorMessage = [NSString stringWithFormat:@"OSSystemExtensionErrorCode %ld (\"%s\")", error.code,
                                                       error.localizedDescription.UTF8String];
@@ -105,6 +120,7 @@ struct virtualcam_data {
     }
 
     blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
+    sendVirtualCamSignal(_vcam->output, signalText);
 }
 
 - (void)request:(nonnull OSSystemExtensionRequest *)request didFinishWithResult:(OSSystemExtensionRequestResult)result
@@ -113,11 +129,13 @@ struct virtualcam_data {
         case OSSystemExtensionRequestCompleted:
             self.installed = YES;
             blog(LOG_INFO, "macOS Camera Extension activated successfully.");
+            sendVirtualCamSignal(_vcam->output, VIRTUAL_CAM_CONNECTED);
             break;
         case OSSystemExtensionRequestWillCompleteAfterReboot:
             self.lastErrorMessage =
                 [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.CompleteAfterReboot")];
             blog(LOG_INFO, "macOS Camera Extension will activate after reboot.");
+            sendVirtualCamSignal(_vcam->output, VIRTUAL_CAM_FAILED);
             break;
     }
 }
