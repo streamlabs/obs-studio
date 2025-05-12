@@ -97,20 +97,23 @@ struct virtualcam_data {
 
     switch (error.code) {
         case OSSystemExtensionErrorMissingEntitlement:
-        case OSSystemExtensionErrorUnsupportedParentBundleLocation:
-            // streamlabs development - Allow development outside of the .app folder. Assume extension installed in this case
-            self.installed = YES;
-            severity = LOG_INFO;
-            errorMessage = [NSString stringWithFormat:@"OSSystemExtension bypassed with code %ld (\"%s\")", error.code,
-                                                      error.localizedDescription.UTF8String];
-            signalText = VIRTUAL_CAM_CONNECTED;
-            /*
-            self.lastErrorMessage =
-                [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
-            errorMessage = self.lastErrorMessage;
-            severity = LOG_WARNING;
-		     */
-            break;
+        case OSSystemExtensionErrorUnsupportedParentBundleLocation: {
+            const char *bypassEnv = getenv("VIRTUALCAM_BYPASS_SYSTEM_CHECK");
+            if (bypassEnv) {
+                // streamlabs development - Allow development outside of the .app folder. Assumes vcam extension is installed
+                self.installed = YES;
+                severity = LOG_INFO;
+                errorMessage = [NSString stringWithFormat:@"OSSystemExtension bypassed with code %ld (\"%s\")",
+                                                          error.code, error.localizedDescription.UTF8String];
+                signalText = VIRTUAL_CAM_CONNECTED;
+            } else {
+                signalText = VIRTUAL_CAM_FAILED;
+                self.lastErrorMessage =
+                    [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
+                errorMessage = self.lastErrorMessage;
+                severity = LOG_WARNING;
+            }
+        } break;
         default:
             signalText = VIRTUAL_CAM_FAILED;
             self.lastErrorMessage = error.localizedDescription;
