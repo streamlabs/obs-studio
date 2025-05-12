@@ -413,7 +413,7 @@ static bool virtualcam_output_start(void *data)
         CMIOObjectGetPropertyData(kCMIOObjectSystemObject, &address, 0, NULL, size, &used, device_data);
 
         vcam->deviceID = 0;
-        NSString *OBSVirtualCamUUID = [[NSBundle bundleWithIdentifier:@"com.obsproject.mac-virtualcam"]
+        NSString *OBSVirtualCamUUID = [[NSBundle bundleWithIdentifier:@"com.streamlabs.slobs.mac-virtualcam"]
             objectForInfoDictionaryKey:@"OBSCameraDeviceUUID"];
 
         size_t num_elements = size / sizeof(CMIOObjectID);
