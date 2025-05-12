@@ -32,7 +32,6 @@ runs:
   using: composite
   steps:
     - name: Run macOS Build
-      uses: apple-actions/import-codesign-certs@v3
       if: runner.os == 'macOS'
       shell: zsh --no-rcs --errexit --pipefail {0}
       working-directory: ${{ inputs.workingDirectory }}
