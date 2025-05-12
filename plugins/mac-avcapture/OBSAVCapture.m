@@ -25,7 +25,7 @@
         UInt32 allow = 1;
         CMIOObjectSetPropertyData(kCMIOObjectSystemObject, &propertyAddress, 0, NULL, sizeof(allow), &allow);
 
-        _errorDomain = @"com.streamlabs.slobs.av-capture";
+        _errorDomain = @"com.obsproject.obs-studio.av-capture";
 
         _presetList = @{
             AVCaptureSessionPresetLow: @"Low",
