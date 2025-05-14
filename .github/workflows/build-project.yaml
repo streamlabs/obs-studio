@@ -116,11 +116,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-${{ matrix.target }}-
 
-      - uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
-          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-
       - name: Set Up Code Signing 🔑
         uses: ./.github/actions/setup-macos-codesigning
         if: fromJSON(needs.check-event.outputs.codesign)
