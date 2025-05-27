@@ -8,11 +8,8 @@ function(setup_binary_target target)
       RUNTIME DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_EXECUTABLE_DESTINATION}
               COMPONENT obs_${target}
               EXCLUDE_FROM_ALL
-      LIBRARY DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_LIBRARY_DESTINATION}
-              COMPONENT obs_${target}
-      PUBLIC_HEADER
-        DESTINATION ${OBS_INCLUDE_DESTINATION}
-        COMPONENT obs_${target})
+      LIBRARY DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_LIBRARY_DESTINATION} COMPONENT obs_${target}
+      PUBLIC_HEADER DESTINATION ${OBS_INCLUDE_DESTINATION} COMPONENT obs_${target})
 
     if(MSVC)
       install(
@@ -75,10 +72,8 @@ function(setup_plugin_target target)
   if(DEFINED ENV{OBS_InstallerTempDir})
     install(
       TARGETS ${target}
-      RUNTIME DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_PLUGIN_DESTINATION}
-              COMPONENT obs_${target}
-      LIBRARY DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_PLUGIN_DESTINATION}
-              COMPONENT obs_${target})
+      RUNTIME DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_PLUGIN_DESTINATION} COMPONENT obs_${target}
+      LIBRARY DESTINATION $ENV{OBS_InstallerTempDir}/${OBS_PLUGIN_DESTINATION} COMPONENT obs_${target})
 
     if(MSVC)
       install(
@@ -212,16 +207,12 @@ function(export_target target)
   install(
     TARGETS ${target}
     EXPORT ${target}Targets
-    RUNTIME DESTINATION "${OBS_EXECUTABLE_EXPORT_DESTINATION}"
-            COMPONENT obs_libraries
-    LIBRARY DESTINATION "${OBS_LIBRARY_EXPORT_DESTINATION}"
-            COMPONENT obs_libraries
-    ARCHIVE DESTINATION "${OBS_LIBRARY_EXPORT_DESTINATION}"
-            COMPONENT obs_libraries
+    RUNTIME DESTINATION "${OBS_EXECUTABLE_EXPORT_DESTINATION}" COMPONENT obs_libraries
+    LIBRARY DESTINATION "${OBS_LIBRARY_EXPORT_DESTINATION}" COMPONENT obs_libraries
+    ARCHIVE DESTINATION "${OBS_LIBRARY_EXPORT_DESTINATION}" COMPONENT obs_libraries
     INCLUDES
     DESTINATION "${OBS_INCLUDE_DESTINATION}"
-    PUBLIC_HEADER DESTINATION "${OBS_INCLUDE_DESTINATION}"
-                  COMPONENT obs_libraries)
+    PUBLIC_HEADER DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT obs_libraries)
 
   get_target_property(target_type ${target} TYPE)
   if(MSVC AND NOT target_type STREQUAL INTERFACE_LIBRARY)
