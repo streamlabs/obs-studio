@@ -74,7 +74,6 @@
         "ENABLE_AJA": false,
         "ENABLE_VLC": true,
         "ENABLE_WAYLAND": true,
-        "ENABLE_VLC": true,
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
