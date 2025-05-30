@@ -38,8 +38,11 @@ target_sources(
             libdshowcapture/external/capture-device-support/SampleCode/DriverInterface.cpp)
 
 target_include_directories(
-  libdshowcapture INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/libdshowcapture"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/libdshowcapture/external/capture-device-support/Library")
+  libdshowcapture
+  INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/libdshowcapture"
+    "${CMAKE_CURRENT_SOURCE_DIR}/libdshowcapture/external/capture-device-support/Library"
+)
 
 target_compile_definitions(libdshowcapture INTERFACE _UP_WINDOWS=1)
 target_compile_options(libdshowcapture INTERFACE /wd4018)

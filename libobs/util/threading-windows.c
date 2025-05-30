@@ -165,8 +165,7 @@ struct vs_threadname_info {
 };
 #pragma pack(pop)
 
-#define THREADNAME_INFO_SIZE \
-	(sizeof(struct vs_threadname_info) / sizeof(ULONG_PTR))
+#define THREADNAME_INFO_SIZE (sizeof(struct vs_threadname_info) / sizeof(ULONG_PTR))
 
 void os_set_thread_name(const char *name)
 {
@@ -185,8 +184,7 @@ void os_set_thread_name(const char *name)
 #else
 	__try {
 #endif
-		RaiseException(VC_EXCEPTION, 0, THREADNAME_INFO_SIZE,
-			       (ULONG_PTR *)&info);
+		RaiseException(VC_EXCEPTION, 0, THREADNAME_INFO_SIZE, (ULONG_PTR *)&info);
 #ifdef NO_SEH_MINGW
 	}
 	__except1{
@@ -203,8 +201,7 @@ void os_set_thread_name(const char *name)
 	SetDllDirectory(path);
 	const HMODULE hModule = LoadLibrary(L"KernelBase.dll");
 	if (hModule) {
-		typedef HRESULT(WINAPI * set_thread_description_t)(HANDLE,
-								   PCWSTR);
+		typedef HRESULT(WINAPI * set_thread_description_t)(HANDLE, PCWSTR);
 
 		CoTaskMemFree(path);
 		SetDllDirectory(NULL);

@@ -1,6 +1,4 @@
-cmake_minimum_required(VERSION 3.22...3.25)
-
-legacy_check()
+cmake_minimum_required(VERSION 3.28...3.30)
 
 add_library(obs-transitions MODULE)
 add_library(OBS::transition ALIAS obs-transitions)
@@ -25,6 +23,4 @@ if(OS_WINDOWS)
   target_sources(obs-transitions PRIVATE obs-transitions.rc)
 endif()
 
-# cmake-format: off
 set_target_properties_obs(obs-transitions PROPERTIES FOLDER plugins PREFIX "")
-# cmake-format: on
