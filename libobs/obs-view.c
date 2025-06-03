@@ -249,7 +249,7 @@ bool obs_view_get_video_info(obs_view_t *view, struct obs_video_info *ovi)
 
 	size_t idx = find_mix_for_view(view);
 	if (idx != DARRAY_INVALID) {
-		*ovi = obs->video.mixes.array[idx]->ovi;
+		*ovi = *(obs->video.mixes.array[idx]->ovi);
 		pthread_mutex_unlock(&obs->video.mixes_mutex);
 		return true;
 	}
@@ -272,23 +272,4 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 	}
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
-}
-
-bool obs_view_get_video_info(obs_view_t *view, struct obs_video_info *ovi)
-{
-	if (!view)
-		return false;
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-
-	size_t idx = find_mix_for_view(view);
-	if (idx != DARRAY_INVALID) {
-		*ovi = *(obs->video.mixes.array[idx]->ovi);
-		pthread_mutex_unlock(&obs->video.mixes_mutex);
-		return true;
-	}
-
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	return false;
 }

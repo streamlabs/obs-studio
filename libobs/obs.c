@@ -1568,36 +1568,13 @@ int obs_reset_video(struct obs_video_info *ovi)
 int obs_deactivate_video_info()
 {
 	if (!obs) {
-		blog(LOG_ERROR,
-		     "[VIDEO_CANVAS] obs object is null, video reset is not possible");
+		blog(LOG_ERROR, "[VIDEO_CANVAS] obs object is null, video reset is not possible");
 		return OBS_VIDEO_FAIL;
-
-	/* don't allow changing of video settings if active. */
-	if (obs_video_active())
-		return OBS_VIDEO_CURRENTLY_ACTIVE;
-
-	if (!size_valid(ovi->output_width, ovi->output_height) || !size_valid(ovi->base_width, ovi->base_height))
-		return OBS_VIDEO_INVALID_PARAM;
-
-	stop_video();
-	obs_free_video();
-
-	/* align to multiple-of-two and SSE alignment sizes */
-	ovi->output_width &= 0xFFFFFFFC;
-	ovi->output_height &= 0xFFFFFFFE;
-
-	if (!obs->video.graphics) {
-		int errorcode = obs_init_graphics(ovi);
-		if (errorcode != OBS_VIDEO_SUCCESS) {
-			obs_free_graphics();
-			return errorcode;
-		}
 	}
 
 	/* don't allow changing of video settings if active. */
 	if (obs_video_active()) {
-		blog(LOG_ERROR,
-		     "[VIDEO_CANVAS] video is active, video reset is not possible");
+		blog(LOG_ERROR, "[VIDEO_CANVAS] video is active, video reset is not possible");
 		return OBS_VIDEO_CURRENTLY_ACTIVE;
 	}
 

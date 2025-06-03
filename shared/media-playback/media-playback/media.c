@@ -412,62 +412,53 @@ void mp_media_next_audio(mp_media_t *m)
 		if (!mp_media_can_play_frame(m, d))
 			return;
 	}
-		d->frame_ready = false;
-		if (!m->a_cb)
-			return;
+	d->frame_ready = false;
+	if (!m->a_cb)
+		return;
 
-		audio = malloc(sizeof(struct obs_source_audio));
-		for (size_t i = 0; i < MAX_AV_PLANES; i++) {
-			if (f->data[i]) {
-				audio->data[i] = malloc(f->linesize[0]);
-				if (m->volume < 100) {
-					float *in = (float *)f->data[i];
-					float *out = (float *)audio->data[i];
-					size_t ls = (size_t)f->linesize[0];
-					size_t lsf = ls / sizeof(float);
-					for (size_t j = 0; j < lsf; j++) {
-						out[j] = (float)m->volume /
-							 100.0f * in[j];
-					}
-				} else {
-					memcpy((void *)audio->data[i],
-					       f->data[i], f->linesize[0]);
+	audio = malloc(sizeof(struct obs_source_audio));
+	for (size_t i = 0; i < MAX_AV_PLANES; i++) {
+		if (f->data[i]) {
+			audio->data[i] = malloc(f->linesize[0]);
+			if (m->volume < 100) {
+				float *in = (float *)f->data[i];
+				float *out = (float *)audio->data[i];
+				size_t ls = (size_t)f->linesize[0];
+				size_t lsf = ls / sizeof(float);
+				for (size_t j = 0; j < lsf; j++) {
+					out[j] = (float)m->volume / 100.0f * in[j];
 				}
 			} else {
-				audio->data[i] = NULL;
+				memcpy((void *)audio->data[i], f->data[i], f->linesize[0]);
 			}
+		} else {
+			audio->data[i] = NULL;
 		}
+	}
 
-		audio->samples_per_sec = f->sample_rate * m->speed / 100;
-		audio->speakers = convert_speaker_layout(channels);
-		audio->format = convert_sample_format(f->format);
-		audio->frames = f->nb_samples;
-		audio->timestamp = m->full_decode ? d->frame_pts
-						  : m->base_ts + d->frame_pts -
-							    m->start_ts +
-							    m->play_sys_ts -
-							    base_sys_ts;
-		audio->dec_frame_pts = d->frame_pts;
+	audio->samples_per_sec = f->sample_rate * m->speed / 100;
+	audio->speakers = convert_speaker_layout(channels);
+	audio->format = convert_sample_format(f->format);
+	audio->frames = f->nb_samples;
+	audio->timestamp = m->full_decode ? d->frame_pts
+					  : m->base_ts + d->frame_pts - m->start_ts + m->play_sys_ts - base_sys_ts;
+	audio->dec_frame_pts = d->frame_pts;
 
-		if (audio->format == AUDIO_FORMAT_UNKNOWN) {
-			for (size_t j = 0; j < MAX_AV_PLANES; j++) {
-				if (audio->data[j] != NULL)
-					free((void *)audio->data[j]);
-			}
-			free(audio);
-			return;
+	if (audio->format == AUDIO_FORMAT_UNKNOWN) {
+		for (size_t j = 0; j < MAX_AV_PLANES; j++) {
+			if (audio->data[j] != NULL)
+				free((void *)audio->data[j]);
 		}
+		free(audio);
+		return;
+	}
 
-		if (m->enable_caching) {
-			if (m->audio.index > 0) {
-				struct obs_source_audio *previous_frame =
-					m->audio.data.array[m->audio.index - 1];
-				m->audio.refresh_rate_ns =
-					audio->timestamp -
-					previous_frame->timestamp;
-			}
-			da_push_back(m->audio.data, &audio);
+	if (m->enable_caching) {
+		if (m->audio.index > 0) {
+			struct obs_source_audio *previous_frame = m->audio.data.array[m->audio.index - 1];
+			m->audio.refresh_rate_ns = audio->timestamp - previous_frame->timestamp;
 		}
+		da_push_back(m->audio.data, &audio);
 	}
 	if (m->enable_caching) {
 		if (!mp_media_has_audio_frame_cached(m))
@@ -519,6 +510,7 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 		return;
 	}
 
+	struct obs_source_frame *current_frame = &m->obsframe;
 	bool flip = false;
 	if (m->swscale) {
 		int ret = sws_scale(m->swscale, (const uint8_t *const *)f->data, f->linesize, 0, f->height,
@@ -528,56 +520,59 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 
 		flip = m->scale_linesizes[0] < 0 && m->scale_linesizes[1] == 0;
 		for (size_t i = 0; i < 4; i++) {
-			frame->data[i] = m->scale_pic[i];
-			frame->linesize[i] = abs(m->scale_linesizes[i]);
+			current_frame->data[i] = m->scale_pic[i];
+			current_frame->linesize[i] = abs(m->scale_linesizes[i]);
 		}
 
 	} else {
 		flip = f->linesize[0] < 0 && f->linesize[1] == 0;
 
 		for (size_t i = 0; i < MAX_AV_PLANES; i++) {
-			frame->data[i] = f->data[i];
-			frame->linesize[i] = abs(f->linesize[i]);
+			current_frame->data[i] = f->data[i];
+			current_frame->linesize[i] = abs(f->linesize[i]);
 		}
 	}
 
 	if (flip)
-		frame->data[0] -= frame->linesize[0] * ((size_t)f->height - 1);
+		current_frame->data[0] -= current_frame->linesize[0] * ((size_t)f->height - 1);
 
 	new_format = convert_pixel_format(m->scale_format);
 	new_space = convert_color_space(f->colorspace, f->color_trc, f->color_primaries);
 	new_range = m->force_range == VIDEO_RANGE_DEFAULT ? convert_color_range(f->color_range) : m->force_range;
 
-	if (new_format != frame->format || new_space != m->cur_space || new_range != m->cur_range) {
+	if (new_format != current_frame->format || new_space != m->cur_space || new_range != m->cur_range) {
 		bool success;
 
-		frame->format = new_format;
-		frame->full_range = new_range == VIDEO_RANGE_FULL;
+		current_frame->format = new_format;
+		current_frame->full_range = new_range == VIDEO_RANGE_FULL;
 
-		success = video_format_get_parameters_for_format(new_space, new_range, new_format, frame->color_matrix,
-								 frame->color_range_min, frame->color_range_max);
+		success = video_format_get_parameters_for_format(new_space, new_range, new_format,
+								 current_frame->color_matrix,
+								 current_frame->color_range_min,
+								 current_frame->color_range_max);
 
-		frame->format = new_format;
+		current_frame->format = new_format;
 		m->cur_space = new_space;
 		m->cur_range = new_range;
 
 		if (!success) {
-			frame->format = VIDEO_FORMAT_NONE;
+			current_frame->format = VIDEO_FORMAT_NONE;
 			return;
 		}
 	}
 
-	if (frame->format == VIDEO_FORMAT_NONE)
+	if (current_frame->format == VIDEO_FORMAT_NONE)
 		return;
 
-	frame->timestamp = m->full_decode ? d->frame_pts
+	current_frame->timestamp = m->full_decode
+					   ? d->frame_pts
 					  : (m->base_ts + d->frame_pts - m->start_ts + m->play_sys_ts - base_sys_ts);
 
-	frame->width = f->width;
-	frame->height = f->height;
-	frame->max_luminance = d->max_luminance;
-	frame->flip = flip;
-	frame->flags = m->is_linear_alpha ? OBS_SOURCE_FRAME_LINEAR_ALPHA : 0;
+	current_frame->width = f->width;
+	current_frame->height = f->height;
+	current_frame->max_luminance = d->max_luminance;
+	current_frame->flip = flip;
+	current_frame->flags = m->is_linear_alpha ? OBS_SOURCE_FRAME_LINEAR_ALPHA : 0;
 	switch (f->color_trc) {
 	case AVCOL_TRC_BT709:
 	case AVCOL_TRC_GAMMA22:
@@ -585,16 +580,16 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 	case AVCOL_TRC_SMPTE170M:
 	case AVCOL_TRC_SMPTE240M:
 	case AVCOL_TRC_IEC61966_2_1:
-		frame->trc = VIDEO_TRC_SRGB;
+		current_frame->trc = VIDEO_TRC_SRGB;
 		break;
 	case AVCOL_TRC_SMPTE2084:
-		frame->trc = VIDEO_TRC_PQ;
+		current_frame->trc = VIDEO_TRC_PQ;
 		break;
 	case AVCOL_TRC_ARIB_STD_B67:
-		frame->trc = VIDEO_TRC_HLG;
+		current_frame->trc = VIDEO_TRC_HLG;
 		break;
 	default:
-		frame->trc = VIDEO_TRC_DEFAULT;
+		current_frame->trc = VIDEO_TRC_DEFAULT;
 	}
 
 	if (!m->is_local_file && !d->got_first_keyframe) {
@@ -608,10 +603,8 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 			m->pix_format = current_frame->format;
 
 		if (m->enable_caching) {
-			struct obs_source_frame *new_frame =
-				obs_source_frame_create(current_frame->format,
-							current_frame->width,
-							current_frame->height);
+			struct obs_source_frame *new_frame = obs_source_frame_create(
+				current_frame->format, current_frame->width, current_frame->height);
 
 			obs_source_frame_copy(new_frame, current_frame);
 

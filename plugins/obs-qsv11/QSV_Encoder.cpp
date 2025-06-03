@@ -64,6 +64,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string>
 #include <atomic>
 
+#include <dxgi.h>
+#include <d3d11.h>
+#include <wrl/client.h>
+
 #define do_log(level, format, ...) blog(level, "[qsv encoder: '%s'] " format, "msdk_impl", ##__VA_ARGS__)
 
 mfxIMPL impl = MFX_IMPL_HARDWARE_ANY;
@@ -174,7 +178,7 @@ void qsv_encoder_version(unsigned short *major, unsigned short *minor)
 	*minor = ver.Minor;
 }
 
-qsv_t *qsv_encoder_open(qsv_param_t *pParams, enum qsv_codec codec, bool useTexAlloc)
+qsv_t *qsv_encoder_open(qsv_param_t *pParams, enum qsv_codec codec, bool useTexAlloc, obs_encoder_t *encoder)
 {
 	QSV_Encoder_Internal *pEncoder = new QSV_Encoder_Internal(ver, useTexAlloc);
 	mfxStatus sts = pEncoder->Open(pParams, codec);

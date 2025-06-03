@@ -1142,7 +1142,7 @@ bool obs_module_load(void)
 	si.id = "text_gdiplus";
 	si.type = OBS_SOURCE_TYPE_INPUT;
 	si.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_CAP_OBSOLETE | OBS_SOURCE_SRGB;
-	si.get_properties = get_properties;
+	si.get_properties = text_get_properties;
 	si.icon_type = OBS_ICON_TYPE_TEXT;
 
 	si.get_name = [](void *) {

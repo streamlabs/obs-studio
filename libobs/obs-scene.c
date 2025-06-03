@@ -345,8 +345,8 @@ static inline void get_scene_dimensions(const obs_sceneitem_t *item, float *x, f
 {
 	obs_scene_t *parent = item->parent;
 	if (!parent || parent->is_group) {
-		*x = (float)obs->video.main_mix->ovi.base_width;
-		*y = (float)obs->video.main_mix->ovi.base_height;
+		*x = (float)obs->video.main_mix->ovi->base_width;
+		*y = (float)obs->video.main_mix->ovi->base_height;
 	} else {
 		*x = (float)scene_getwidth(parent);
 		*y = (float)scene_getheight(parent);
@@ -1212,6 +1212,8 @@ static void scene_load_item(struct obs_scene *scene, obs_data_t *item_data)
 	item->align = (uint32_t)obs_data_get_int(item_data, "align");
 	visible = obs_data_get_bool(item_data, "visible");
 	lock = obs_data_get_bool(item_data, "locked");
+	stream_visible = obs_data_get_bool(item_data, "stream_visible");
+	recording_visible = obs_data_get_bool(item_data, "recording_visible");
 
 	if (!item->absolute_coordinates && obs_data_has_user_value(item_data, "pos_rel") &&
 	    obs_data_has_user_value(item_data, "scale_rel") && obs_data_has_user_value(item_data, "scale_ref")) {
@@ -2549,15 +2551,17 @@ static bool hotkey_hide_sceneitem(void *data, obs_hotkey_pair_id id, obs_hotkey_
 
 static void init_hotkeys(obs_scene_t *scene, obs_sceneitem_t *item, const char *name)
 {
+	struct obs_data_array *hotkey_array;
+	obs_data_t *hotkey_data = scene->source->context.hotkey_data;
+
 	struct dstr show = {0};
 	struct dstr hide = {0};
+	struct dstr legacy = {0};
 	struct dstr show_desc = {0};
 	struct dstr hide_desc = {0};
 
-	dstr_copy(&show, "libobs.show_scene_item.%1");
-	dstr_replace(&show, "%1", name);
-	dstr_copy(&hide, "libobs.hide_scene_item.%1");
-	dstr_replace(&hide, "%1", name);
+	dstr_printf(&show, "libobs.show_scene_item.%" PRIi64, item->id);
+	dstr_printf(&hide, "libobs.hide_scene_item.%" PRIi64, item->id);
 
 	dstr_copy(&show_desc, obs->hotkeys.sceneitem_show);
 	dstr_replace(&show_desc, "%1", name);
@@ -2585,6 +2589,7 @@ static void init_hotkeys(obs_scene_t *scene, obs_sceneitem_t *item, const char *
 
 	dstr_free(&show);
 	dstr_free(&hide);
+	dstr_free(&legacy);
 	dstr_free(&show_desc);
 	dstr_free(&hide_desc);
 }

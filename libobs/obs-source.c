@@ -6115,6 +6115,8 @@ void streamlabs_force_source_ui_refresh(obs_source_t *source)
 	// For details see 'globalCallback::worker()' in obs-studio-node and
 	// 'updateSourceFlags' in desktop repo
 	source->info.output_flags ^= CUSTOM_REFRESH_UI_FLAG;
+}
+
 uint64_t obs_source_get_last_async_ts(const obs_source_t *source)
 {
 	return source->async_last_rendered_ts;

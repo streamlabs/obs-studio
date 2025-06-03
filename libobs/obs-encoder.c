@@ -384,10 +384,10 @@ static inline void free_audio_buffers(struct obs_encoder *encoder)
 	}
 }
 
-void obs_encoder_actually_destroy(obs_encoder_t *encoder)
+void obs_encoder_destroy(obs_encoder_t *encoder)
 {
 	if (encoder) {
-		blog(LOG_INFO, "obs_encoder_actually_destroy '%s' (%s) (%p)",
+		blog(LOG_INFO, "obs_encoder_destroy '%s' (%s) (%p)",
 		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 		     encoder);
 		pthread_mutex_lock(&encoder->outputs_mutex);
@@ -424,32 +424,6 @@ void obs_encoder_actually_destroy(obs_encoder_t *encoder)
 		if (encoder->fps_override)
 			video_output_free_frame_rate_divisor(encoder->fps_override);
 		bfree(encoder);
-	}
-}
-
-/* does not actually destroy the encoder until all connections to it have been
- * removed. (full reference counting really would have been superfluous) */
-void obs_encoder_destroy(obs_encoder_t *encoder)
-{
-	if (encoder) {
-		blog(LOG_INFO, "obs_encoder_destroy '%s' (%s) (%p)",
-		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-		     encoder);
-
-		bool destroy;
-		set_encoder_active(encoder, false);
-		obs_context_data_remove(&encoder->context);
-
-		pthread_mutex_lock(&encoder->init_mutex);
-		pthread_mutex_lock(&encoder->callbacks_mutex);
-		destroy = encoder->callbacks.num == 0;
-		if (!destroy)
-			encoder->destroy_on_stop = true;
-		pthread_mutex_unlock(&encoder->callbacks_mutex);
-		pthread_mutex_unlock(&encoder->init_mutex);
-
-		if (destroy)
-			obs_encoder_actually_destroy(encoder);
 	}
 }
 
@@ -620,8 +594,6 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 	blog(LOG_INFO, "obs_encoder_initialize_internal '%s' (%s) (%p)",
 	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 	     encoder);
-
-	encoder->destroy_on_stop = false;
 
 	obs_encoder_shutdown(encoder);
 
@@ -817,10 +789,6 @@ void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, voi
 	if (!obs_ptr_valid(new_packet, "obs_encoder_stop"))
 		return;
 
-	/* Ensure encoder is not destroyed elsewhere before we are done with it
-	 * by adding a reference of our own. */
-	obs_encoder_addref(encoder);
-
 	pthread_mutex_lock(&encoder->init_mutex);
 	pthread_mutex_lock(&encoder->callbacks_mutex);
 
@@ -840,11 +808,6 @@ void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, voi
 
 		struct obs_encoder_group *group = encoder->encoder_group;
 
-		if (encoder->destroy_on_stop)
-			obs_encoder_actually_destroy(encoder);
-		else
-			obs_encoder_release(encoder);
-
 		/* Destroying the group all the way back here prevents a race
 		 * where destruction of the group can prematurely destroy the
 		 * encoder within internal functions. This is the point where it
@@ -857,10 +820,9 @@ void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, voi
 			else
 				pthread_mutex_unlock(&group->mutex);
 		}
-	} else {
-		pthread_mutex_unlock(&encoder->init_mutex);
-		obs_encoder_release(encoder);
 	}
+
+	pthread_mutex_unlock(&encoder->init_mutex);
 }
 
 const char *obs_encoder_get_codec(const obs_encoder_t *encoder)

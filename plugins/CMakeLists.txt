@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 3.28...3.30)
 
 option(ENABLE_PLUGINS "Enable building OBS plugins" ON)
 
-if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
-  if(NOT ENABLE_PLUGINS)
+if(NOT ENABLE_PLUGINS)
     set_property(GLOBAL APPEND PROPERTY OBS_FEATURES_DISABLED "Plugin Support")
     return()
   endif()

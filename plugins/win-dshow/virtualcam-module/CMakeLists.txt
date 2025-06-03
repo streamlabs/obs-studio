@@ -61,7 +61,7 @@ if(NOT TARGET OBS::shared-memory-queue)
 endif()
 
 if(NOT TARGET OBS::libdshowcapture)
-  add_subdirectory("${CMAKE_SOURCE_DIR}/deps/libdshowcapture" libdshowcapture)
+  add_subdirectory("${CMAKE_SOURCE_DIR}/plugins/win-dshow/libdshowcapture" libdshowcapture)
 endif()
 
 add_library(obs-virtualcam-guid INTERFACE)
