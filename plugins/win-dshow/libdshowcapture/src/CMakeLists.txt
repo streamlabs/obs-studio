@@ -92,7 +92,6 @@ set(libdshowcapture_SOURCES
     source/dshow-media-type.cpp
     source/dshow-encoded-device.cpp
     source/dshow-dialogbox.cpp
-    #source/DeviceDialogBox.cpp
     source/log.cpp)
 
 set(libdshowcapture_HEADERS

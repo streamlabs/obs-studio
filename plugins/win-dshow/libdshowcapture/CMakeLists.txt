@@ -14,6 +14,7 @@ target_sources(
             src/source/dshow-demux.cpp
             src/source/dshow-demux.hpp
             src/source/dshow-device-defs.hpp
+	    src/source/dshow-dialogbox.cpp
             src/source/dshow-encoded-device.cpp
             src/source/dshow-enum.cpp
             src/source/dshow-enum.hpp
