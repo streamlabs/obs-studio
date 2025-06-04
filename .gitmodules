@@ -1,5 +1,5 @@
 [submodule "plugins/win-dshow/libdshowcapture"]
-	path = plugins/win-dshow/libdshowcapture/src
+	path = plugins/win-dshow/libdshowcapture
 	url = https://github.com/streamlabs/libdshowcapture.git
 [submodule "plugins/mac-syphon/syphon-framework"]
 	path = plugins/mac-syphon/syphon-framework
