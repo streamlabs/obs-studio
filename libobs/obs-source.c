@@ -1055,6 +1055,18 @@ void obs_source_reset_settings(obs_source_t *source, obs_data_t *settings)
 	obs_source_update(source, settings);
 }
 
+void obs_source_send_message(obs_source_t *source, obs_data_t *settings)
+{
+	if (!obs_source_valid(source, "obs_source_send_message"))
+		return;
+
+	if (source->info.output_flags & OBS_SOURCE_INTERACTION) {
+		if (source->info.message) {
+			source->info.message(source->context.data, settings);
+		}
+	}
+}
+
 void obs_source_update_properties(obs_source_t *source)
 {
 	if (!obs_source_valid(source, "obs_source_update_properties"))
