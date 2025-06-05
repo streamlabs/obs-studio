@@ -14,7 +14,7 @@ enable_language(Swift)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0)
 
 add_executable(mac-camera-extension)
-#add_executable(OBS:mac-camera-extension ALIAS mac-camera-extension)
+# add_executable(OBS:mac-camera-extension ALIAS mac-camera-extension)
 
 set(_placeholder_location "${CMAKE_CURRENT_SOURCE_DIR}/../common/data/placeholder.png")
 target_sources(
