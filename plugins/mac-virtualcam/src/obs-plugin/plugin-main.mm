@@ -110,9 +110,10 @@ struct virtualcam_data {
 
     const char *signalText = VIRTUAL_CAM_FAILED;
 #if defined(VIRTUALCAM_BYPASS_SYSTEM_CHECK)
+    blog(LOG_INFO, "mac-camera-extension bypassed error %s", errorMessage.UTF8String);
     signalText =
         VIRTUAL_CAM_CONNECTED;  // Assume system extension was installed and code is running outside of an app bundle
-    self.lastErrorMessage = nullptr;  // Do not report error
+    self.installed = YES;
 #else
     blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
 #endif
