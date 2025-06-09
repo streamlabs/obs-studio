@@ -63,7 +63,7 @@ function(set_target_properties_obs target)
       # cmake-format: off
       set_target_xcode_properties(
         ${target}
-        PROPERTIES PRODUCT_BUNDLE_IDENTIFIER com.obsproject.obs-studio
+        PROPERTIES PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs
                    PRODUCT_NAME OBS
                    ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
                    CURRENT_PROJECT_VERSION ${OBS_BUILD_NUMBER}
@@ -113,7 +113,7 @@ function(set_target_properties_obs target)
           TARGET ${target}
           POST_BUILD
           COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${executable}>"
-          "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/MacOS/"
+                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/MacOS/"
           COMMENT "Copy ${executable} to application bundle")
       endforeach()
 
@@ -168,7 +168,7 @@ function(set_target_properties_obs target)
           TARGET ${target}
           POST_BUILD
           COMMAND "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:obs-dal-plugin>"
-          "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/$<TARGET_BUNDLE_DIR_NAME:obs-dal-plugin>"
+                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/$<TARGET_BUNDLE_DIR_NAME:obs-dal-plugin>"
           COMMENT "Add OBS DAL plugin to application bundle")
       endif()
 
@@ -177,7 +177,7 @@ function(set_target_properties_obs target)
           TARGET ${target}
           POST_BUILD
           COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE_DIR:obspython>/obspython.py"
-          "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources"
+                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources"
           COMMENT "Add OBS::python import module")
       endif()
 
@@ -365,8 +365,7 @@ endmacro()
 
 # target_export: Helper function to export target as CMake package
 function(target_export target)
-  # Exclude CMake package from 'ALL' target
-  # set(exclude_variant EXCLUDE_FROM_ALL)
+  # Exclude CMake package from 'ALL' target set(exclude_variant EXCLUDE_FROM_ALL)
   set(exclude_variant "")
   _target_export(${target})
 endfunction()
@@ -380,7 +379,7 @@ function(target_install_resources target)
 
     foreach(data_file IN LISTS data_files)
       cmake_path(RELATIVE_PATH data_file BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data/" OUTPUT_VARIABLE
-        relative_path)
+                 relative_path)
       cmake_path(GET relative_path PARENT_PATH relative_path)
       target_sources(${target} PRIVATE "${data_file}")
       set_property(SOURCE "${data_file}" PROPERTY MACOSX_PACKAGE_LOCATION "Resources/${relative_path}")
@@ -405,11 +404,18 @@ function(target_install_ffmpeg_and_ffprobe target)
       install(
         FILES "${ffmpeg_path}"
         DESTINATION "${destination}"
-        PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-      )
+        PERMISSIONS
+          OWNER_WRITE
+          OWNER_READ
+          OWNER_EXECUTE
+          GROUP_READ
+          GROUP_EXECUTE
+          WORLD_READ
+          WORLD_EXECUTE)
 
       # Run the fix_deps_paths.sh script at install time with the full absolute path
-      install(CODE "
+      install(
+        CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFMPEG_PATH}\")
       ")
@@ -423,11 +429,18 @@ function(target_install_ffmpeg_and_ffprobe target)
       install(
         FILES "${ffprobe_path}"
         DESTINATION "${destination}"
-        PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-      )
+        PERMISSIONS
+          OWNER_WRITE
+          OWNER_READ
+          OWNER_EXECUTE
+          GROUP_READ
+          GROUP_EXECUTE
+          WORLD_READ
+          WORLD_EXECUTE)
 
       # Run the fix_deps_paths.sh script for ffprobe with the full absolute path
-      install(CODE "
+      install(
+        CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFPROBE_PATH}\")
       ")
@@ -436,7 +449,6 @@ function(target_install_ffmpeg_and_ffprobe target)
     endif()
   endif()
 endfunction()
-
 
 # target_add_resource: Helper function to add a specific resource to a bundle
 function(target_add_resource target resource)
@@ -532,7 +544,7 @@ function(_bundle_dependencies target)
     cmake_path(RELATIVE_PATH plugin_path BASE_DIRECTORY "${plugin_stem_dir}" OUTPUT_VARIABLE plugin_file_name)
     target_sources(${target} PRIVATE "${plugin}")
     set_source_files_properties("${plugin}" PROPERTIES MACOSX_PACKAGE_LOCATION "plugins/${plugin_file_name}"
-      XCODE_FILE_ATTRIBUTES "CodeSignOnCopy")
+                                                       XCODE_FILE_ATTRIBUTES "CodeSignOnCopy")
     source_group("Qt plugins" FILES "${plugin}")
   endforeach()
 
