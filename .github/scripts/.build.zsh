@@ -133,6 +133,7 @@ build() {
 
       log_group "Configuring ${product_name}..."
       cmake -S ${project_root} ${cmake_args}
+      echo "cmake -S ${project_root} ${cmake_args}"
       log_group "Build/Install preset ${product_name}..."
       # Run the install target to construct a packed_build that will be consumed by obs-studio-node.
       cmake --build --target install --preset macos
