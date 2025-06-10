@@ -93,14 +93,29 @@ struct virtualcam_data {
 {
     NSString *errorMessage;
     int severity;
+    const char *signalText = nullptr;
+
     switch (error.code) {
-        case OSSystemExtensionErrorUnsupportedParentBundleLocation:
-            self.lastErrorMessage =
-                [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
-            errorMessage = self.lastErrorMessage;
-            severity = LOG_WARNING;
-            break;
+        case OSSystemExtensionErrorMissingEntitlement:
+        case OSSystemExtensionErrorUnsupportedParentBundleLocation: {
+            const char *bypassEnv = getenv("VIRTUALCAM_BYPASS_SYSTEM_CHECK");
+            if (bypassEnv) {
+                // streamlabs development - Allow development outside of the .app folder. Assumes vcam extension is installed
+                self.installed = YES;
+                severity = LOG_INFO;
+                errorMessage = [NSString stringWithFormat:@"OSSystemExtension bypassed with code %ld (\"%s\")",
+                                                          error.code, error.localizedDescription.UTF8String];
+                signalText = VIRTUAL_CAM_CONNECTED;
+            } else {
+                signalText = VIRTUAL_CAM_FAILED;
+                self.lastErrorMessage =
+                    [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.WrongLocation")];
+                errorMessage = self.lastErrorMessage;
+                severity = LOG_WARNING;
+            }
+        } break;
         default:
+            signalText = VIRTUAL_CAM_FAILED;
             self.lastErrorMessage = error.localizedDescription;
             errorMessage = [NSString stringWithFormat:@"OSSystemExtensionErrorCode %ld (\"%s\")", error.code,
                                                       error.localizedDescription.UTF8String];
@@ -108,15 +123,7 @@ struct virtualcam_data {
             break;
     }
 
-    const char *signalText = VIRTUAL_CAM_FAILED;
-#if defined(VIRTUALCAM_BYPASS_SYSTEM_CHECK)
-    blog(LOG_INFO, "mac-camera-extension bypassed error %s", errorMessage.UTF8String);
-    signalText =
-        VIRTUAL_CAM_CONNECTED;  // Assume system extension was installed and code is running outside of an app bundle
-    self.installed = YES;
-#else
     blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
-#endif
     sendVirtualCamSignal(_vcam->output, signalText);
 }
 
@@ -147,6 +154,7 @@ struct virtualcam_data {
 
 static void install_cmio_system_extension(struct virtualcam_data *vcam)
 {
+    // We need to use streamlabs teamID/Bundle identifier here.
     OSSystemExtensionRequest *request = [OSSystemExtensionRequest
         activationRequestForExtension:@"com.streamlabs.slobs.mac-camera-extension"
                                 queue:dispatch_get_main_queue()];
