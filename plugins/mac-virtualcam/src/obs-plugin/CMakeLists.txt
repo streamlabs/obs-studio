@@ -5,9 +5,7 @@ add_library(OBS::virtualcam ALIAS mac-virtualcam)
 
 target_sources(mac-virtualcam PRIVATE Defines.h plugin-main.mm OBSDALMachServer.mm OBSDALMachServer.h)
 target_compile_options(mac-virtualcam PRIVATE -fmodules -fcxx-modules)
-if(DEFINED ENV{VIRTUALCAM_BYPASS_SYSTEM_CHECK}) # enable virtualcam dev outside of app bundle
-  target_compile_definitions(mac-virtualcam PRIVATE VIRTUALCAM_BYPASS_SYSTEM_CHECK)
-endif()
+
 target_link_libraries(mac-virtualcam PRIVATE OBS::mach-protocol OBS::libobs OBS::frontend-api)
 
 # cmake-format: off
