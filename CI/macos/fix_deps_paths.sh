@@ -7,7 +7,20 @@ if [ -z "$1" ]; then
 fi
 
 BINARY_PATH=$1
+if [ ! -f "$BINARY_PATH" ]; then
+    echo "Error: File '$BINARY_PATH' does not exist or is not accessible."
+    exit 1
+fi
 
+if ! command -v otool &> /dev/null; then
+    echo "Error: 'otool' is not installed or not found in PATH."
+    exit 1
+fi
+
+echo "otool debugging!"
+which otool
+which install_name_tool
+otool --version
 # Use otool to get the list of linked libraries
 LIB_PATHS=$(otool -L "$BINARY_PATH" | grep "obs-deps" | awk '{print $1}')
 

@@ -397,6 +397,8 @@ function(target_install_ffmpeg_and_ffprobe target)
     set(destination "${CMAKE_INSTALL_PREFIX}/OBS.app/Contents/Frameworks")
     set(FINAL_FFMPEG_PATH "${destination}/ffmpeg")
     set(FINAL_FFPROBE_PATH "${destination}/ffprobe")
+    message(STATUS "FINAL_FFMPEG_PATH ${FINAL_FFMPEG_PATH}")
+    message(STATUS "FINAL_FFPROBE_PATH ${FINAL_FFPROBE_PATH}")
 
     # Install ffmpeg
     if(EXISTS "${ffmpeg_path}")
