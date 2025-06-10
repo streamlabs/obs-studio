@@ -1067,6 +1067,19 @@ void obs_source_send_message(obs_source_t *source, obs_data_t *settings)
 	}
 }
 
+obs_data_array_t *obs_source_get_messages(obs_source_t *source)
+{
+	if (!obs_source_valid(source, "obs_source_get_messages"))
+		return NULL;
+
+	if (source->info.output_flags & OBS_SOURCE_INTERACTION) {
+		if (source->info.get_messages) {
+			return source->info.get_messages(source->context.data);
+		}
+	}
+	return NULL;
+}
+
 void obs_source_update_properties(obs_source_t *source)
 {
 	if (!obs_source_valid(source, "obs_source_update_properties"))
