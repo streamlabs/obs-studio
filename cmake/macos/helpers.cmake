@@ -404,7 +404,7 @@ function(target_install_ffmpeg_and_ffprobe target)
     if(EXISTS "${ffmpeg_path}")
       message(STATUS "Found ffmpeg at ${ffmpeg_path}. Will install to ${destination}")
 
-#[[
+      #[[
       install(
         FILES "${ffmpeg_path}"
         DESTINATION "${destination}"
@@ -430,7 +430,7 @@ function(target_install_ffmpeg_and_ffprobe target)
     # Install ffprobe
     if(EXISTS "${ffprobe_path}")
       message(STATUS "Found ffprobe at ${ffprobe_path}")
-#[[
+      #[[
       install(
         FILES "${ffprobe_path}"
         DESTINATION "${destination}"
