@@ -6,21 +6,28 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-BINARY_PATH=$1
-if [ ! -f "$BINARY_PATH" ]; then
-    echo "Error: File '$BINARY_PATH' does not exist or is not accessible."
-    exit 1
+FINAL_PATH=$1
+INSTALL_PREFIX=$2
+SOURCE_FILE=$3
+
+if [ -e "$FINAL_PATH" ]; then
+  # mac build agent has a different path
+  BINARY_PATH="$FINAL_PATH"
+else
+  BINARY_PATH="$INSTALL_PREFIX/$FINAL_PATH"
+  echo "using the INSTALL_PREFIX ${BINARY_PATH}"
 fi
 
-if ! command -v otool &> /dev/null; then
-    echo "Error: 'otool' is not installed or not found in PATH."
-    exit 1
+if [ ! -e "$BINARY_PATH" ]; then
+  echo "This path does not exist $BINARY_PATH."
+  mkdir -p "$BINARY_PATH"
 fi
 
-echo "otool debugging!"
-which otool
-which install_name_tool
-otool --version
+echo "cp -v $SOURCE_FILE $BINARY_PATH"
+cp -v "$SOURCE_FILE" "$BINARY_PATH" 
+
+filename=$(basename "$SOURCE_FILE")
+BINARY_PATH="$BINARY_PATH/$filename"
 # Use otool to get the list of linked libraries
 LIB_PATHS=$(otool -L "$BINARY_PATH" | grep "obs-deps" | awk '{print $1}')
 
