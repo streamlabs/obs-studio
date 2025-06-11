@@ -2560,8 +2560,10 @@ static void init_hotkeys(obs_scene_t *scene, obs_sceneitem_t *item, const char *
 	struct dstr show_desc = {0};
 	struct dstr hide_desc = {0};
 
-	dstr_printf(&show, "libobs.show_scene_item.%" PRIi64, item->id);
-	dstr_printf(&hide, "libobs.hide_scene_item.%" PRIi64, item->id);
+	dstr_copy(&show, "libobs.show_scene_item.%1");
+	dstr_replace(&show, "%1", name);
+	dstr_copy(&hide, "libobs.hide_scene_item.%1");
+	dstr_replace(&hide, "%1", name);
 
 	dstr_copy(&show_desc, obs->hotkeys.sceneitem_show);
 	dstr_replace(&show_desc, "%1", name);
