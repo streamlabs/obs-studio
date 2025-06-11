@@ -11,9 +11,6 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
   endif()
 endif()
 
-#if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Windows)" AND CMAKE_SIZEOF_VOID_P EQUAL 4)
-#  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/32bit/projects.cmake")
-
 include(compilerconfig)
 include(defaults)
 include(helpers)
