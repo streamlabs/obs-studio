@@ -1,16 +1,13 @@
 #!/bin/bash
-
+# Usage: <full path to the source file> <destination path>
 # Check if a file path is passed as an argument
 if [ -z "$1" ]; then
     echo "Usage: $0 <path_to_binary>"
     exit 1
 fi
 
-FINAL_PATH=$1
-INSTALL_PREFIX=$2
-SOURCE_FILE=$3
-
-BINARY_PATH="$INSTALL_PREFIX/$FINAL_PATH"
+SOURCE_FILE=$1
+BINARY_PATH=$2
 
 if [ ! -e "$BINARY_PATH" ]; then
   echo "fix_deps_paths.sh: creating the path: $BINARY_PATH."

@@ -394,20 +394,18 @@ function(target_install_ffmpeg_and_ffprobe target)
     get_filename_component(ffmpeg_bin_dir "${FFmpeg_INCLUDE_DIRS}/../bin" REALPATH)
     set(ffmpeg_path "${ffmpeg_bin_dir}/ffmpeg")
     set(ffprobe_path "${ffmpeg_bin_dir}/ffprobe")
-    set(destination "OBS.app/Contents/Frameworks")
+    set(destination "${CMAKE_INSTALL_PREFIX}/OBS.app/Contents/Frameworks")
     set(FINAL_FFMPEG_PATH "${destination}/ffmpeg")
     set(FINAL_FFPROBE_PATH "${destination}/ffprobe")
-    message(STATUS "FINAL_FFMPEG_PATH ${FINAL_FFMPEG_PATH}")
-    message(STATUS "FINAL_FFPROBE_PATH ${FINAL_FFPROBE_PATH}")
 
     # Install ffmpeg
     if(EXISTS "${ffmpeg_path}")
-      message(STATUS "Found ffmpeg at ${ffmpeg_path}. Will install to ${destination}")
+      message(STATUS "Found ffmpeg at ${ffmpeg_path}.")
       # Run the fix_deps_paths.sh script at install time with the full absolute path
       install(
         CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
-        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${destination}\" \"${CMAKE_INSTALL_PREFIX}\" \"${ffmpeg_path}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffmpeg_path}\" \"${FINAL_FFMPEG_PATH}\")
       ")
     else()
       message(WARNING "ffmpeg not found at ${ffmpeg_path}")
@@ -420,7 +418,7 @@ function(target_install_ffmpeg_and_ffprobe target)
       install(
         CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
-        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${destination}\" \"${CMAKE_INSTALL_PREFIX}\" \"${ffprobe_path}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffprobe_path}\" \"${FINAL_FFPROBE_PATH}\")
       ")
     else()
       message(WARNING "ffprobe not found at ${ffprobe_path}")
