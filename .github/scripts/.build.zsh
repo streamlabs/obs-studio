@@ -136,6 +136,7 @@ build() {
       log_group "Build/Install preset ${product_name}..."
       # Run the install target to construct a packed_build that will be consumed by obs-studio-node.
       cmake --build --target install --preset macos
+      ditto UI/${config}/OBS.app OBS.app
       exit 0 # Do not execute the steps below. streamlabs/obs-studio uses the cmake install target.
 
       log_group "Building ${product_name}..."
