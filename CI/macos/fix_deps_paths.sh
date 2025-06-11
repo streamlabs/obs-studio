@@ -6,11 +6,8 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-FINAL_PATH=$1
-INSTALL_PREFIX=$2
-SOURCE_FILE=$3
-
-BINARY_PATH="$INSTALL_PREFIX/$FINAL_PATH"
+BINARY_PATH=$1
+SOURCE_FILE=$2
 
 if [ ! -e "$BINARY_PATH" ]; then
   echo "fix_deps_paths.sh: creating the path: $BINARY_PATH."
