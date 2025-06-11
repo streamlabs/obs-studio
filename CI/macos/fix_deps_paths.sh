@@ -10,20 +10,13 @@ FINAL_PATH=$1
 INSTALL_PREFIX=$2
 SOURCE_FILE=$3
 
-if [ -e "$FINAL_PATH" ]; then
-  # mac build agent has a different path
-  BINARY_PATH="$FINAL_PATH"
-else
-  BINARY_PATH="$INSTALL_PREFIX/$FINAL_PATH"
-  echo "using the INSTALL_PREFIX ${BINARY_PATH}"
-fi
+BINARY_PATH="$INSTALL_PREFIX/$FINAL_PATH"
 
 if [ ! -e "$BINARY_PATH" ]; then
-  echo "This path does not exist $BINARY_PATH."
+  echo "fix_deps_paths.sh: creating the path: $BINARY_PATH."
   mkdir -p "$BINARY_PATH"
 fi
 
-echo "cp -v $SOURCE_FILE $BINARY_PATH"
 cp -v "$SOURCE_FILE" "$BINARY_PATH" 
 
 filename=$(basename "$SOURCE_FILE")
