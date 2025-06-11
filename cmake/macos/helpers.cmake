@@ -318,6 +318,7 @@ function(set_target_properties_obs target)
   endif()
 
   target_install_resources(${target})
+  target_install_ffmpeg_and_ffprobe(${target})
 
   get_target_property(target_sources ${target} SOURCES)
   set(target_ui_files ${target_sources})
@@ -384,6 +385,68 @@ function(target_install_resources target)
       set_property(SOURCE "${data_file}" PROPERTY MACOSX_PACKAGE_LOCATION "Resources/${relative_path}")
       source_group("Resources/${relative_path}" FILES "${data_file}")
     endforeach()
+  endif()
+endfunction()
+# Function to install ffmpeg and ffprobe binaries
+function(target_install_ffmpeg_and_ffprobe target)
+  if(TARGET OBS::ffmpeg)
+    # Adjust the path relative to FFmpeg_INCLUDE_DIRS
+    get_filename_component(ffmpeg_bin_dir "${FFmpeg_INCLUDE_DIRS}/../bin" REALPATH)
+    set(ffmpeg_path "${ffmpeg_bin_dir}/ffmpeg")
+    set(ffprobe_path "${ffmpeg_bin_dir}/ffprobe")
+    set(destination "${CMAKE_INSTALL_PREFIX}/OBS.app/Contents/Frameworks")
+    set(FINAL_FFMPEG_PATH "${destination}/ffmpeg")
+    set(FINAL_FFPROBE_PATH "${destination}/ffprobe")
+
+    # Install ffmpeg
+    if(EXISTS "${ffmpeg_path}")
+      message(STATUS "Found ffmpeg at ${ffmpeg_path}")
+      install(
+        FILES "${ffmpeg_path}"
+        DESTINATION "${destination}"
+        PERMISSIONS
+          OWNER_WRITE
+          OWNER_READ
+          OWNER_EXECUTE
+          GROUP_READ
+          GROUP_EXECUTE
+          WORLD_READ
+          WORLD_EXECUTE)
+
+      # Run the fix_deps_paths.sh script at install time with the full absolute path
+      install(
+        CODE "
+        message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFMPEG_PATH}\")
+      ")
+    else()
+      message(WARNING "ffmpeg not found at ${ffmpeg_path}")
+    endif()
+
+    # Install ffprobe
+    if(EXISTS "${ffprobe_path}")
+      message(STATUS "Found ffprobe at ${ffprobe_path}")
+      install(
+        FILES "${ffprobe_path}"
+        DESTINATION "${destination}"
+        PERMISSIONS
+          OWNER_WRITE
+          OWNER_READ
+          OWNER_EXECUTE
+          GROUP_READ
+          GROUP_EXECUTE
+          WORLD_READ
+          WORLD_EXECUTE)
+
+      # Run the fix_deps_paths.sh script for ffprobe with the full absolute path
+      install(
+        CODE "
+        message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFPROBE_PATH}\")
+      ")
+    else()
+      message(WARNING "ffprobe not found at ${ffprobe_path}")
+    endif()
   endif()
 endfunction()
 
