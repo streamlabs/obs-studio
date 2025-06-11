@@ -1,8 +1,8 @@
 #!/bin/bash
-# Usage: <full path to the source file> <destination path>
+
 # Check if a file path is passed as an argument
 if [ -z "$1" ]; then
-    echo "Usage: $0 <path_to_binary>"
+    echo "Usage: $0 <path_to_binary> <destination path>"
     exit 1
 fi
 
