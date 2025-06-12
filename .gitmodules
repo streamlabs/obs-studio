@@ -35,3 +35,6 @@
 [submodule "plugins/obs-websocket"]
 	path = plugins/obs-websocket
 	url = https://github.com/streamlabs/obs-websocket.git
+[submodule "plugins/win-dshow/libdshowcapture"]
+	path = plugins/win-dshow/libdshowcapture
+	url = https://github.com/streamlabs/libdshowcapture.git
