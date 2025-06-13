@@ -4,10 +4,7 @@ include_guard(GLOBAL)
 
 include(compilerconfig)
 
-message(STATUS "INSIDE architecture.cmake")
-
 if(NOT DEFINED OBS_PARENT_ARCHITECTURE)
-message(STATUS "architecture not defined OBS_PARENT_ARCHITECTURE")
   if(CMAKE_VS_PLATFORM_NAME MATCHES "(Win32|x64)")
     set(OBS_PARENT_ARCHITECTURE ${CMAKE_VS_PLATFORM_NAME})
   else()
@@ -15,13 +12,8 @@ message(STATUS "architecture not defined OBS_PARENT_ARCHITECTURE")
   endif()
 endif()
 
-message(STATUS "architecture check obs_parent_arch = cmake_vs_platform_name ${OBS_PARENT_ARCHITECTURE} ${CMAKE_VS_PLATFORM_NAME}")
-
 if(OBS_PARENT_ARCHITECTURE STREQUAL CMAKE_VS_PLATFORM_NAME)
-message(STATUS "architecture CMAKE_VS_PLATFORM_NAME same as OBS_PARENT_ARCH ${CMAKE_VS_PLATFORM_NAME}!")
   if(OBS_PARENT_ARCHITECTURE STREQUAL x64)
-  message(STATUS "architecture CMAKE_VS_PLATFORM_NAME/OBS_PARENT_ARCH are x64")
-  message(STATUS "architecture CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}!")
     execute_process(
       COMMAND
         "${CMAKE_COMMAND}" -S ${CMAKE_CURRENT_SOURCE_DIR} -B ${CMAKE_SOURCE_DIR}/build_x86 -A
@@ -35,7 +27,6 @@ message(STATUS "architecture CMAKE_VS_PLATFORM_NAME same as OBS_PARENT_ARCH ${CM
   endif()
 else()
   # target_disable_feature: Stub macro for child architecture builds
-  message(STATUS "architecture no match do macro(target_disable...then call buildspec.cmake")
   macro(target_disable_feature)
   endmacro()
 
