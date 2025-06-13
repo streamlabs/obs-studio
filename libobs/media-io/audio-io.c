@@ -91,8 +91,7 @@ struct audio_output {
 
 /* ------------------------------------------------------------------------- */
 
-static bool resample_audio_output(struct audio_input *input,
-				  struct audio_data *data)
+static bool resample_audio_output(struct audio_input *input, struct audio_data *data)
 {
 	bool success = true;
 
@@ -103,9 +102,8 @@ static bool resample_audio_output(struct audio_input *input,
 
 		memset(output, 0, sizeof(output));
 
-		success = audio_resampler_resample(
-			input->resampler, output, &frames, &offset,
-			(const uint8_t *const *)data->data, data->frames);
+		success = audio_resampler_resample(input->resampler, output, &frames, &offset,
+						   (const uint8_t *const *)data->data, data->frames);
 
 		for (size_t i = 0; i < MAX_AV_PLANES; i++)
 			data->data[i] = output[i];
@@ -230,8 +228,7 @@ static void input_and_output(struct audio_output *audio, uint64_t audio_time,
 	source_audio_mix_data_clean(&data);
 
 #ifdef DEBUG_AUDIO
-	blog(LOG_DEBUG, "audio_time: %llu, prev_time: %llu, bytes: %lu",
-	     audio_time, prev_time, bytes);
+	blog(LOG_DEBUG, "audio_time: %llu, prev_time: %llu, bytes: %lu", audio_time, prev_time, bytes);
 #endif
 
 	prepare_mixes_outputs(canvases, audio);
@@ -298,13 +295,11 @@ static void *audio_thread(void *param)
 	os_set_thread_name("audio-io: audio thread");
 
 	const char *audio_thread_name =
-		profile_store_name(obs_get_profiler_name_store(),
-				   "audio_thread(%s)", audio->info.name);
+		profile_store_name(obs_get_profiler_name_store(), "audio_thread(%s)", audio->info.name);
 
 	while (os_event_try(audio->stop_event) == EAGAIN) {
 		samples += AUDIO_OUTPUT_FRAMES;
-		uint64_t audio_time =
-			start_time + audio_frames_to_ns(rate, samples);
+		uint64_t audio_time = start_time + audio_frames_to_ns(rate, samples);
 
 		os_sleepto_ns_fast(audio_time);
 
@@ -330,8 +325,7 @@ static void *audio_thread(void *param)
 
 /* ------------------------------------------------------------------------- */
 
-static size_t audio_get_input_idx(const audio_t *audio, size_t mix_idx,
-				  audio_output_callback_t callback, void *param)
+static size_t audio_get_input_idx(const audio_t *audio, size_t mix_idx, audio_output_callback_t callback, void *param)
 {
 	const struct audio_mix *mix = &audio->mixes[mix_idx];
 
@@ -345,21 +339,18 @@ static size_t audio_get_input_idx(const audio_t *audio, size_t mix_idx,
 	return DARRAY_INVALID;
 }
 
-static inline bool audio_input_init(struct audio_input *input,
-				    struct audio_output *audio)
+static inline bool audio_input_init(struct audio_input *input, struct audio_output *audio)
 {
 	if (input->conversion.format != audio->info.format ||
 	    input->conversion.samples_per_sec != audio->info.samples_per_sec ||
 	    input->conversion.speakers != audio->info.speakers) {
-		struct resample_info from = {
-			.format = audio->info.format,
-			.samples_per_sec = audio->info.samples_per_sec,
-			.speakers = audio->info.speakers};
+		struct resample_info from = {.format = audio->info.format,
+					     .samples_per_sec = audio->info.samples_per_sec,
+					     .speakers = audio->info.speakers};
 
-		struct resample_info to = {
-			.format = input->conversion.format,
-			.samples_per_sec = input->conversion.samples_per_sec,
-			.speakers = input->conversion.speakers};
+		struct resample_info to = {.format = input->conversion.format,
+					   .samples_per_sec = input->conversion.samples_per_sec,
+					   .speakers = input->conversion.speakers};
 
 		input->resampler = audio_resampler_create(&to, &from);
 		if (!input->resampler) {
@@ -374,8 +365,7 @@ static inline bool audio_input_init(struct audio_input *input,
 	return true;
 }
 
-bool audio_output_connect(audio_t *audio, size_t mi,
-			  const struct audio_convert_info *conversion,
+bool audio_output_connect(audio_t *audio, size_t mi, const struct audio_convert_info *conversion,
 			  audio_output_callback_t callback, void *param)
 {
 	bool success = false;
@@ -387,17 +377,17 @@ bool audio_output_connect(audio_t *audio, size_t mi,
 
 	if (audio_get_input_idx(audio, mi, callback, param) == DARRAY_INVALID) {
 		struct audio_mix *mix = &audio->mixes[mi];
-		struct audio_input input;
-		input.callback = callback;
-		input.param = param;
+		struct audio_input input = {
+			.callback = callback,
+			.param = param,
+		};
 
 		if (conversion) {
 			input.conversion = *conversion;
 		} else {
 			input.conversion.format = audio->info.format;
 			input.conversion.speakers = audio->info.speakers;
-			input.conversion.samples_per_sec =
-				audio->info.samples_per_sec;
+			input.conversion.samples_per_sec = audio->info.samples_per_sec;
 		}
 
 		if (input.conversion.format == AUDIO_FORMAT_UNKNOWN)
@@ -405,8 +395,7 @@ bool audio_output_connect(audio_t *audio, size_t mi,
 		if (input.conversion.speakers == SPEAKERS_UNKNOWN)
 			input.conversion.speakers = audio->info.speakers;
 		if (input.conversion.samples_per_sec == 0)
-			input.conversion.samples_per_sec =
-				audio->info.samples_per_sec;
+			input.conversion.samples_per_sec = audio->info.samples_per_sec;
 
 		success = audio_input_init(&input, audio);
 		if (success)
@@ -418,8 +407,7 @@ bool audio_output_connect(audio_t *audio, size_t mi,
 	return success;
 }
 
-void audio_output_disconnect(audio_t *audio, size_t mix_idx,
-			     audio_output_callback_t callback, void *param)
+void audio_output_disconnect(audio_t *audio, size_t mix_idx, audio_output_callback_t callback, void *param)
 {
 	if (!audio || mix_idx >= MAX_AUDIO_MIXES)
 		return;
@@ -438,8 +426,7 @@ void audio_output_disconnect(audio_t *audio, size_t mix_idx,
 
 static inline bool valid_audio_params(const struct audio_output_info *info)
 {
-	return info->format && info->name && info->samples_per_sec > 0 &&
-	       info->speakers > 0;
+	return info->format && info->name && info->samples_per_sec > 0 && info->speakers > 0;
 }
 
 int audio_output_open(audio_t **audio, struct audio_output_info *info)
@@ -459,8 +446,7 @@ int audio_output_open(audio_t **audio, struct audio_output_info *info)
 	out->planes = planar ? out->channels : 1;
 	out->input_cb = info->input_callback;
 	out->input_param = info->input_param;
-	out->block_size = (planar ? 1 : out->channels) *
-			  get_audio_bytes_per_channel(info->format);
+	out->block_size = (planar ? 1 : out->channels) * get_audio_bytes_per_channel(info->format);
 
 	size_t canvases = get_audio_outputs_reqired();
 	da_init(out->mixes_outputs);

@@ -1,45 +1,45 @@
 {
     "dependencies": {
         "prebuilt": {
-            "version": "2024-09-10v4",
+            "version": "2024-09-12sl5",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built obs-deps",
             "hashes": {
-                "macos-x86_64": "2af70b15cb55a8e04745427dd713eec410016f1222dde614cbc23037dfe9bda5",
-                "macos-arm64": "498bc517c474f45dfd84c645213df05663c839b0a264a903a62d10d9384d1fa1",
-                "macos-universal": "233eb864c5b6827a1704af9af4fbd536e2bfda61716caed3727514f10595fd6e",
-                "windows-x64": "2c09490bffb8f896cf4ce8db4e50779455705d7566b3662c76a37d20866d2397"
+                "macos-x86_64": "3fb3f1c8f81684539b7c0eee5e448220c83264dba581d5dfbfed469a551413cb",
+                "macos-arm64": "7a67f7849d7df1f65a9da5298e6cf4fe8bac9fbabe5f1c950119379659c477b0",
+                "macos-universal": "c038f22b7ca5e8435d46147a93b71bd02070dc5de9e045515f5fa5936943f877",
+                "windows-x64": "527dba6132ad17737fce7d26c346a46dc20b544d84c587af32d36c0e3f072970",
+                "windows-x86": "d6930ca1e9daf5d110ee9551d86f459530676e7ccf13294458fe73beb132c3f8"
             }
         },
         "qt6": {
-            "version": "2024-09-10v4",
+            "version": "2025-06-03",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built Qt6",
             "hashes": {
-                "macos-x86_64": "82118c65905ba373849c56682d8a0da3e7d4f83a9c22be5a3dfef29a20a7e152",
-                "macos-arm64": "72460fbc0875b75c9d605454434d9fcfc23a47cc23b3592215047fa6a555a222",
-                "macos-universal": "b53ec9b86c95e0883d7ba920cf87a5f86c00db4da36fe9316e375e2c1e61149b",
-                "windows-x64": "b91f0d0ea2ebbbd006a5a1a0bf82a0ffaec24282cfe75a095c3a4ba4b47f7714"
+                "macos-x86_64": "19a4687123b72487289f490dc6a883d650475e899964f2f636e1774d50cc47a5",
+                "macos-arm64": "f7b42761794bec51e293680bd3fd7f54d0bb35b6952ce8149136c2061ed99e7f",
+                "macos-universal": "5c6b662e877046746c624379cc745f314f37e6e96c5c2a037b3adfb7b4e3de5e",
+                "windows-x64": "dbd6d00b85c5011dc4109141ac14b88fc20d35dffc1f968bc7c3112fd6c3c814"
             },
             "debugSymbols": {
-                "windows-x64": "7400a4d195e16d0220d43c1cc296c6ff288118826b34ac4c74a1e069c9b1ea68"
+                "windows-x64": "363f60a5fbd39162b78201c290d92a49d3f5a83c5b909bb8c05f85f8b988d591"
             }
         },
         "cef": {
-            "version": "5060",
-            "baseUrl": "https://streamlabs-cef-dist.s3.us-west-2.amazonaws.com",
+            "version": "6533",
+            "baseUrl": "https://cdn-fastly.obsproject.com/downloads",
             "label": "Chromium Embedded Framework",
             "hashes": {
-                "macos-x86_64": "4B3AC2FF135C2858FE8ECAB19D936A0DD95D9374373946CB5528CB2FD8E0A89F",
-                "macos-arm64": "B554146651D8E3823A2708FC738F720CA9D373263D6896CF4B4A51E2DA82C439",
-                "linux-x86_64": "bf4aa9388bab7e94fa945cc3bba16b6da63b6a30f9c0342d42235468b39d84bf",
-                "linux-aarch64": "68d915c9ba2639cba762a54cd3430fce2527aa6355d831d3cfcb6157664206b0",
-                "windows-x64": "7480e9ed5688e09919db67237d130eef9a4c24df32ba2a7b8a5587de45ff8e69"
+                "macos-x86_64": "6dc6773bead921885f73836ef8611dd3307a87a09f2ef4262cf3eaad33883b0a",
+                "macos-arm64": "1bb59dbb759150e170796f641a4a84c59c0dea4ffef89477e9d811520af5d15a",
+                "windows-x64": "922efbda1f2f8be9e5b2754d878a14d90afc81f04e94fc9101a7513e2b5cecc1",
+                "windows-arm64": "df9df4bd85826b4c071c6db404fd59cf93efd9c58ec3ab64e204466ae19bb02a"
             },
             "revision": {
                 "macos-x86_64": 3,
                 "macos-arm64": 3,
-                "windows-x64": 3
+                "windows-x64": 2
             }
         },
         "vlc": {

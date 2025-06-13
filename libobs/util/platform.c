@@ -27,6 +27,7 @@
 #include "utf8.h"
 #include "dstr.h"
 #include "obs.h"
+#include "threading.h"
 
 FILE *os_wfopen(const wchar_t *path, const char *mode)
 {
@@ -257,8 +258,7 @@ bool os_quick_write_mbs_file(const char *path, const char *str, size_t len)
 	return true;
 }
 
-bool os_quick_write_utf8_file(const char *path, const char *str, size_t len,
-			      bool marker)
+bool os_quick_write_utf8_file(const char *path, const char *str, size_t len, bool marker)
 {
 	FILE *f = os_fopen(path, "wb");
 	if (!f)
@@ -283,9 +283,8 @@ bool os_quick_write_utf8_file(const char *path, const char *str, size_t len,
 	return true;
 }
 
-bool os_quick_write_utf8_file_safe(const char *path, const char *str,
-				   size_t len, bool marker,
-				   const char *temp_ext, const char *backup_ext)
+bool os_quick_write_utf8_file_safe(const char *path, const char *str, size_t len, bool marker, const char *temp_ext,
+				   const char *backup_ext)
 {
 	struct dstr backup_path = {0};
 	struct dstr temp_path = {0};
@@ -362,8 +361,7 @@ size_t os_mbs_to_wcs(const char *str, size_t len, wchar_t *dst, size_t dst_size)
 	return out_len;
 }
 
-size_t os_utf8_to_wcs(const char *str, size_t len, wchar_t *dst,
-		      size_t dst_size)
+size_t os_utf8_to_wcs(const char *str, size_t len, wchar_t *dst, size_t dst_size)
 {
 	size_t in_len;
 	size_t out_len;
@@ -379,8 +377,7 @@ size_t os_utf8_to_wcs(const char *str, size_t len, wchar_t *dst,
 			return 0;
 
 		if (out_len)
-			out_len =
-				utf8_to_wchar(str, in_len, dst, out_len + 1, 0);
+			out_len = utf8_to_wchar(str, in_len, dst, out_len + 1, 0);
 
 		dst[out_len] = 0;
 	}
@@ -412,8 +409,7 @@ size_t os_wcs_to_mbs(const wchar_t *str, size_t len, char *dst, size_t dst_size)
 	return out_len;
 }
 
-size_t os_wcs_to_utf8(const wchar_t *str, size_t len, char *dst,
-		      size_t dst_size)
+size_t os_wcs_to_utf8(const wchar_t *str, size_t len, char *dst, size_t dst_size)
 {
 	size_t in_len;
 	size_t out_len;
@@ -429,8 +425,7 @@ size_t os_wcs_to_utf8(const wchar_t *str, size_t len, char *dst,
 			return 0;
 
 		if (out_len)
-			out_len =
-				wchar_to_utf8(str, in_len, dst, out_len + 1, 0);
+			out_len = wchar_to_utf8(str, in_len, dst, out_len, 0);
 
 		dst[out_len] = 0;
 	}
@@ -677,8 +672,7 @@ static inline bool valid_string(const char *str)
 	return false;
 }
 
-static void replace_text(struct dstr *str, size_t pos, size_t len,
-			 const char *new_text)
+static void replace_text(struct dstr *str, size_t pos, size_t len, const char *new_text)
 {
 	struct dstr front = {0};
 	struct dstr back = {0};
@@ -710,13 +704,12 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 	const size_t spec_count = 23;
 	static const char *spec[][2] = {
-		{"%CCYY", "%Y"}, {"%YY", "%y"}, {"%MM", "%m"}, {"%DD", "%d"},
-		{"%hh", "%H"},   {"%mm", "%M"}, {"%ss", "%S"}, {"%%", "%%"},
+		{"%CCYY", "%Y"}, {"%YY", "%y"}, {"%MM", "%m"}, {"%DD", "%d"}, {"%hh", "%H"},
+		{"%mm", "%M"},   {"%ss", "%S"}, {"%%", "%%"},
 
-		{"%a", ""},      {"%A", ""},    {"%b", ""},    {"%B", ""},
-		{"%d", ""},      {"%H", ""},    {"%I", ""},    {"%m", ""},
-		{"%M", ""},      {"%p", ""},    {"%S", ""},    {"%y", ""},
-		{"%Y", ""},      {"%z", ""},    {"%Z", ""},
+		{"%a", ""},      {"%A", ""},    {"%b", ""},    {"%B", ""},    {"%d", ""},
+		{"%H", ""},      {"%I", ""},    {"%m", ""},    {"%M", ""},    {"%p", ""},
+		{"%S", ""},      {"%y", ""},    {"%Y", ""},    {"%z", ""},    {"%Z", ""},
 	};
 
 	char convert[128] = {0};
@@ -733,11 +726,9 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 
 			if (astrcmp_n(cmp, spec[i][0], len) == 0) {
 				if (strlen(spec[i][1]))
-					strftime(convert, sizeof(convert),
-						 spec[i][1], cur_time);
+					strftime(convert, sizeof(convert), spec[i][1], cur_time);
 				else
-					strftime(convert, sizeof(convert),
-						 spec[i][0], cur_time);
+					strftime(convert, sizeof(convert), spec[i][0], cur_time);
 
 				dstr_copy(&c, convert);
 				if (c.len && valid_string(c.array))
@@ -754,8 +745,6 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 					const double obsFPS =
 						(double)ovi->fps_num /
 						(double)ovi->fps_den;
-					snprintf(convert, sizeof(convert),
-						 "%.2f", obsFPS);
 				}
 				replace_text(&sf, pos, 4, convert);
 
@@ -775,8 +764,7 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 				replace_text(&sf, pos, 3, convert);
 
 			} else if (astrcmp_n(cmp, "%s", 2) == 0) {
-				snprintf(convert, sizeof(convert), "%" PRId64,
-					 (int64_t)now);
+				snprintf(convert, sizeof(convert), "%" PRId64, (int64_t)now);
 				replace_text(&sf, pos, 2, convert);
 			}
 		}
@@ -805,4 +793,58 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		dstr_mid(&sf, &sf, 0, 255);
 
 	return sf.array;
+}
+
+static struct {
+	struct timespec ts;
+	bool ts_valid;
+	uint64_t timestamp;
+} timespec_offset = {0};
+
+static void init_timespec_offset(void)
+{
+	timespec_offset.ts_valid = timespec_get(&timespec_offset.ts, TIME_UTC) == TIME_UTC;
+	timespec_offset.timestamp = os_gettime_ns();
+}
+
+struct timespec *os_nstime_to_timespec(uint64_t timestamp, struct timespec *storage)
+{
+	static pthread_once_t once = PTHREAD_ONCE_INIT;
+	pthread_once(&once, init_timespec_offset);
+
+	if (!storage || !timespec_offset.ts_valid) {
+		return NULL;
+	}
+
+	*storage = timespec_offset.ts;
+
+	static const int64_t nsecs_per_sec = 1000000000;
+
+	int64_t nsecs = 0;
+	int64_t secs = 0;
+	if (timestamp >= timespec_offset.timestamp) {
+		uint64_t offset = timestamp - timespec_offset.timestamp;
+		nsecs = storage->tv_nsec + offset % nsecs_per_sec;
+		secs = storage->tv_sec + offset / nsecs_per_sec;
+	} else {
+		uint64_t offset = timespec_offset.timestamp - timestamp;
+		int64_t nsec_offset = offset % nsecs_per_sec;
+		int64_t sec_offset = offset / nsecs_per_sec;
+		int64_t tv_nsec = storage->tv_nsec;
+		if (nsec_offset > tv_nsec) {
+			storage->tv_sec -= 1;
+			tv_nsec += nsecs_per_sec;
+		}
+		nsecs = tv_nsec - nsec_offset;
+		secs = storage->tv_sec - sec_offset;
+	}
+
+	if (nsecs > nsecs_per_sec) {
+		nsecs -= nsecs_per_sec;
+		secs += 1;
+	}
+	storage->tv_nsec = (long)nsecs;
+	storage->tv_sec = (time_t)secs;
+
+	return storage;
 }
