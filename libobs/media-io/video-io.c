@@ -619,12 +619,13 @@ double video_output_get_frame_rate(const video_t *video)
 
 uint32_t video_output_get_skipped_frames(const video_t *video)
 {
-	return (uint32_t)os_atomic_load_long(&get_const_root(video)->skipped_frames);
+	return video ? (uint32_t)os_atomic_load_long(&get_const_root(video)->skipped_frames)
+		     : 0;
 }
 
 uint32_t video_output_get_total_frames(const video_t *video)
 {
-	return (uint32_t)os_atomic_load_long(&get_const_root(video)->total_frames);
+	return video ? (uint32_t)os_atomic_load_long(&get_const_root(video)->total_frames) : 0;
 }
 
 /* Note: These four functions below are a very slight bit of a hack.  If the
