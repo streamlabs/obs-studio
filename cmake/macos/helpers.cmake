@@ -400,24 +400,12 @@ function(target_install_ffmpeg_and_ffprobe target)
 
     # Install ffmpeg
     if(EXISTS "${ffmpeg_path}")
-      message(STATUS "Found ffmpeg at ${ffmpeg_path}")
-      install(
-        FILES "${ffmpeg_path}"
-        DESTINATION "${destination}"
-        PERMISSIONS
-          OWNER_WRITE
-          OWNER_READ
-          OWNER_EXECUTE
-          GROUP_READ
-          GROUP_EXECUTE
-          WORLD_READ
-          WORLD_EXECUTE)
-
+      message(STATUS "Found ffmpeg at ${ffmpeg_path}.")
       # Run the fix_deps_paths.sh script at install time with the full absolute path
       install(
         CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
-        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFMPEG_PATH}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffmpeg_path}\" \"${destination}\")
       ")
     else()
       message(WARNING "ffmpeg not found at ${ffmpeg_path}")
@@ -426,23 +414,11 @@ function(target_install_ffmpeg_and_ffprobe target)
     # Install ffprobe
     if(EXISTS "${ffprobe_path}")
       message(STATUS "Found ffprobe at ${ffprobe_path}")
-      install(
-        FILES "${ffprobe_path}"
-        DESTINATION "${destination}"
-        PERMISSIONS
-          OWNER_WRITE
-          OWNER_READ
-          OWNER_EXECUTE
-          GROUP_READ
-          GROUP_EXECUTE
-          WORLD_READ
-          WORLD_EXECUTE)
-
       # Run the fix_deps_paths.sh script for ffprobe with the full absolute path
       install(
         CODE "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
-        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${FINAL_FFPROBE_PATH}\")
+        execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffprobe_path}\" \"${destination}\")
       ")
     else()
       message(WARNING "ffprobe not found at ${ffprobe_path}")
