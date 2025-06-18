@@ -73,7 +73,7 @@ add_obs_plugin(obs-text PLATFORMS WINDOWS)
 add_obs_plugin(obs-transitions)
 add_obs_plugin(obs-webrtc)
 
-#check_obs_websocket()
+check_obs_websocket()
 
 add_obs_plugin(obs-x264)
 add_obs_plugin(oss-audio PLATFORMS FREEBSD OPENBSD)
