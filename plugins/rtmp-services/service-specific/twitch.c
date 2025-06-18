@@ -28,6 +28,7 @@ size_t twitch_ingest_count(void)
 struct ingest twitch_ingest(size_t idx)
 {
 	return get_ingest(&twitch, idx);
+		blog(LOG_WARNING, "Invalid response from Twitch's ingests API");
 }
 
 void init_twitch_data(void)

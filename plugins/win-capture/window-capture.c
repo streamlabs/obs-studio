@@ -48,8 +48,7 @@ typedef BOOL (*PFN_winrt_capture_show_cursor)(struct winrt_capture *capture, BOO
 typedef enum gs_color_space (*PFN_winrt_capture_get_color_space)(const struct winrt_capture *capture);
 typedef void (*PFN_winrt_capture_render)(struct winrt_capture *capture);
 typedef uint32_t (*PFN_winrt_capture_width)(const struct winrt_capture *capture);
-typedef uint32_t (*PFN_winrt_capture_height)(
-	const struct winrt_capture *capture);
+typedef uint32_t (*PFN_winrt_capture_height)(const struct winrt_capture *capture);
 typedef bool (*PFN_winrt_capture_is_closed)(const struct winrt_capture *capture);
 
 struct winrt_exports {

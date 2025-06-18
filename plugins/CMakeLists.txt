@@ -71,11 +71,6 @@ add_obs_plugin(
 )
 add_obs_plugin(obs-text PLATFORMS WINDOWS)
 add_obs_plugin(obs-transitions)
-add_obs_plugin(
-    obs-vst
-    PLATFORMS WINDOWS MACOS LINUX
-    WITH_MESSAGE
-)
 add_obs_plugin(obs-webrtc)
 
 #check_obs_websocket()
@@ -94,4 +89,3 @@ add_obs_plugin(mediasoup-connector PLATFORMS WINDOWS MACOS)
 add_obs_plugin(motion-effect PLATFORMS WINDOWS)
 add_obs_plugin(obs-openvr PLATFORMS WINDOWS)
 add_obs_plugin(win-spout PLATFORMS WINDOWS)
-

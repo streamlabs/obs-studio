@@ -282,6 +282,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *current = obs->video.mixes.array[i];
 		const struct video_output_info *voi = video_output_get_info(current->video);
+
 		if (current->view != current_mix->view)
 			continue;
 
@@ -820,6 +821,9 @@ void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, voi
 			else
 				pthread_mutex_unlock(&group->mutex);
 		}
+
+		/* init_mutex already unlocked */
+		return;
 	}
 
 	pthread_mutex_unlock(&encoder->init_mutex);

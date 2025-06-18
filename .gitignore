@@ -49,3 +49,4 @@ build-aux/flatpak-github-action-modified-*
 
 # Exclude CMake build number cache
 /cmake/.CMakeBuildNumber
+*.bak

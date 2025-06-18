@@ -32,9 +32,7 @@ endfunction()
 
 # _check_deps_version: Checks for obs-deps VERSION file in prefix paths
 function(_check_deps_version version)
-  set(found
-      FALSE
-      PARENT_SCOPE)
+  set(found FALSE PARENT_SCOPE)
   message(STATUS "Checking CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}")
   foreach(path IN LISTS CMAKE_PREFIX_PATH)
     if(EXISTS "${path}/share/obs-deps/VERSION")
@@ -79,6 +77,9 @@ endfunction()
 
 # _check_dependencies: Fetch and extract pre-built OBS build dependencies
 function(_check_dependencies)
+  message(STATUS "Processing dependencies...")
+  message(STATUS "Dependencies dir: ${dependencies_dir}")
+
   file(READ "${CMAKE_CURRENT_SOURCE_DIR}/buildspec.json" buildspec)
 
   string(JSON dependency_data GET ${buildspec} dependencies)
@@ -94,6 +95,8 @@ function(_check_dependencies)
       set(arch ${CMAKE_OSX_ARCHITECTURES})
       set(platform macos-${arch})
     endif()
+
+    message(STATUS "Processing dependency: ${dependency}")
 
     string(JSON data GET ${dependency_data} ${dependency})
     string(JSON version GET ${data} version)
@@ -207,9 +210,7 @@ function(_check_dependencies)
     elseif(dependency STREQUAL qt6)
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${destination}")
     elseif(dependency STREQUAL cef)
-      set(CEF_ROOT_DIR
-          "${dependencies_dir}/${destination}"
-          CACHE PATH "CEF root directory" FORCE)
+      set(CEF_ROOT_DIR "${dependencies_dir}/${destination}" CACHE PATH "CEF root directory" FORCE)
     elseif(dependency STREQUAL libmediasoupclient)
       if(WIN32)
         set(libmediasoupclient_subdir "libmediasoupclient_dist")

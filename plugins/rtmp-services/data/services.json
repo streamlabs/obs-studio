@@ -3609,6 +3609,65 @@
                 "keyint": 1,
                 "max video bitrate": 6000
             }
+        },
+        {
+            "name": "Live Streamer Cafe",
+            "more_info_link": "https://livestreamercafe.com/help.php",
+            "stream_key_link": "https://livestreamercafe.com/profile.php",
+            "servers": [
+                {
+                    "name": "Live Streamer Cafe Server",
+                    "url": "rtmp://tophicles.com/live"
+                }
+            ],
+            "recommended": {
+                "keyint": 2,
+                "max video bitrate": 6000
+            },
+            "supported video codecs": [
+                "h264"
+            ]
+        },
+        {
+            "name": "Enchant.events",
+            "more_info_link": "https://docs.enchant.events/knowledge-base-y4pOb",
+            "servers": [
+                {
+                    "name": "Primary RTMPS",
+                    "url": "rtmps://stream.enchant.cloud:443/live"
+                }
+            ],
+            "recommended": {
+                "keyint": 2,
+                "profile": "high",
+                "max video bitrate": 9000,
+                "max audio bitrate": 192
+            },
+            "supported video codecs": [
+                "h264"
+            ]
+        },
+        {
+            "name": "Joystick.TV",
+            "more_info_link": "https://support.joystick.tv/support/creator-support/setting-up-your-stream/",
+            "stream_key_link": "https://joystick.tv/stream-settings",
+            "servers": [
+                {
+                    "name": "RTMP",
+                    "url": "rtmp://live.joystick.tv/live/"
+                }
+            ],
+            "recommended": {
+                "keyint": 2,
+                "max video bitrate": 7500,
+                "max audio bitrate": 192,
+                "profile": "main",
+                "bframes": 0,
+                "x264opts": "tune=zerolatency"
+            },
+            "supported video codecs": [
+                "h264"
+            ]
         }
     ]
 }

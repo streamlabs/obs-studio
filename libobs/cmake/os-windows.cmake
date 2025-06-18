@@ -8,14 +8,14 @@ endif()
 if(NOT TARGET OBS::comutils)
   add_library(obs-comutils INTERFACE)
   add_library(OBS::COMutils ALIAS obs-comutils)
-  target_sources(obs-comutils INTERFACE util/windows/ComPtr.hpp)
+  target_sources(obs-comutils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/ComPtr.hpp)
   target_include_directories(obs-comutils INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 if(NOT TARGET OBS::winhandle)
   add_library(obs-winhandle INTERFACE)
   add_library(OBS::winhandle ALIAS obs-winhandle)
-  target_sources(obs-winhandle INTERFACE util/windows/WinHandle.hpp)
+  target_sources(obs-winhandle INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/util/windows/WinHandle.hpp)
   target_include_directories(obs-winhandle INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
@@ -50,7 +50,6 @@ target_sources(
     util/platform-windows.c
     util/threading-windows.c
     util/threading-windows.h
-    util/windows/CoTaskMemPtr.hpp
     util/windows/device-enum.c
     util/windows/device-enum.h
     util/windows/HRError.hpp

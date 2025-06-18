@@ -113,14 +113,5 @@
             "generator": "Ninja"
         }
     },
-    "tools": {
-        "sparkle": {
-            "version": "2.6.4",
-            "baseUrl": "https://github.com/sparkle-project/Sparkle/releases/download",
-            "label": "Sparkle 2",
-            "hash": "50612a06038abc931f16011d7903b8326a362c1074dabccb718404ce8e585f0b"
-        }
-
-    },
     "name": "obs-studio"
 }

@@ -6,7 +6,6 @@ include(buildspec_common)
 
 # _check_dependencies_windows: Set up Windows slice for _check_dependencies
 function(_check_dependencies_windows)
-message(STATUS "buildspec.cmake _check_dependencies_windows set files with VERSION and ARCH")
   set(dependencies_dir "${CMAKE_CURRENT_SOURCE_DIR}/.deps")
   set(prebuilt_filename "windows-deps-VERSION-ARCH-REVISION.zip")
   set(prebuilt_destination "obs-deps-VERSION-ARCH")
@@ -27,10 +26,7 @@ message(STATUS "buildspec.cmake _check_dependencies_windows set files with VERSI
   set(openssl_filename "openssl-VERSION-ARCH.7z")
   set(openssl_destination "openssl-VERSION-ARCH")
 
-  message(STATUS "buildspec.cmake CMAKE_VS_PLATFORM_NAME ${CMAKE_VS_PLATFORM_NAME}")
-  message(STATUS "buildspec.cmake CMAKE_GENERATOR_PLATFORM ${CMAKE_GENERATOR_PLATFORM}")
-
-  if(CMAKE_VS_PLATFORM_NAME STREQUAL Win32)  
+  if(CMAKE_VS_PLATFORM_NAME STREQUAL Win32)
     set(arch x86)
     set(dependencies_list prebuilt)
   else()

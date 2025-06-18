@@ -28,7 +28,7 @@ function(set_target_properties_obs target)
 
       # cmake-format: off
       if(ENABLE_32_TARGETS)
-      _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION} x86)
+        _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION} x86)
       endif()
       # cmake-format: on
     endif()
@@ -72,7 +72,7 @@ function(set_target_properties_obs target)
 
       # cmake-format: off
       if(ENABLE_32_TARGETS)
-      _target_install_obs(${target} DESTINATION ${target_destination} x86)
+        _target_install_obs(${target} DESTINATION ${target_destination} x86)
       endif()
       # cmake-format: on
     elseif(target STREQUAL obs-virtualcam-module)
@@ -80,7 +80,7 @@ function(set_target_properties_obs target)
 
       # cmake-format: off
       if(ENABLE_32_TARGETS)
-      _target_install_obs(${target} DESTINATION ${target_destination} x86)
+        _target_install_obs(${target} DESTINATION ${target_destination} x86)
       endif()
       # cmake-format: on
     else()

@@ -292,8 +292,8 @@ jobs:
 
   flatpak-build:
     name: Flatpak 📦
+    runs-on: ubuntu-24.04
     if: github.repository == 'obsproject/obs-studio'
-    runs-on: ubuntu-22.04
     needs: check-event
     defaults:
       run:
@@ -416,14 +416,6 @@ jobs:
           $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
           $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
         shell: powershell
-      - uses: actions/cache@v4
-        id: ccache-cache
-        if: github.event_name == 'pull_request'
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-x86_64-${{ needs.check-event.outputs.config }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-x86_64-
 
       - name: Build OBS Studio 🧱
         uses: ./.github/actions/build-obs

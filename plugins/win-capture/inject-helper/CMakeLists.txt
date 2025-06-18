@@ -10,10 +10,6 @@ endif()
 
 add_executable(inject-helper)
 
-if(ENABLE_32_TARGETS)
-include(cmake/32bit.cmake)
-endif()
-
 target_sources(inject-helper PRIVATE inject-helper.c)
 
 target_link_libraries(inject-helper PRIVATE OBS::inject-library OBS::obfuscate)

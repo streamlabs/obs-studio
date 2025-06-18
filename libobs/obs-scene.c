@@ -1081,29 +1081,25 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 
 	item = scene->first_item;
 	while (item) {
-		if (obs_get_video_rendering_canvas() != item->canvas &&
-		    item->canvas != NULL) {
+		if (obs_get_video_rendering_canvas() != item->canvas && item->canvas != NULL) {
 			item = item->next;
 			continue;
 		}
 		if (obs_get_multiple_rendering()) {
 			switch (obs_get_video_rendering_mode()) {
 			case OBS_MAIN_VIDEO_RENDERING: {
-				if (item->user_visible ||
-				    transition_active(item->hide_transition))
+				if (item->user_visible || transition_active(item->hide_transition))
 					render_item(item);
 				break;
 			}
 			case OBS_STREAMING_VIDEO_RENDERING: {
-				if ((item->user_visible ||
-				     transition_active(item->hide_transition)) &&
+				if ((item->user_visible || transition_active(item->hide_transition)) &&
 				    item->stream_visible)
 					render_item(item);
 				break;
 			}
 			case OBS_RECORDING_VIDEO_RENDERING: {
-				if ((item->user_visible ||
-				     transition_active(item->hide_transition)) &&
+				if ((item->user_visible || transition_active(item->hide_transition)) &&
 				    item->recording_visible)
 					render_item(item);
 				break;
@@ -1112,8 +1108,7 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 			if (item->item_render)
 				gs_texrender_reset(item->item_render);
 		} else {
-			if (item->user_visible ||
-			    transition_active(item->hide_transition))
+			if (item->user_visible || transition_active(item->hide_transition))
 				render_item(item);
 		}
 
@@ -1371,9 +1366,7 @@ static void scene_save_item(obs_data_array_t *array, struct obs_scene_item *item
 	obs_data_set_bool(item_data, "locked", item->locked);
 	obs_data_set_double(item_data, "rot", rot);
 	obs_data_set_bool(item_data, "stream_visible", item->stream_visible);
-	obs_data_set_bool(item_data, "recording_visible",
-			  item->recording_visible);
-	obs_data_set_vec2(item_data, "pos", &pos);
+	obs_data_set_bool(item_data, "recording_visible", item->recording_visible);
 	obs_data_set_vec2(item_data, "scale_ref", &item->scale_ref);
 	obs_data_set_int(item_data, "align", (int)item->align);
 	obs_data_set_int(item_data, "bounds_type", (int)item->bounds_type);
@@ -1594,13 +1587,11 @@ static void apply_scene_item_audio_actions(struct obs_scene_item *item, float *b
 				break;
 			}
 			case OBS_STREAMING_AUDIO_RENDERING: {
-				cur_visible = item->visible &&
-					      item->stream_visible;
+				cur_visible = item->visible && item->stream_visible;
 				break;
 			}
 			case OBS_RECORDING_AUDIO_RENDERING: {
-				cur_visible = item->visible &&
-					      item->recording_visible;
+				cur_visible = item->visible && item->recording_visible;
 				break;
 			}
 			}
@@ -1675,8 +1666,7 @@ static inline void mix_audio(float *p_out, float *p_in, size_t pos, size_t count
 		*(out++) += *(in++);
 }
 
-static inline void render_item_audio(struct obs_scene_item *item,
-				     uint64_t *timestamp)
+static inline void render_item_audio(struct obs_scene_item *item, uint64_t *timestamp)
 {
 	uint64_t source_ts = obs_source_get_audio_timestamp(item->source);
 
@@ -1684,8 +1674,7 @@ static inline void render_item_audio(struct obs_scene_item *item,
 		*timestamp = source_ts;
 }
 
-static inline struct scene_source_mix *get_source_mix(struct obs_scene *scene,
-						      struct obs_source *source)
+static inline struct scene_source_mix *get_source_mix(struct obs_scene *scene, struct obs_source *source)
 {
 	for (size_t i = 0; i < scene->mix_sources.num; i++) {
 		struct scene_source_mix *mix = &scene->mix_sources.array[i];
@@ -1785,38 +1774,24 @@ static bool scene_audio_render_internal(struct obs_scene *scene, struct obs_scen
 
 		if (obs_get_multiple_rendering()) {
 			if (!apply_buf &&
-			    ((obs_get_audio_rendering_mode() ==
-				      OBS_MAIN_AUDIO_RENDERING &&
-			      !item->visible &&
+			    ((obs_get_audio_rendering_mode() == OBS_MAIN_AUDIO_RENDERING && !item->visible &&
 			      !transition_active(item->hide_transition)) ||
-			     (obs_get_audio_rendering_mode() ==
-				      OBS_STREAMING_AUDIO_RENDERING &&
-			      !item->visible &&
-			      !transition_active(item->hide_transition) &&
-			      !item->stream_visible) ||
-			     (obs_get_audio_rendering_mode() ==
-				      OBS_RECORDING_AUDIO_RENDERING &&
-			      !item->visible &&
-			      !transition_active(item->hide_transition) &&
-			      !item->recording_visible))) {
+			     (obs_get_audio_rendering_mode() == OBS_STREAMING_AUDIO_RENDERING && !item->visible &&
+			      !transition_active(item->hide_transition) && !item->stream_visible) ||
+			     (obs_get_audio_rendering_mode() == OBS_RECORDING_AUDIO_RENDERING && !item->visible &&
+			      !transition_active(item->hide_transition) && !item->recording_visible))) {
 				item = item->next;
 				continue;
 			}
 		} else {
 			/* Update buf so that parent mute state applies to all current
 			* scene items as well */
-			if (parent_buf &&
-			    (!apply_buf ||
-			     memcmp(buf, parent_buf, sizeof(float) * count) !=
-				     0)) {
+			if (parent_buf && (!apply_buf || memcmp(buf, parent_buf, sizeof(float) * count) != 0)) {
 				for (size_t i = 0; i < count; i++) {
 					if (!apply_buf) {
 						buf[i] = parent_buf[i];
 					} else {
-						buf[i] =
-							buf[i] < parent_buf[i]
-								? buf[i]
-								: parent_buf[i];
+						buf[i] = buf[i] < parent_buf[i] ? buf[i] : parent_buf[i];
 					}
 				}
 
@@ -1825,13 +1800,9 @@ static bool scene_audio_render_internal(struct obs_scene *scene, struct obs_scen
 
 			/* If "source" is a group/scene and has no transition,
 			* add their items to the current list */
-			if (source == item->source &&
-			    (obs_source_is_group(source) ||
-			     obs_source_is_scene(source))) {
-				scene_audio_render_internal(
-					source->context.data, mix_scene, NULL,
-					NULL, 0, 0, sample_rate,
-					apply_buf ? buf : NULL);
+			if (source == item->source && (obs_source_is_group(source) || obs_source_is_scene(source))) {
+				scene_audio_render_internal(source->context.data, mix_scene, NULL, NULL, 0, 0,
+							    sample_rate, apply_buf ? buf : NULL);
 				item = item->next;
 				continue;
 			}
@@ -1913,10 +1884,8 @@ static bool scene_audio_render(void *data, uint64_t *ts_out, struct obs_source_a
 	return scene_audio_render_internal(scene, NULL, ts_out, audio_output, mixers, channels, sample_rate, NULL);
 }
 
-static bool scene_audio_render_do(void *data, uint64_t *ts_out,
-				  struct audio_data_mixes_outputs *audio_output,
-				  uint32_t mixers, size_t channels,
-				  size_t sample_rate)
+static bool scene_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio_output,
+				  uint32_t mixers, size_t channels, size_t sample_rate)
 {
 	uint64_t timestamp = 0;
 	float buf[AUDIO_OUTPUT_FRAMES];
@@ -1931,16 +1900,12 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 		struct obs_source *source;
 		if (item->visible && transition_active(item->show_transition))
 			source = item->show_transition;
-		else if (!item->visible &&
-			 transition_active(item->hide_transition))
+		else if (!item->visible && transition_active(item->hide_transition))
 			source = item->hide_transition;
 		else
 			source = item->source;
-		if (!obs_source_audio_pending(source) &&
-		    (item->visible ||
-		     transition_active(item->hide_transition))) {
-			uint64_t source_ts =
-				obs_source_get_audio_timestamp(source);
+		if (!obs_source_audio_pending(source) && (item->visible || transition_active(item->hide_transition))) {
+			uint64_t source_ts = obs_source_get_audio_timestamp(source);
 
 			if (source_ts && (!timestamp || source_ts < timestamp))
 				timestamp = source_ts;
@@ -1970,14 +1935,12 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 		struct obs_source *source;
 		if (item->visible && transition_active(item->show_transition))
 			source = item->show_transition;
-		else if (!item->visible &&
-			 transition_active(item->hide_transition))
+		else if (!item->visible && transition_active(item->hide_transition))
 			source = item->hide_transition;
 		else
 			source = item->source;
 
-		apply_buf = apply_scene_item_volume(item, buf, timestamp,
-						    sample_rate);
+		apply_buf = apply_scene_item_volume(item, buf, timestamp, sample_rate);
 
 		if (obs_source_audio_pending(source)) {
 			item = item->next;
@@ -1990,8 +1953,7 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 			continue;
 		}
 
-		pos = (size_t)ns_to_audio_frames(sample_rate,
-						 source_ts - timestamp);
+		pos = (size_t)ns_to_audio_frames(sample_rate, source_ts - timestamp);
 
 		if (pos >= AUDIO_OUTPUT_FRAMES) {
 			item = item->next;
@@ -2002,26 +1964,17 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 
 		if (obs_get_multiple_rendering()) {
 			if (!apply_buf &&
-			    ((obs_get_audio_rendering_mode() ==
-				      OBS_MAIN_AUDIO_RENDERING &&
-			      !item->visible &&
+			    ((obs_get_audio_rendering_mode() == OBS_MAIN_AUDIO_RENDERING && !item->visible &&
 			      !transition_active(item->hide_transition)) ||
-			     (obs_get_audio_rendering_mode() ==
-				      OBS_STREAMING_AUDIO_RENDERING &&
-			      !item->visible &&
-			      !transition_active(item->hide_transition) &&
-			      !item->stream_visible) ||
-			     (obs_get_audio_rendering_mode() ==
-				      OBS_RECORDING_AUDIO_RENDERING &&
-			      !item->visible &&
-			      !transition_active(item->hide_transition) &&
-			      !item->recording_visible))) {
+			     (obs_get_audio_rendering_mode() == OBS_STREAMING_AUDIO_RENDERING && !item->visible &&
+			      !transition_active(item->hide_transition) && !item->stream_visible) ||
+			     (obs_get_audio_rendering_mode() == OBS_RECORDING_AUDIO_RENDERING && !item->visible &&
+			      !transition_active(item->hide_transition) && !item->recording_visible))) {
 				item = item->next;
 				continue;
 			}
 		} else {
-			if (!apply_buf && !item->visible &&
-			    !transition_active(item->hide_transition)) {
+			if (!apply_buf && !item->visible && !transition_active(item->hide_transition)) {
 				item = item->next;
 				continue;
 			}
@@ -2034,25 +1987,16 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 				continue;
 
 			for (size_t ch = 0; ch < channels; ch++) {
-				for (size_t canvas_idx = 0;
-				     canvas_idx < audio_output->outputs.num;
-				     canvas_idx++) {
-					if (item->canvas !=
-					    obs->video.canvases
-						    .array[canvas_idx]) {
+				for (size_t canvas_idx = 0; canvas_idx < audio_output->outputs.num; canvas_idx++) {
+					if (item->canvas != obs->video.canvases.array[canvas_idx]) {
 						continue;
 					}
 
-					float *out = audio_output->outputs
-							     .array[canvas_idx]
-							     .output[mix]
-							     .data[ch];
-					float *in =
-						child_audio.output[mix].data[ch];
+					float *out = audio_output->outputs.array[canvas_idx].output[mix].data[ch];
+					float *in = child_audio.output[mix].data[ch];
 
 					if (apply_buf)
-						mix_audio_with_buf(out, in, buf,
-								   pos, count);
+						mix_audio_with_buf(out, in, buf, pos, count);
 					else
 						mix_audio(out, in, pos, count);
 				}
@@ -2068,9 +2012,7 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 	return true;
 }
 
-enum gs_color_space
-scene_video_get_color_space(void *data, size_t count,
-			    const enum gs_color_space *preferred_spaces)
+enum gs_color_space scene_video_get_color_space(void *data, size_t count, const enum gs_color_space *preferred_spaces)
 {
 	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(count);
@@ -2079,8 +2021,7 @@ scene_video_get_color_space(void *data, size_t count,
 	enum gs_color_space space = GS_CS_SRGB;
 	struct obs_video_info ovi;
 	if (obs_get_video_info_current(&ovi)) {
-		if (ovi.colorspace == VIDEO_CS_2100_PQ ||
-		    ovi.colorspace == VIDEO_CS_2100_HLG)
+		if (ovi.colorspace == VIDEO_CS_2100_PQ || ovi.colorspace == VIDEO_CS_2100_HLG)
 			space = GS_CS_709_EXTENDED;
 	}
 
@@ -2551,12 +2492,8 @@ static bool hotkey_hide_sceneitem(void *data, obs_hotkey_pair_id id, obs_hotkey_
 
 static void init_hotkeys(obs_scene_t *scene, obs_sceneitem_t *item, const char *name)
 {
-	struct obs_data_array *hotkey_array;
-	obs_data_t *hotkey_data = scene->source->context.hotkey_data;
-
 	struct dstr show = {0};
 	struct dstr hide = {0};
-	struct dstr legacy = {0};
 	struct dstr show_desc = {0};
 	struct dstr hide_desc = {0};
 
@@ -2570,28 +2507,12 @@ static void init_hotkeys(obs_scene_t *scene, obs_sceneitem_t *item, const char *
 	dstr_copy(&hide_desc, obs->hotkeys.sceneitem_hide);
 	dstr_replace(&hide_desc, "%1", name);
 
-	/* Check if legacy keys exists, migrate if necessary */
-	dstr_printf(&legacy, "libobs.show_scene_item.%s", name);
-	hotkey_array = obs_data_get_array(hotkey_data, legacy.array);
-	if (hotkey_array) {
-		obs_data_set_array(hotkey_data, show.array, hotkey_array);
-		obs_data_array_release(hotkey_array);
-	}
-
-	dstr_printf(&legacy, "libobs.hide_scene_item.%s", name);
-	hotkey_array = obs_data_get_array(hotkey_data, legacy.array);
-	if (hotkey_array) {
-		obs_data_set_array(hotkey_data, hide.array, hotkey_array);
-		obs_data_array_release(hotkey_array);
-	}
-
 	item->toggle_visibility = obs_hotkey_pair_register_source(scene->source, show.array, show_desc.array,
 								  hide.array, hide_desc.array, hotkey_show_sceneitem,
 								  hotkey_hide_sceneitem, item, item);
 
 	dstr_free(&show);
 	dstr_free(&hide);
-	dstr_free(&legacy);
 	dstr_free(&show_desc);
 	dstr_free(&hide_desc);
 }
@@ -2607,8 +2528,7 @@ static void sceneitem_rename_hotkey(const obs_sceneitem_t *scene_item, const cha
 	dstr_replace(&show, "%1", new_name);
 	dstr_copy(&hide, "libobs.hide_scene_item.%1");
 	dstr_replace(&hide, "%1", new_name);
-	obs_hotkey_pair_set_names(scene_item->toggle_visibility, show.array,
-				  hide.array);
+	obs_hotkey_pair_set_names(scene_item->toggle_visibility, show.array, hide.array);
 	dstr_copy(&show_desc, obs->hotkeys.sceneitem_show);
 	dstr_replace(&show_desc, "%1", new_name);
 	dstr_copy(&hide_desc, obs->hotkeys.sceneitem_hide);
@@ -2751,11 +2671,9 @@ obs_sceneitem_t *obs_scene_add(obs_scene_t *scene, obs_source_t *source)
 	if (scene->source->on_backstage) {
 		source->on_backstage = scene->source->on_backstage;
 		obs_source_t *output_source = obs_get_output_source(0);
-		if (obs_source_get_type(output_source) ==
-		    OBS_SOURCE_TYPE_TRANSITION) {
+		if (obs_source_get_type(output_source) == OBS_SOURCE_TYPE_TRANSITION) {
 			obs_source_t *old = output_source;
-			output_source =
-				obs_transition_get_active_source(output_source);
+			output_source = obs_transition_get_active_source(output_source);
 			obs_source_release(old);
 		}
 
@@ -3232,8 +3150,7 @@ void obs_sceneitem_set_order_position(obs_sceneitem_t *item, int position)
 	obs_scene_release(scene);
 }
 
-void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order,
-			       int items_count)
+void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order, int items_count)
 {
 	if (!scene || items_count <= 1)
 		return;
@@ -3242,8 +3159,7 @@ void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order,
 	full_lock(scene);
 
 	//create array with items of this scene
-	obs_sceneitem_t **scene_items_cached =
-		bzalloc(items_count * sizeof(obs_sceneitem_t *));
+	obs_sceneitem_t **scene_items_cached = bzalloc(items_count * sizeof(obs_sceneitem_t *));
 
 	obs_sceneitem_t *current_item = scene->first_item;
 	scene_items_cached[0] = current_item;
@@ -3254,10 +3170,8 @@ void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order,
 		current_item = current_item->next;
 	}
 
-	if (scene_items_cached[items_count - 1] == NULL ||
-	    scene_items_cached[items_count - 1]->next != NULL) {
-		blog(LOG_ERROR,
-		     "obs_scene_set_items_order: Wrong items count in order array");
+	if (scene_items_cached[items_count - 1] == NULL || scene_items_cached[items_count - 1]->next != NULL) {
+		blog(LOG_ERROR, "obs_scene_set_items_order: Wrong items count in order array");
 	} else {
 		//deattach all items from scene
 		for (int i = 0; i < items_count; i++) {
@@ -3272,8 +3186,7 @@ void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order,
 				obs_sceneitem_t *item = scene_items_cached[j];
 				if (item != NULL) {
 					if (item->id == item_id) {
-						attach_sceneitem(scene, item,
-								 NULL);
+						attach_sceneitem(scene, item, NULL);
 						scene_items_cached[j] = NULL;
 						break;
 					}
@@ -3288,8 +3201,7 @@ void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order,
 	obs_scene_release(scene);
 }
 
-void obs_sceneitem_set_bounds_type(obs_sceneitem_t *item,
-				   enum obs_bounds_type type)
+void obs_sceneitem_set_bounds_type(obs_sceneitem_t *item, enum obs_bounds_type type)
 {
 	if (item) {
 		item->bounds_type = type;
@@ -3496,8 +3408,7 @@ static bool group_item_transition(obs_scene_t *scene, obs_sceneitem_t *item, voi
 	return true;
 }
 
-void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
-			      struct obs_video_info *canvas)
+void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canvas)
 {
 	item->canvas = canvas;
 }
@@ -3588,8 +3499,7 @@ bool obs_sceneitem_stream_visible(const obs_sceneitem_t *item)
 	return item ? item->stream_visible : false;
 }
 
-bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item,
-				      bool stream_visible)
+bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item, bool stream_visible)
 {
 	if (!item)
 		return false;
@@ -3610,8 +3520,7 @@ bool obs_sceneitem_recording_visible(const obs_sceneitem_t *item)
 	return item ? item->recording_visible : false;
 }
 
-bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item,
-					 bool recording_visible)
+bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item, bool recording_visible)
 {
 	if (!item)
 		return false;
@@ -3627,8 +3536,7 @@ bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item,
 	return true;
 }
 
-static bool sceneitems_match(obs_scene_t *scene, obs_sceneitem_t *const *items,
-			     size_t size, bool *order_matches)
+static bool sceneitems_match(obs_scene_t *scene, obs_sceneitem_t *const *items, size_t size, bool *order_matches)
 {
 	obs_sceneitem_t *item = scene->first_item;
 

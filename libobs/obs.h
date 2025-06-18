@@ -445,8 +445,7 @@ EXPORT int obs_reset_video(struct obs_video_info *ovi);
 
 EXPORT int obs_deactivate_video_info();
 
-EXPORT int obs_set_video_info(struct obs_video_info *canvas,
-			      struct obs_video_info *updated);
+EXPORT int obs_set_video_info(struct obs_video_info *canvas, struct obs_video_info *updated);
 
 /** Gets video info first/default */
 EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
@@ -454,18 +453,13 @@ EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
 EXPORT bool obs_get_video_info_current(struct obs_video_info *ovi);
 /** Gets video info by index*/
 EXPORT size_t obs_get_video_info_count();
-EXPORT bool obs_get_video_info_by_index(size_t index,
-					struct obs_video_info *ovi);
+EXPORT bool obs_get_video_info_by_index(size_t index, struct obs_video_info *ovi);
 /** Gets video info used by output*/
-EXPORT bool obs_get_video_info_for_output(obs_output_t *output,
-					  struct obs_video_info *ovi,
-					  size_t index);
+EXPORT bool obs_get_video_info_for_output(obs_output_t *output, struct obs_video_info *ovi, size_t index);
 /** Gets video info used by output*/
-EXPORT bool obs_get_video_info_for_encoder(obs_encoder_t *encoder,
-					   struct obs_video_info *ovi);
+EXPORT bool obs_get_video_info_for_encoder(obs_encoder_t *encoder, struct obs_video_info *ovi);
 
-EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
-					  struct obs_video_info *ovi);
+EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item, struct obs_video_info *ovi);
 
 /** Remove a video info */
 EXPORT int obs_remove_video_info(struct obs_video_info *ovi);
@@ -817,8 +811,7 @@ EXPORT proc_handler_t *obs_get_proc_handler(void);
 EXPORT void obs_render_main_texture(void);
 
 /** Renders the output texture for a specific output*/
-EXPORT void obs_render_texture(struct obs_video_info *ovi,
-			       enum obs_video_rendering_mode mode);
+EXPORT void obs_render_texture(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
 
 /** Renders the last main output texture ignoring background color */
 EXPORT void obs_render_main_texture_src_color_only(void);
@@ -854,12 +847,10 @@ EXPORT void obs_set_video_rendering_canvas(struct obs_video_info *ovi);
 EXPORT struct obs_video_info *obs_get_video_rendering_canvas(void);
 
 /** Set the replay buffer rendering mode*/
-EXPORT void obs_set_replay_buffer_rendering_mode(
-	enum obs_replay_buffer_rendering_mode mode);
+EXPORT void obs_set_replay_buffer_rendering_mode(enum obs_replay_buffer_rendering_mode mode);
 
 /** Get current replay buffer rendering mode*/
-EXPORT enum obs_replay_buffer_rendering_mode
-obs_get_replay_buffer_rendering_mode(void);
+EXPORT enum obs_replay_buffer_rendering_mode obs_get_replay_buffer_rendering_mode(void);
 
 /** Saves a source to settings data */
 EXPORT obs_data_t *obs_save_source(obs_source_t *source);
@@ -1008,12 +999,10 @@ EXPORT void obs_view_render(obs_view_t *view);
 EXPORT video_t *obs_view_add(obs_view_t *view);
 
 /** Adds a view to the main render loop */
-EXPORT video_t *obs_stream_view_add(obs_view_t *view,
-				    struct obs_video_info *ovi);
+EXPORT video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi);
 
 /** Adds a view to the main render loop */
-EXPORT video_t *obs_record_view_add(obs_view_t *view,
-				    struct obs_video_info *ovi);
+EXPORT video_t *obs_record_view_add(obs_view_t *view, struct obs_video_info *ovi);
 
 /** Adds a view to the main render loop, with custom video settings */
 EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
@@ -1043,14 +1032,11 @@ EXPORT obs_display_t *obs_display_create(const struct gs_init_data *graphics_dat
 EXPORT void obs_display_destroy(obs_display_t *display);
 
 /** Changes the size of this display */
-EXPORT void obs_display_resize(obs_display_t *display, uint32_t cx,
-			       uint32_t cy);
+EXPORT void obs_display_resize(obs_display_t *display, uint32_t cx, uint32_t cy);
 #ifdef __APPLE__
 /** Creates IOSurface (Apple shared memory) */
-EXPORT uint32_t obs_display_create_iosurface(obs_display_t *display,
-					     uint32_t width, uint32_t height);
+EXPORT uint32_t obs_display_create_iosurface(obs_display_t *display, uint32_t width, uint32_t height);
 #endif
-EXPORT void obs_display_resize(obs_display_t *display, uint32_t cx, uint32_t cy);
 
 /** Updates the color space of this display */
 EXPORT void obs_display_update_color_space(obs_display_t *display);
@@ -1689,12 +1675,10 @@ EXPORT bool obs_transition_audio_render(obs_source_t *transition, uint64_t *ts_o
 					obs_transition_audio_mix_callback_t mix_a_callback,
 					obs_transition_audio_mix_callback_t mix_b_callback);
 
-EXPORT bool obs_transition_audio_render_do(
-	obs_source_t *transition, uint64_t *ts_out,
-	struct audio_data_mixes_outputs *audio, uint32_t mixers,
-	size_t channels, size_t sample_rate,
-	obs_transition_audio_mix_callback_t mix_a_callback,
-	obs_transition_audio_mix_callback_t mix_b_callback);
+EXPORT bool obs_transition_audio_render_do(obs_source_t *transition, uint64_t *ts_out,
+					   struct audio_data_mixes_outputs *audio, uint32_t mixers, size_t channels,
+					   size_t sample_rate, obs_transition_audio_mix_callback_t mix_a_callback,
+					   obs_transition_audio_mix_callback_t mix_b_callback);
 
 /* swaps transition sources and textures as an optimization and to reduce
  * memory usage when switching between transitions */
@@ -1817,39 +1801,27 @@ EXPORT bool obs_sceneitem_selected(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_locked(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_set_locked(obs_sceneitem_t *item, bool lock);
 EXPORT bool obs_sceneitem_stream_visible(const obs_sceneitem_t *item);
-EXPORT bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item,
-					     bool stream_visible);
+EXPORT bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item, bool stream_visible);
 EXPORT bool obs_sceneitem_recording_visible(const obs_sceneitem_t *item);
-EXPORT bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item,
-						bool recording_visible);
+EXPORT bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item, bool recording_visible);
 
 /* Functions for getting/setting specific orientation of a scene item */
 EXPORT void obs_sceneitem_set_pos(obs_sceneitem_t *item, const struct vec2 *pos);
 EXPORT void obs_sceneitem_set_rot(obs_sceneitem_t *item, float rot_deg);
-EXPORT void obs_sceneitem_set_scale(obs_sceneitem_t *item,
-				    const struct vec2 *scale);
-EXPORT void obs_sceneitem_set_alignment(obs_sceneitem_t *item,
-					uint32_t alignment);
-EXPORT void obs_sceneitem_set_order(obs_sceneitem_t *item,
-				    enum obs_order_movement movement);
-EXPORT void obs_sceneitem_set_order_position(obs_sceneitem_t *item,
-					     int position);
-EXPORT void obs_scene_set_items_order(obs_scene_t *scene,
-				      int64_t *new_items_order,
-				      int items_count);
-EXPORT void obs_sceneitem_set_bounds_type(obs_sceneitem_t *item,
-					  enum obs_bounds_type type);
-EXPORT void obs_sceneitem_set_bounds_alignment(obs_sceneitem_t *item,
-					       uint32_t alignment);
+EXPORT void obs_sceneitem_set_scale(obs_sceneitem_t *item, const struct vec2 *scale);
+EXPORT void obs_sceneitem_set_alignment(obs_sceneitem_t *item, uint32_t alignment);
+EXPORT void obs_sceneitem_set_order(obs_sceneitem_t *item, enum obs_order_movement movement);
+EXPORT void obs_sceneitem_set_order_position(obs_sceneitem_t *item, int position);
+EXPORT void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order, int items_count);
+EXPORT void obs_sceneitem_set_bounds_type(obs_sceneitem_t *item, enum obs_bounds_type type);
+EXPORT void obs_sceneitem_set_bounds_alignment(obs_sceneitem_t *item, uint32_t alignment);
 EXPORT void obs_sceneitem_set_bounds_crop(obs_sceneitem_t *item, bool crop);
 EXPORT void obs_sceneitem_set_bounds(obs_sceneitem_t *item, const struct vec2 *bounds);
 
 EXPORT int64_t obs_sceneitem_get_id(const obs_sceneitem_t *item);
 
-EXPORT void obs_sceneitem_get_pos(const obs_sceneitem_t *item,
-				  struct vec2 *pos);
-EXPORT void obs_sceneitem_get_size(const obs_sceneitem_t *item,
-				   struct vec2 *size);
+EXPORT void obs_sceneitem_get_pos(const obs_sceneitem_t *item, struct vec2 *pos);
+EXPORT void obs_sceneitem_get_size(const obs_sceneitem_t *item, struct vec2 *size);
 EXPORT float obs_sceneitem_get_rot(const obs_sceneitem_t *item);
 EXPORT void obs_sceneitem_get_scale(const obs_sceneitem_t *item, struct vec2 *scale);
 EXPORT uint32_t obs_sceneitem_get_alignment(const obs_sceneitem_t *item);
@@ -1870,8 +1842,7 @@ EXPORT void obs_sceneitem_get_box_scale(const obs_sceneitem_t *item, struct vec2
 
 EXPORT bool obs_sceneitem_visible(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_set_visible(obs_sceneitem_t *item, bool visible);
-EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
-				     struct obs_video_info *canvas);
+EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canvas);
 EXPORT struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item);
 
 struct obs_sceneitem_crop {
@@ -2329,14 +2300,11 @@ EXPORT bool obs_weak_encoder_references_encoder(obs_weak_encoder_t *weak, obs_en
 EXPORT void obs_encoder_set_name(obs_encoder_t *encoder, const char *name);
 EXPORT const char *obs_encoder_get_name(const obs_encoder_t *encoder);
 
-EXPORT void obs_encoder_set_video_mix(obs_encoder_t *encoder,
-				      struct obs_core_video_mix *video);
+EXPORT void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix *video);
 
 EXPORT video_t *obs_video_mix_get_video(struct obs_core_video_mix *mix);
 
-EXPORT obs_core_video_mix_t *
-obs_video_mix_get(struct obs_video_info *ovi,
-		  enum obs_video_rendering_mode mode);
+EXPORT obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
 
 /** Returns the codec of an encoder by the id */
 EXPORT const char *obs_get_encoder_codec(const char *id);
@@ -2502,8 +2470,7 @@ EXPORT void *obs_encoder_create_rerouted(obs_encoder_t *encoder, const char *rer
 EXPORT bool obs_encoder_paused(const obs_encoder_t *output);
 
 /** Set encoder error to outputs */
-EXPORT void obs_outputs_set_last_error(obs_encoder_t *encoder,
-				       const char *error_text);
+EXPORT void obs_outputs_set_last_error(obs_encoder_t *encoder, const char *error_text);
 EXPORT const char *obs_encoder_get_last_error(obs_encoder_t *encoder);
 EXPORT void obs_encoder_set_last_error(obs_encoder_t *encoder, const char *message);
 
