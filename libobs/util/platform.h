@@ -166,8 +166,7 @@ EXPORT int os_safe_replace(const char *target_path, const char *from_path, const
 
 struct obs_video_info;
 typedef struct obs_video_info obs_video_info_t;
-EXPORT char *os_generate_formatted_filename(const char *extension, bool space,
-					    const char *format,
+EXPORT char *os_generate_formatted_filename(const char *extension, bool space, const char *format,
 					    obs_video_info_t *ovi);
 
 struct os_inhibit_info;

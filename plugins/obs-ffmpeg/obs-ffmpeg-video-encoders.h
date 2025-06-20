@@ -46,10 +46,8 @@ extern bool ffmpeg_video_encoder_init_codec(struct ffmpeg_video_encoder *enc);
 extern void ffmpeg_video_encoder_update(struct ffmpeg_video_encoder *enc, int bitrate, int keyint_sec,
 					const struct video_output_info *voi, const struct video_scale_info *info,
 					const char *ffmpeg_opts);
-extern bool ffmpeg_video_encode(struct ffmpeg_video_encoder *enc,
-				struct encoder_frame *frame,
-				struct encoder_packet *packet,
-				bool *received_packet);
+extern bool ffmpeg_video_encode(struct ffmpeg_video_encoder *enc, struct encoder_frame *frame,
+				struct encoder_packet *packet, bool *received_packet);
 extern bool check_driver_version(obs_encoder_t *encoder);
 extern bool ffmpeg_video_encode(struct ffmpeg_video_encoder *enc, struct encoder_frame *frame,
 				struct encoder_packet *packet, bool *received_packet);

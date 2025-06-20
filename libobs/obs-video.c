@@ -141,8 +141,7 @@ static inline bool can_reuse_mix_texture(const struct obs_core_video_mix *mix, s
 			continue;
 		if (other->render_space != mix->render_space)
 			continue;
-		if (other->ovi->base_width != mix->ovi->base_width ||
-		    other->ovi->base_height != mix->ovi->base_height)
+		if (other->ovi->base_width != mix->ovi->base_width || other->ovi->base_height != mix->ovi->base_height)
 			continue;
 		if (!other->texture_rendered)
 			continue;
@@ -184,10 +183,8 @@ static inline void render_main_texture(struct obs_core_video_mix *video)
 	pthread_mutex_lock(&obs->data.draw_callbacks_mutex);
 
 	for (size_t i = obs->data.draw_callbacks.num; i > 0; i--) {
-		struct draw_callback *const callback =
-			obs->data.draw_callbacks.array + (i - 1);
-		callback->draw(callback->param, video->ovi->base_width,
-			       video->ovi->base_height);
+		struct draw_callback *const callback = obs->data.draw_callbacks.array + (i - 1);
+		callback->draw(callback->param, video->ovi->base_width, video->ovi->base_height);
 	}
 
 	pthread_mutex_unlock(&obs->data.draw_callbacks_mutex);
@@ -222,8 +219,7 @@ static inline gs_effect_t *get_scale_effect_internal(struct obs_core_video_mix *
 	/* if the dimension is under half the size of the original image,
 	 * bicubic/lanczos can't sample enough pixels to create an accurate
 	 * image, so use the bilinear low resolution effect instead */
-	if (info->width < (mix->ovi->base_width / 2) &&
-	    info->height < (mix->ovi->base_height / 2)) {
+	if (info->width < (mix->ovi->base_width / 2) && info->height < (mix->ovi->base_height / 2)) {
 		return video->bilinear_lowres_effect;
 	}
 
@@ -241,8 +237,7 @@ static inline gs_effect_t *get_scale_effect_internal(struct obs_core_video_mix *
 	return video->bicubic_effect;
 }
 
-static inline bool resolution_close(struct obs_core_video_mix *video,
-				    uint32_t width, uint32_t height)
+static inline bool resolution_close(struct obs_core_video_mix *video, uint32_t width, uint32_t height)
 {
 	long width_cmp = (long)video->ovi->base_width - (long)width;
 	long height_cmp = (long)video->ovi->base_height - (long)height;
@@ -274,8 +269,7 @@ static gs_texture_t *render_output_texture(struct obs_core_video_mix *mix)
 	uint32_t width = gs_texture_get_width(target);
 	uint32_t height = gs_texture_get_height(target);
 
-	if ((width == mix->ovi->base_width) &&
-	    (height == mix->ovi->base_height))
+	if ((width == mix->ovi->base_width) && (height == mix->ovi->base_height))
 		return texture;
 
 	profile_start(render_output_texture_name);
@@ -293,15 +287,13 @@ static gs_texture_t *render_output_texture(struct obs_core_video_mix *mix)
 
 	if (bres) {
 		struct vec2 base;
-		vec2_set(&base, (float)mix->ovi->base_width,
-			 (float)mix->ovi->base_height);
+		vec2_set(&base, (float)mix->ovi->base_width, (float)mix->ovi->base_height);
 		gs_effect_set_vec2(bres, &base);
 	}
 
 	if (bres_i) {
 		struct vec2 base_i;
-		vec2_set(&base_i, 1.0f / (float)mix->ovi->base_width,
-			 1.0f / (float)mix->ovi->base_height);
+		vec2_set(&base_i, 1.0f / (float)mix->ovi->base_width, 1.0f / (float)mix->ovi->base_height);
 		gs_effect_set_vec2(bres_i, &base_i);
 	}
 
@@ -875,8 +867,7 @@ static const char *output_frame_gs_flush_name = "gs_flush";
 static const char *output_frame_output_video_data_name = "output_video_data";
 static inline void output_frame(struct obs_core_video_mix *video)
 {
-	if (video->rendering_mode == OBS_MAIN_VIDEO_RENDERING ||
-	    obs_get_multiple_rendering())
+	if (video->rendering_mode == OBS_MAIN_VIDEO_RENDERING || obs_get_multiple_rendering())
 		obs_set_video_rendering_mode(video->rendering_mode);
 	else
 		return;
@@ -1113,10 +1104,7 @@ static inline bool stop_requested(void)
 bool obs_graphics_thread_loop(struct obs_graphics_context *context)
 {
 	/* defer loop break to clean up sources */
-	const bool stop_requested =
-		!obs->video.main_mix
-			? true
-			: video_output_stopped(obs->video.main_mix->video);
+	const bool stop_requested = !obs->video.main_mix ? true : video_output_stopped(obs->video.main_mix->video);
 
 	uint64_t frame_start = os_gettime_ns();
 	uint64_t frame_time_ns;

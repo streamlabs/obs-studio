@@ -582,8 +582,7 @@ extern "C" EXPORT void winrt_capture_thread_start()
 		try {
 			winrt_capture_device_loss_rebuild(device, capture);
 		} catch (...) {
-			blog(LOG_ERROR, "Failed to rebuild capture device",
-			     winrt::to_hresult().value);
+			blog(LOG_ERROR, "Failed to rebuild capture device", winrt::to_hresult().value);
 		}
 		capture = capture->next;
 	}

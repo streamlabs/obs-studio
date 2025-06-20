@@ -229,10 +229,8 @@ static void on_init_error(void *data, int ret)
 
 #ifdef _WIN32
 	if (!check_driver_version(enc->ffve.encoder)) {
-		blog(LOG_ERROR,
-		     "Driver does not support the required nvenc API version. Required: 11.1.");
-		blog(LOG_ERROR,
-		     "The minimum required Nvidia driver for nvenc is 471.41 or newer.");
+		blog(LOG_ERROR, "Driver does not support the required nvenc API version. Required: 11.1.");
+		blog(LOG_ERROR, "The minimum required Nvidia driver for nvenc is 471.41 or newer.");
 
 		return;
 	}

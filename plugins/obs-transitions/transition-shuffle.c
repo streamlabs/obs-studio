@@ -67,8 +67,7 @@ void shuffle_destroy(void *data)
 	bfree(pm);
 }
 
-static void shuffle_callback(void *data, gs_texture_t *a, gs_texture_t *b,
-			     float t, uint32_t cx, uint32_t cy)
+static void shuffle_callback(void *data, gs_texture_t *a, gs_texture_t *b, float t, uint32_t cx, uint32_t cy)
 {
 	struct shuffle_info *pm = data;
 
@@ -105,29 +104,21 @@ static float mix_b(void *data, float t)
 	return cubic_ease_in_out(t);
 }
 
-static bool shuffle_audio_render(void *data, uint64_t *ts_out,
-				 struct obs_source_audio_mix *audio,
-				 uint32_t mixers, size_t channels,
-				 size_t sample_rate)
+static bool shuffle_audio_render(void *data, uint64_t *ts_out, struct obs_source_audio_mix *audio, uint32_t mixers,
+				 size_t channels, size_t sample_rate)
 {
 	struct shuffle_info *pm = data;
-	return obs_transition_audio_render(pm->source, ts_out, audio, mixers,
-					   channels, sample_rate, mix_a, mix_b);
+	return obs_transition_audio_render(pm->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
-static bool shuffle_audio_render_do(void *data, uint64_t *ts_out,
-				    struct audio_data_mixes_outputs *audio,
-				    uint32_t mixers, size_t channels,
-				    size_t sample_rate)
+static bool shuffle_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio,
+				    uint32_t mixers, size_t channels, size_t sample_rate)
 {
 	struct shuffle_info *pm = data;
-	return obs_transition_audio_render_do(pm->source, ts_out, audio, mixers,
-					      channels, sample_rate, mix_a,
-					      mix_b);
+	return obs_transition_audio_render_do(pm->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-static enum gs_color_space
-shuffle_video_get_color_space(void *data, size_t count,
-			      const enum gs_color_space *preferred_spaces)
+static enum gs_color_space shuffle_video_get_color_space(void *data, size_t count,
+							 const enum gs_color_space *preferred_spaces)
 {
 	UNUSED_PARAMETER(count);
 	UNUSED_PARAMETER(preferred_spaces);

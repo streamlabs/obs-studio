@@ -1143,8 +1143,7 @@ void reset_win32_symbol_paths(void)
 		funcs_initialized = true;
 
 		wchar_t *path;
-		if (SHGetKnownFolderPath(&FOLDERID_SystemX86, 0, NULL, &path) !=
-		    S_OK)
+		if (SHGetKnownFolderPath(&FOLDERID_SystemX86, 0, NULL, &path) != S_OK)
 			return;
 
 		SetDllDirectory(path);

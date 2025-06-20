@@ -538,16 +538,14 @@ static inline void set_json_obj(json_t *json, const char *name, obs_data_item_t 
 	obs_data_release(obj);
 }
 
-static inline void set_full_json_obj(json_t *json, const char *name,
-				     obs_data_item_t *item)
+static inline void set_full_json_obj(json_t *json, const char *name, obs_data_item_t *item)
 {
 	obs_data_t *obj = obs_data_item_get_obj(item);
 	json_object_set_new(json, name, obs_data_to_full_json(obj));
 	obs_data_release(obj);
 }
 
-static inline void set_json_array(json_t *json, const char *name,
-				  obs_data_item_t *item, bool with_defaults)
+static inline void set_json_array(json_t *json, const char *name, obs_data_item_t *item, bool with_defaults)
 {
 	json_t *jarray = json_array();
 	obs_data_array_t *array = obs_data_item_get_array(item);
@@ -564,8 +562,7 @@ static inline void set_json_array(json_t *json, const char *name,
 	obs_data_array_release(array);
 }
 
-static inline void set_full_json_array(json_t *json, const char *name,
-				       obs_data_item_t *item)
+static inline void set_full_json_array(json_t *json, const char *name, obs_data_item_t *item)
 {
 	json_t *jarray = json_array();
 	obs_data_array_t *array = obs_data_item_get_array(item);

@@ -60,8 +60,7 @@ struct mp_file_info {
 	bool have_video;
 };
 
-extern media_playback_t *
-media_playback_create(const struct mp_media_info *info);
+extern media_playback_t *media_playback_create(const struct mp_media_info *info);
 extern void media_playback_destroy(media_playback_t *mp);
 
 extern void media_playback_play(media_playback_t *mp, bool looping, bool reconnecting);

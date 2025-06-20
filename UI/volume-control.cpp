@@ -1423,8 +1423,7 @@ void VolumeSlider::paintEvent(QPaintEvent *event)
 		for (int db = -10; db >= -90; db -= 10) {
 			float tickValue = fader_db_to_def(db);
 
-			float xPos = groove.left() + (tickValue * sliderWidth) +
-				     (handle.width() / 2);
+			float xPos = groove.left() + (tickValue * sliderWidth) + (handle.width() / 2);
 			painter.fillRect(xPos, yPos, 1, tickLength, tickColor);
 		}
 	}
@@ -1440,9 +1439,8 @@ void VolumeSlider::paintEvent(QPaintEvent *event)
 		for (int db = -10; db >= -96; db -= 10) {
 			float tickValue = fader_db_to_def(db);
 
-			float yPos = groove.height() + groove.top() -
-				     (tickValue * sliderHeight) -
-				     (handle.height() / 2);
+			float yPos =
+				groove.height() + groove.top() - (tickValue * sliderHeight) - (handle.height() / 2);
 			painter.fillRect(xPos, yPos, tickLength, 1, tickColor);
 		}
 	}

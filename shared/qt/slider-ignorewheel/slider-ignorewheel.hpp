@@ -32,4 +32,3 @@ protected:
 private:
 	bool dragging = false;
 };
-

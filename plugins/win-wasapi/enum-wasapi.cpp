@@ -35,8 +35,7 @@ string GetDeviceName(IMMDevice *device)
 	return device_name;
 }
 
-static void GetWASAPIAudioDevices_(vector<AudioDeviceInfo> &devices, bool input,
-				   string searchbyName)
+static void GetWASAPIAudioDevices_(vector<AudioDeviceInfo> &devices, bool input, string searchbyName)
 {
 	ComPtr<IMMDeviceEnumerator> enumerator;
 	ComPtr<IMMDeviceCollection> collection;
@@ -88,8 +87,7 @@ static void GetWASAPIAudioDevices_(vector<AudioDeviceInfo> &devices, bool input,
 	}
 }
 
-void GetWASAPIAudioDevices(vector<AudioDeviceInfo> &devices, bool input,
-			   const string &searchbyName)
+void GetWASAPIAudioDevices(vector<AudioDeviceInfo> &devices, bool input, const string &searchbyName)
 {
 	devices.clear();
 

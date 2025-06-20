@@ -120,20 +120,15 @@ static bool fade_audio_render(void *data, uint64_t *ts_out, struct obs_source_au
 	return obs_transition_audio_render(fade->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-static bool fade_audio_render_do(void *data, uint64_t *ts_out,
-				 struct audio_data_mixes_outputs *audio,
-				 uint32_t mixers, size_t channels,
-				 size_t sample_rate)
+static bool fade_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio, uint32_t mixers,
+				 size_t channels, size_t sample_rate)
 {
 	struct fade_info *fade = data;
-	return obs_transition_audio_render_do(fade->source, ts_out, audio,
-					      mixers, channels, sample_rate,
-					      mix_a, mix_b);
+	return obs_transition_audio_render_do(fade->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-static enum gs_color_space
-fade_video_get_color_space(void *data, size_t count,
-			   const enum gs_color_space *preferred_spaces)
+static enum gs_color_space fade_video_get_color_space(void *data, size_t count,
+						      const enum gs_color_space *preferred_spaces)
 {
 	struct fade_info *const fade = data;
 	const enum gs_color_space transition_space = obs_transition_video_get_color_space(fade->source);

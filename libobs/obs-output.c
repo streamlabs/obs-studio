@@ -135,14 +135,13 @@ const char *obs_output_get_display_name(const char *id)
 	return (info != NULL) ? info->get_name(info->type_data) : NULL;
 }
 
-static const char *output_signals[] = {
-	"void start(ptr output)",         "void stop(ptr output, int code)",
-	"void pause(ptr output)",         "void unpause(ptr output)",
-	"void starting(ptr output)",      "void stopping(ptr output)",
-	"void activate(ptr output)",      "void deactivate(ptr output)",
-	"void reconnect(ptr output)",     "void reconnect_success(ptr output)",
-	"void writing(ptr output)",       "void wrote(ptr output)",
-	"void writing_error(ptr output)", NULL};
+static const char *output_signals[] = {"void start(ptr output)",         "void stop(ptr output, int code)",
+				       "void pause(ptr output)",         "void unpause(ptr output)",
+				       "void starting(ptr output)",      "void stopping(ptr output)",
+				       "void activate(ptr output)",      "void deactivate(ptr output)",
+				       "void reconnect(ptr output)",     "void reconnect_success(ptr output)",
+				       "void writing(ptr output)",       "void wrote(ptr output)",
+				       "void writing_error(ptr output)", NULL};
 
 static bool init_output_handlers(struct obs_output *output, const char *name, obs_data_t *settings,
 				 obs_data_t *hotkey_data)
@@ -277,8 +276,7 @@ void obs_output_destroy(obs_output_t *output)
 			// the `end_data_capture_thread` will finish.
 			// Otherwise we might run into a data race
 			if (data_capture_ending(output))
-				pthread_join(output->end_data_capture_thread,
-					     NULL);
+				pthread_join(output->end_data_capture_thread, NULL);
 		}
 
 		free_packets(output);
@@ -2528,14 +2526,12 @@ static inline void ensure_force_initialize_encoder(obs_encoder_t *encoder)
 	pthread_mutex_unlock(&encoder->init_mutex);
 }
 
-static inline bool initialize_audio_encoders(obs_output_t *output,
-					     bool force_encoder)
+static inline bool initialize_audio_encoders(obs_output_t *output, bool force_encoder)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
 
 		if (output->audio_encoders[i] && force_encoder)
-			ensure_force_initialize_encoder(
-				output->video_encoders[i]);
+			ensure_force_initialize_encoder(output->video_encoders[i]);
 
 		obs_encoder_t *audio = output->audio_encoders[i];
 
@@ -2636,9 +2632,8 @@ bool obs_output_initialize_encoders(obs_output_t *output, uint32_t flags)
 
 	if (flag_video(output) && !initialize_video_encoders(output))
 		return false;
-	if (flag_audio(output) &&
-	    !initialize_audio_encoders(output,
-				       false)) // TODO: remove boolean parameter
+	if (flag_audio(output) && !initialize_audio_encoders(output,
+							     false)) // TODO: remove boolean parameter
 		return false;
 
 	return true;

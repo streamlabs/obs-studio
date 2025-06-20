@@ -773,14 +773,10 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 	obs_volmeter_detach_source(volmeter);
 
 	sh = obs_source_get_signal_handler(source);
-	signal_handler_connect(sh, "volume", volmeter_source_volume_changed,
-			       volmeter);
-	signal_handler_connect(sh, "destroy", volmeter_source_destroyed,
-			       volmeter);
-	signal_handler_connect(sh, "remove", volmeter_source_destroyed,
-			       volmeter);
-	obs_source_add_audio_capture_callback(
-		source, volmeter_source_data_received, volmeter);
+	signal_handler_connect(sh, "volume", volmeter_source_volume_changed, volmeter);
+	signal_handler_connect(sh, "destroy", volmeter_source_destroyed, volmeter);
+	signal_handler_connect(sh, "remove", volmeter_source_destroyed, volmeter);
+	obs_source_add_audio_capture_callback(source, volmeter_source_data_received, volmeter);
 	vol = obs_source_get_volume(source);
 
 	pthread_mutex_lock(&volmeter->mutex);
@@ -810,14 +806,10 @@ void obs_volmeter_detach_source(obs_volmeter_t *volmeter)
 		return;
 
 	sh = obs_source_get_signal_handler(source);
-	signal_handler_disconnect(sh, "volume", volmeter_source_volume_changed,
-				  volmeter);
-	signal_handler_disconnect(sh, "destroy", volmeter_source_destroyed,
-				  volmeter);
-	signal_handler_disconnect(sh, "remove", volmeter_source_destroyed,
-				  volmeter);
-	obs_source_remove_audio_capture_callback(
-		source, volmeter_source_data_received, volmeter);
+	signal_handler_disconnect(sh, "volume", volmeter_source_volume_changed, volmeter);
+	signal_handler_disconnect(sh, "destroy", volmeter_source_destroyed, volmeter);
+	signal_handler_disconnect(sh, "remove", volmeter_source_destroyed, volmeter);
+	obs_source_remove_audio_capture_callback(source, volmeter_source_data_received, volmeter);
 }
 
 void obs_volmeter_set_peak_meter_type(obs_volmeter_t *volmeter, enum obs_peak_meter_type peak_meter_type)

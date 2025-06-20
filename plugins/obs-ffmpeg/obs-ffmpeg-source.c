@@ -104,8 +104,7 @@ static bool is_local_file_modified(obs_properties_t *props, obs_property_t *prop
 	obs_property_t *seekable = obs_properties_get(props, "seekable");
 	obs_property_t *speed = obs_properties_get(props, "speed_percent");
 	obs_property_t *caching = obs_properties_get(props, "caching");
-	obs_property_t *reconnect_delay_sec =
-		obs_properties_get(props, "reconnect_delay_sec");
+	obs_property_t *reconnect_delay_sec = obs_properties_get(props, "reconnect_delay_sec");
 	obs_property_set_visible(input, !enabled);
 	obs_property_set_visible(input_format, !enabled);
 	obs_property_set_visible(buffering, !enabled);
@@ -217,14 +216,10 @@ static obs_properties_t *ffmpeg_source_getproperties(void *data)
 
 	const char *text = obs_module_text("EnableCaching");
 	UNUSED_PARAMETER(text);
-	obs_properties_add_bool(props, "caching",
-				obs_module_text("EnableCaching"));
+	obs_properties_add_bool(props, "caching", obs_module_text("EnableCaching"));
 
-	prop = obs_properties_add_text(props, "ffmpeg_options",
-				       obs_module_text("FFmpegOpts"),
-				       OBS_TEXT_DEFAULT);
-	obs_property_set_long_description(
-		prop, obs_module_text("FFmpegOpts.ToolTip.Source"));
+	prop = obs_properties_add_text(props, "ffmpeg_options", obs_module_text("FFmpegOpts"), OBS_TEXT_DEFAULT);
+	obs_property_set_long_description(prop, obs_module_text("FFmpegOpts.ToolTip.Source"));
 
 	return props;
 }
@@ -247,14 +242,10 @@ static void dump_source_info(struct ffmpeg_source *s, const char *input, const c
 		"\tfull_decode:             %s\n"
 		"\tenable_caching:          %s\n"
 		"\tffmpeg_options:          %s",
-		input ? input : "(null)",
-		input_format ? input_format : "(null)", s->speed_percent,
-		s->is_looping ? "yes" : "no", s->is_linear_alpha ? "yes" : "no",
-		s->is_hw_decoding ? "yes" : "no",
-		s->is_clear_on_media_end ? "yes" : "no",
-		s->restart_on_activate ? "yes" : "no",
-		s->close_when_inactive ? "yes" : "no",
-		s->full_decode ? "yes" : "no", s->enable_caching ? "yes" : "no",
+		input ? input : "(null)", input_format ? input_format : "(null)", s->speed_percent,
+		s->is_looping ? "yes" : "no", s->is_linear_alpha ? "yes" : "no", s->is_hw_decoding ? "yes" : "no",
+		s->is_clear_on_media_end ? "yes" : "no", s->restart_on_activate ? "yes" : "no",
+		s->close_when_inactive ? "yes" : "no", s->full_decode ? "yes" : "no", s->enable_caching ? "yes" : "no",
 		s->ffmpeg_options);
 }
 
@@ -312,8 +303,7 @@ static void media_stopped(void *opaque)
 static void media_ready(void *opaque)
 {
 	struct ffmpeg_source *s = opaque;
-	blog(LOG_DEBUG, "[MP4MP3]: media_ready %d %d",
-	     media_playback_has_video(s->media) ? 1 : 0,
+	blog(LOG_DEBUG, "[MP4MP3]: media_ready %d %d", media_playback_has_video(s->media) ? 1 : 0,
 	     media_playback_has_audio(s->media) ? 1 : 0);
 	if (!media_playback_has_video(s->media)) {
 		obs_source_reset_video(s->source);
@@ -452,8 +442,7 @@ static void ffmpeg_source_update(void *data, obs_data_t *settings)
 		input = obs_data_get_string(settings, "local_file");
 		input_format = NULL;
 		is_looping = obs_data_get_bool(settings, "looping");
-		s->close_when_inactive =
-			obs_data_get_bool(settings, "close_when_inactive");
+		s->close_when_inactive = obs_data_get_bool(settings, "close_when_inactive");
 		s->enable_caching = obs_data_get_bool(settings, "caching");
 
 		if (s->input && !should_restart_media)
@@ -691,16 +680,11 @@ static void *ffmpeg_source_create(obs_data_t *settings, obs_source_t *source)
 
 	proc_handler_t *ph = obs_source_get_proc_handler(source);
 	proc_handler_add(ph, "void restart()", restart_proc, s);
-	proc_handler_add(ph, "void preload_first_frame()",
-			 preload_first_frame_proc, s);
-	proc_handler_add(ph, "void get_duration(out int duration)",
-			 get_duration, s);
-	proc_handler_add(ph, "void get_nb_frames(out int num_frames)",
-			 get_nb_frames, s);
-	proc_handler_add(ph, "void get_file_info(out int num_frames)",
-			 get_file_info, s);
-	proc_handler_add(ph, "void get_playing(out bool active)", get_playing,
-			 s);
+	proc_handler_add(ph, "void preload_first_frame()", preload_first_frame_proc, s);
+	proc_handler_add(ph, "void get_duration(out int duration)", get_duration, s);
+	proc_handler_add(ph, "void get_nb_frames(out int num_frames)", get_nb_frames, s);
+	proc_handler_add(ph, "void get_file_info(out int num_frames)", get_file_info, s);
+	proc_handler_add(ph, "void get_playing(out bool active)", get_playing, s);
 
 	ffmpeg_source_update(s, settings);
 	return s;

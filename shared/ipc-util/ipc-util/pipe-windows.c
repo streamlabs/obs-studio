@@ -205,8 +205,7 @@ static inline bool ipc_pipe_internal_open_pipe(ipc_pipe_client_t *pipe, const ch
 
 /* ------------------------------------------------------------------------- */
 
-bool ipc_pipe_server_start(ipc_pipe_server_t *pipe, const char *name,
-			   ipc_pipe_read_t read_callback, void *param,
+bool ipc_pipe_server_start(ipc_pipe_server_t *pipe, const char *name, ipc_pipe_read_t read_callback, void *param,
 			   DWORD *err)
 {
 	pipe->read_callback = read_callback;

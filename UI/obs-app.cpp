@@ -1621,8 +1621,7 @@ string GenerateSpecifiedFilename(const char *extension, bool noSpace, const char
 {
 	struct obs_video_info ovi;
 	obs_get_video_info(&ovi);
-	BPtr<char> filename =
-		os_generate_formatted_filename(extension, !noSpace, format, &ovi);
+	BPtr<char> filename = os_generate_formatted_filename(extension, !noSpace, format, &ovi);
 	return string(filename);
 }
 

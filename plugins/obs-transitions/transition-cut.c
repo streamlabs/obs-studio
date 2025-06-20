@@ -54,20 +54,15 @@ static bool cut_audio_render(void *data, uint64_t *ts_out, struct obs_source_aud
 	return obs_transition_audio_render(cut->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-static bool cut_audio_render_do(void *data, uint64_t *ts_out,
-				struct audio_data_mixes_outputs *audio,
-				uint32_t mixers, size_t channels,
-				size_t sample_rate)
+static bool cut_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio, uint32_t mixers,
+				size_t channels, size_t sample_rate)
 {
 	struct cut_info *cut = data;
-	return obs_transition_audio_render_do(cut->source, ts_out, audio,
-					      mixers, channels, sample_rate,
-					      mix_a, mix_b);
+	return obs_transition_audio_render_do(cut->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-static enum gs_color_space
-cut_video_get_color_space(void *data, size_t count,
-			  const enum gs_color_space *preferred_spaces)
+static enum gs_color_space cut_video_get_color_space(void *data, size_t count,
+						     const enum gs_color_space *preferred_spaces)
 {
 	UNUSED_PARAMETER(count);
 	UNUSED_PARAMETER(preferred_spaces);

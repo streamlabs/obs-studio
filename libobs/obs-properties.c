@@ -632,17 +632,14 @@ obs_property_t *obs_properties_add_color(obs_properties_t *props, const char *na
 	return new_prop(props, name, desc, OBS_PROPERTY_COLOR);
 }
 
-obs_property_t *obs_properties_add_capture(obs_properties_t *props,
-					   const char *name, const char *desc)
+obs_property_t *obs_properties_add_capture(obs_properties_t *props, const char *name, const char *desc)
 {
 	if (!props || has_prop(props, name))
 		return NULL;
 	return new_prop(props, name, desc, OBS_PROPERTY_CAPTURE);
 }
 
-obs_property_t *obs_properties_add_color_alpha(obs_properties_t *props,
-					       const char *name,
-					       const char *desc)
+obs_property_t *obs_properties_add_color_alpha(obs_properties_t *props, const char *name, const char *desc)
 {
 	if (!props || has_prop(props, name))
 		return NULL;

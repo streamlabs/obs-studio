@@ -108,13 +108,11 @@ static void *ffmpeg_mux_create(obs_data_t *settings, obs_output_t *output)
 		stream->is_network = true;
 
 	proc_handler_t *ph = obs_output_get_proc_handler(output);
-	proc_handler_add(ph, "void get_last_file(out string path)",
-			 get_last_file, stream);
+	proc_handler_add(ph, "void get_last_file(out string path)", get_last_file, stream);
 	signal_handler_t *sh = obs_output_get_signal_handler(output);
 	signal_handler_add(sh, "void file_changed(string next_file)");
 
-	proc_handler_add(ph, "void split_file(out bool split_file_enabled)",
-			 split_file_proc, stream);
+	proc_handler_add(ph, "void split_file(out bool split_file_enabled)", split_file_proc, stream);
 
 	UNUSED_PARAMETER(settings);
 	return stream;
@@ -974,8 +972,7 @@ static void *replay_buffer_create(obs_data_t *settings, obs_output_t *output)
 
 	proc_handler_t *ph = obs_output_get_proc_handler(output);
 	proc_handler_add(ph, "void save()", save_replay_proc, stream);
-	proc_handler_add(ph, "void get_last_file(out string path)",
-			 get_last_file, stream);
+	proc_handler_add(ph, "void get_last_file(out string path)", get_last_file, stream);
 
 	signal_handler_t *sh = obs_output_get_signal_handler(output);
 	signal_handler_add(sh, "void saved()");
@@ -1067,16 +1064,14 @@ static inline void replay_buffer_purge(struct ffmpeg_muxer *stream, struct encod
 		return;
 
 	if (stream->max_size) {
-		while ((stream->cur_size + (int64_t)pkt->size) >
-		       stream->max_size)
+		while ((stream->cur_size + (int64_t)pkt->size) > stream->max_size)
 			purge(stream);
 	}
 
 	if (!stream->packets.size || stream->keyframes <= 2)
 		return;
 
-	while ((pkt->dts_usec - stream->cur_time) > stream->max_time &&
-	       stream->cur_size)
+	while ((pkt->dts_usec - stream->cur_time) > stream->max_time && stream->cur_size)
 		purge(stream);
 }
 
@@ -1127,8 +1122,7 @@ static void *replay_buffer_mux_thread(void *data)
 	}
 
 	if (!send_headers(stream)) {
-		warn("Could not write headers for file '%s'",
-		     stream->path.array);
+		warn("Could not write headers for file '%s'", stream->path.array);
 		obs_output_signal_write(stream->output, "writing_error");
 		hasFailed = true;
 		error = true;
@@ -1141,8 +1135,7 @@ static void *replay_buffer_mux_thread(void *data)
 		if (!hasFailed) {
 			hasFailed = !write_packet(stream, pkt);
 			if (hasFailed) {
-				warn("Could not write packet for file '%s'",
-				     stream->path.array);
+				warn("Could not write packet for file '%s'", stream->path.array);
 				error = true;
 				goto error;
 			}

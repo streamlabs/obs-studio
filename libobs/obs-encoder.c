@@ -46,8 +46,7 @@ const char *obs_encoder_get_display_name(const char *id)
 
 static bool init_encoder(struct obs_encoder *encoder, const char *name, obs_data_t *settings, obs_data_t *hotkey_data)
 {
-	blog(LOG_INFO, "init_encoder - begin '%s' (%s) (%p)", name,
-	     obs_encoder_get_id(encoder), encoder);
+	blog(LOG_INFO, "init_encoder - begin '%s' (%s) (%p)", name, obs_encoder_get_id(encoder), encoder);
 
 	pthread_mutex_init_value(&encoder->init_mutex);
 	pthread_mutex_init_value(&encoder->callbacks_mutex);
@@ -75,8 +74,7 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name, obs_data
 		encoder->orig_info.get_defaults2(encoder->context.settings, encoder->orig_info.type_data);
 	}
 
-	blog(LOG_INFO, "init_encoder - end '%s' (%s) (%p)", name,
-	     obs_encoder_get_id(encoder), encoder);
+	blog(LOG_INFO, "init_encoder - end '%s' (%s) (%p)", name, obs_encoder_get_id(encoder), encoder);
 
 	return true;
 }
@@ -194,8 +192,7 @@ static inline bool gpu_encode_available(const struct obs_encoder *encoder)
 	if (!video)
 		return false;
 	return (encoder->info.caps & OBS_ENCODER_CAP_PASS_TEXTURE) != 0 &&
-	       (encoder->video->using_p010_tex ||
-		encoder->video->using_nv12_tex);
+	       (encoder->video->using_p010_tex || encoder->video->using_nv12_tex);
 }
 
 /**
@@ -250,8 +247,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		return;
 
 	if (!current_mix->ovi) {
-		blog(LOG_ERROR,
-		     "maybe_set_up_gpu_rescale - no obs_video_info for current mix");
+		blog(LOG_ERROR, "maybe_set_up_gpu_rescale - no obs_video_info for current mix");
 		return;
 	}
 
@@ -309,8 +305,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 
 static void add_connection(struct obs_encoder *encoder)
 {
-	blog(LOG_INFO, "add_connection '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
+	blog(LOG_INFO, "add_connection '%s' (%s) (%p)", obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 	     encoder);
 	if (encoder->info.type == OBS_ENCODER_AUDIO) {
 		struct audio_convert_info audio_info = {0};
@@ -343,8 +338,7 @@ static void add_connection(struct obs_encoder *encoder)
 void obs_encoder_group_actually_destroy(obs_encoder_group_t *group);
 static void remove_connection(struct obs_encoder *encoder, bool shutdown)
 {
-	blog(LOG_INFO, "remove_connection - shutdown: %d '%s' (%s) (%p)",
-	     shutdown, obs_encoder_get_name(encoder),
+	blog(LOG_INFO, "remove_connection - shutdown: %d '%s' (%s) (%p)", shutdown, obs_encoder_get_name(encoder),
 	     obs_encoder_get_id(encoder), encoder);
 
 	if (encoder->info.type == OBS_ENCODER_AUDIO) {
@@ -388,9 +382,8 @@ static inline void free_audio_buffers(struct obs_encoder *encoder)
 void obs_encoder_destroy(obs_encoder_t *encoder)
 {
 	if (encoder) {
-		blog(LOG_INFO, "obs_encoder_destroy '%s' (%s) (%p)",
-		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-		     encoder);
+		blog(LOG_INFO, "obs_encoder_destroy '%s' (%s) (%p)", obs_encoder_get_name(encoder),
+		     obs_encoder_get_id(encoder), encoder);
 		pthread_mutex_lock(&encoder->outputs_mutex);
 		for (size_t i = 0; i < encoder->outputs.num; i++) {
 			struct obs_output *output = encoder->outputs.array[i];
@@ -592,9 +585,8 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 	if (encoder->initialized)
 		return true;
 
-	blog(LOG_INFO, "obs_encoder_initialize_internal '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-	     encoder);
+	blog(LOG_INFO, "obs_encoder_initialize_internal '%s' (%s) (%p)", obs_encoder_get_name(encoder),
+	     obs_encoder_get_id(encoder), encoder);
 
 	obs_encoder_shutdown(encoder);
 
@@ -612,8 +604,7 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 		encoder->info = encoder->orig_info;
 		if (!encoder->video)
 			encoder->video = obs->video.main_mix;
-		encoder->context.data = encoder->orig_info.create(
-			encoder->context.settings, encoder);
+		encoder->context.data = encoder->orig_info.create(encoder->context.settings, encoder);
 		can_reroute = false;
 
 		pthread_mutex_unlock(&obs->video.mixes_mutex);
@@ -690,9 +681,8 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 
 void obs_encoder_shutdown(obs_encoder_t *encoder)
 {
-	blog(LOG_INFO, "obs_encoder_shutdown '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-	     encoder);
+	blog(LOG_INFO, "obs_encoder_shutdown '%s' (%s) (%p)", obs_encoder_get_name(encoder),
+	     obs_encoder_get_id(encoder), encoder);
 
 	pthread_mutex_lock(&encoder->init_mutex);
 	if (encoder->context.data) {
@@ -737,9 +727,8 @@ void pause_reset(struct pause_data *pause)
 
 static inline void obs_encoder_start_internal(obs_encoder_t *encoder, encoded_callback_t new_packet, void *param)
 {
-	blog(LOG_INFO, "obs_encoder_start_internal '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-	     encoder);
+	blog(LOG_INFO, "obs_encoder_start_internal '%s' (%s) (%p)", obs_encoder_get_name(encoder),
+	     obs_encoder_get_id(encoder), encoder);
 	struct encoder_callback cb = {false, new_packet, param};
 	bool first = false;
 
@@ -779,9 +768,8 @@ void obs_encoder_start(obs_encoder_t *encoder, encoded_callback_t new_packet, vo
 
 void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, void *param)
 {
-	blog(LOG_INFO, "obs_encoder_stop_internal '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-	     encoder);
+	blog(LOG_INFO, "obs_encoder_stop_internal '%s' (%s) (%p)", obs_encoder_get_name(encoder),
+	     obs_encoder_get_id(encoder), encoder);
 	bool last = false;
 	size_t idx;
 
@@ -1947,8 +1935,7 @@ void obs_encoder_set_last_error(obs_encoder_t *encoder, const char *message)
 		encoder->last_error_message = NULL;
 }
 
-void obs_encoder_set_video_mix(obs_encoder_t *encoder,
-			       struct obs_core_video_mix *video)
+void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix *video)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_set_video_mix"))
 		return;

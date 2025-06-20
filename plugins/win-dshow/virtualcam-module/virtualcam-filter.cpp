@@ -57,10 +57,8 @@ VCamFilter::VCamFilter() : OutputFilter()
 		vq = nullptr;
 	} else {
 		wchar_t res_file[MAX_PATH];
-		SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr,
-				 SHGFP_TYPE_CURRENT, res_file);
-		StringCbCat(res_file, sizeof(res_file),
-			    L"\\sld-virtualcam.txt");
+		SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, res_file);
+		StringCbCat(res_file, sizeof(res_file), L"\\sld-virtualcam.txt");
 
 		HANDLE file = CreateFileW(res_file, GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
 		if (file) {

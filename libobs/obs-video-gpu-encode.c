@@ -229,8 +229,7 @@ static void *gpu_encode_thread(void *data)
 bool init_gpu_encoding(struct obs_core_video_mix *video)
 {
 	blog(LOG_INFO, "init_gpu_encoding - begin (%p)", video);
-	const struct video_output_info *info =
-		video_output_get_info(video->video);
+	const struct video_output_info *info = video_output_get_info(video->video);
 
 	video->gpu_encode_stop = false;
 

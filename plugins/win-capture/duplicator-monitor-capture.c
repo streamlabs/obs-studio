@@ -232,13 +232,11 @@ static BOOL CALLBACK enum_monitor_fallback(HMONITOR handle, HDC hdc, LPRECT rect
 	return !match;
 }
 
-static BOOL CALLBACK enum_monitor_by_idx(HMONITOR handle, HDC hdc, LPRECT rect,
-					 LPARAM param)
+static BOOL CALLBACK enum_monitor_by_idx(HMONITOR handle, HDC hdc, LPRECT rect, LPARAM param)
 {
 	UNUSED_PARAMETER(hdc);
 
-	struct duplicator_monitor_info *monitor =
-		(struct duplicator_monitor_info *)param;
+	struct duplicator_monitor_info *monitor = (struct duplicator_monitor_info *)param;
 
 	bool match = false;
 
@@ -247,14 +245,11 @@ static BOOL CALLBACK enum_monitor_by_idx(HMONITOR handle, HDC hdc, LPRECT rect,
 	if (GetMonitorInfoA(handle, (LPMONITORINFO)&mi)) {
 		match = monitor->idx == 0;
 		if (match) {
-			strcpy_s(monitor->id, _countof(monitor->id),
-				 mi.szDevice);
-			strcpy_s(monitor->alt_id, _countof(monitor->alt_id),
-				 mi.szDevice);
+			strcpy_s(monitor->id, _countof(monitor->id), mi.szDevice);
+			strcpy_s(monitor->alt_id, _countof(monitor->alt_id), mi.szDevice);
 			monitor->rect = *rect;
 			monitor->handle = handle;
-			GetMonitorName(handle, monitor->name,
-				       _countof(monitor->name));
+			GetMonitorName(handle, monitor->name, _countof(monitor->name));
 		}
 		monitor->idx--;
 	}
@@ -262,8 +257,7 @@ static BOOL CALLBACK enum_monitor_by_idx(HMONITOR handle, HDC hdc, LPRECT rect,
 	return !match;
 }
 
-static void log_settings(struct duplicator_capture *capture,
-			 const char *monitor, LONG width, LONG height)
+static void log_settings(struct duplicator_capture *capture, const char *monitor, LONG width, LONG height)
 {
 	info("update settings:\n"
 	     "\tdisplay: %s (%ldx%ld)\n"
@@ -327,23 +321,20 @@ static struct duplicator_monitor_info find_monitor_by_idx(long long monitor_idx)
 	monitor.idx = monitor_idx;
 	EnumDisplayMonitors(NULL, NULL, &enum_monitor_by_idx, (LPARAM)&monitor);
 	if (monitor.handle == NULL) {
-		EnumDisplayMonitors(NULL, NULL, &enum_monitor_fallback,
-				    (LPARAM)&monitor);
+		EnumDisplayMonitors(NULL, NULL, &enum_monitor_fallback, (LPARAM)&monitor);
 	}
 
 	return monitor;
 }
 
-static inline void update_settings(struct duplicator_capture *capture,
-				   obs_data_t *settings)
+static inline void update_settings(struct duplicator_capture *capture, obs_data_t *settings)
 {
 	pthread_mutex_lock(&capture->update_mutex);
 
 	struct duplicator_monitor_info monitor;
 	long long monitor_idx = obs_data_get_int(settings, "monitor_idx");
 	if (monitor_idx < 0)
-		monitor = find_monitor(
-			obs_data_get_string(settings, "monitor_id"));
+		monitor = find_monitor(obs_data_get_string(settings, "monitor_id"));
 	else
 		monitor = find_monitor_by_idx(monitor_idx);
 

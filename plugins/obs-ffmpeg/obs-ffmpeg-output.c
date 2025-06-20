@@ -191,10 +191,8 @@ static bool create_video_stream(struct ffmpeg_data *data)
 	context->bit_rate = (int64_t)data->config.video_bitrate * 1000;
 	context->width = data->config.scale_width;
 	context->height = data->config.scale_height;
-	context->time_base =
-		(AVRational){data->config.fps_den, data->config.fps_num};
-	context->framerate =
-		(AVRational){data->config.fps_den, data->config.fps_num};
+	context->time_base = (AVRational){data->config.fps_den, data->config.fps_num};
+	context->framerate = (AVRational){data->config.fps_den, data->config.fps_num};
 	context->gop_size = data->config.gop_size;
 	context->pix_fmt = closest_format;
 	context->color_range = data->config.color_range;
@@ -1010,8 +1008,7 @@ static bool try_connect(struct ffmpeg_output *output)
 	config.fps_den = voi->fps_den;
 	config.fps_num = voi->fps_num;
 
-	obs_data_array_t *audioNames =
-		obs_data_get_array(settings, "audio_names");
+	obs_data_array_t *audioNames = obs_data_get_array(settings, "audio_names");
 	if (audioNames) {
 		for (size_t i = 0, idx = 0; i < MAX_AUDIO_MIXES; i++) {
 			if ((config.audio_tracks & (1 << i)) == 0)

@@ -305,8 +305,7 @@ static size_t video_get_input_idx(const video_t *video, void (*callback)(void *p
 {
 	for (size_t i = 0; i < video->inputs.num; i++) {
 		struct video_input *input = video->inputs.array + i;
-		if (input != NULL && input->callback == callback &&
-		    input->param == param)
+		if (input != NULL && input->callback == callback && input->param == param)
 			return i;
 	}
 
@@ -576,8 +575,7 @@ void video_output_stop(video_t *video)
 		if (video == obs->video.main_mix->video) {
 			// The graphics thread must end before mutexes are destroyed
 			if (obs->video.thread_initialized) {
-				pthread_join(obs->video.video_thread,
-					     &thread_ret);
+				pthread_join(obs->video.video_thread, &thread_ret);
 				obs->video.thread_initialized = false;
 			}
 		}
@@ -619,8 +617,7 @@ double video_output_get_frame_rate(const video_t *video)
 
 uint32_t video_output_get_skipped_frames(const video_t *video)
 {
-	return video ? (uint32_t)os_atomic_load_long(&get_const_root(video)->skipped_frames)
-		     : 0;
+	return video ? (uint32_t)os_atomic_load_long(&get_const_root(video)->skipped_frames) : 0;
 }
 
 uint32_t video_output_get_total_frames(const video_t *video)

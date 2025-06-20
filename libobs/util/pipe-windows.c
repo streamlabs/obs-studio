@@ -68,15 +68,12 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle, HAN
 	/* Spin until we get a buffer big enough for a path up to max path size for NTFS. */
 	for (int i = 1; i < 127; ++i) {
 		nBufferSize = MAX_PATH * i;
-		szPathBuffer =
-			brealloc(szPathBuffer, sizeof(TCHAR) * nBufferSize);
-		nPathSize = GetModuleFileName(hObsModule, szPathBuffer,
-					      nBufferSize);
+		szPathBuffer = brealloc(szPathBuffer, sizeof(TCHAR) * nBufferSize);
+		nPathSize = GetModuleFileName(hObsModule, szPathBuffer, nBufferSize);
 		dwError = GetLastError();
 
 		/* Windows XP might return ERROR_SUCCESS on too short of a buffer. */
-		if (nPathSize == nBufferSize ||
-		    dwError == ERROR_INSUFFICIENT_BUFFER) {
+		if (nPathSize == nBufferSize || dwError == ERROR_INSUFFICIENT_BUFFER) {
 			continue;
 		}
 
@@ -96,8 +93,7 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle, HAN
 
 	os_utf8_to_wcs_ptr(cmd_line, 0, &cmd_line_w);
 	if (cmd_line_w) {
-		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true,
-					   flags, NULL, szPathBuffer, &si, &pi);
+		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true, flags, NULL, szPathBuffer, &si, &pi);
 
 		if (success) {
 			*process = pi.hProcess;

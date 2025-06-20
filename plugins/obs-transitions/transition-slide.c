@@ -131,14 +131,12 @@ bool slide_audio_render(void *data, uint64_t *ts_out, struct obs_source_audio_mi
 	return obs_transition_audio_render(slide->source, ts_out, audio, mixers, channels, sample_rate, mix_a, mix_b);
 }
 
-bool slide_audio_render_do(void *data, uint64_t *ts_out,
-			   struct audio_data_mixes_outputs *audio,
-			   uint32_t mixers, size_t channels, size_t sample_rate)
+bool slide_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio, uint32_t mixers,
+			   size_t channels, size_t sample_rate)
 {
 	struct slide_info *slide = data;
-	return obs_transition_audio_render_do(slide->source, ts_out, audio,
-					      mixers, channels, sample_rate,
-					      mix_a, mix_b);
+	return obs_transition_audio_render_do(slide->source, ts_out, audio, mixers, channels, sample_rate, mix_a,
+					      mix_b);
 }
 
 static obs_properties_t *slide_properties(void *data)

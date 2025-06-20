@@ -1529,8 +1529,7 @@ static bool dbr_bitrate_lowered(struct rtmp_stream *stream, Severity severity)
 #else
 	if (est_bitrate) {
 		uint8_t lower_rate = dbr_rates[severity][1];
-		new_bitrate = stream->dbr_cur_bitrate -
-			      (stream->dbr_orig_bitrate / lower_rate);
+		new_bitrate = stream->dbr_cur_bitrate - (stream->dbr_orig_bitrate / lower_rate);
 
 		if (new_bitrate < est_bitrate) {
 			new_bitrate = est_bitrate;
@@ -1643,18 +1642,13 @@ static void check_to_drop_frames(struct rtmp_stream *stream, bool pframes)
 		uint64_t t = os_gettime_ns();
 
 		pthread_mutex_lock(&stream->dbr_mutex);
-		if (buffer_duration_usec > 0 &&
-		    (uint64_t)buffer_duration_usec >= dbr_triggers[HIGH][1] &&
+		if (buffer_duration_usec > 0 && (uint64_t)buffer_duration_usec >= dbr_triggers[HIGH][1] &&
 		    t >= stream->dbr_high_timeout) {
 			bitrate_changed = dbr_bitrate_lowered(stream, HIGH);
-		} else if (buffer_duration_usec > 0 &&
-			   (uint64_t)buffer_duration_usec >=
-				   dbr_triggers[NORMAL][1] &&
+		} else if (buffer_duration_usec > 0 && (uint64_t)buffer_duration_usec >= dbr_triggers[NORMAL][1] &&
 			   t >= stream->dbr_normal_timeout) {
 			bitrate_changed = dbr_bitrate_lowered(stream, NORMAL);
-		} else if (buffer_duration_usec > 0 &&
-			   (uint64_t)buffer_duration_usec >=
-				   dbr_triggers[LOW][1] &&
+		} else if (buffer_duration_usec > 0 && (uint64_t)buffer_duration_usec >= dbr_triggers[LOW][1] &&
 			   t >= stream->dbr_low_timeout) {
 			bitrate_changed = dbr_bitrate_lowered(stream, LOW);
 		}

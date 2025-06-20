@@ -94,9 +94,8 @@ bool ms_check_window_property_setting(obs_properties_t *ppts, obs_property_t *p,
 	return false;
 }
 
-struct game_capture_matching_rule
-convert_to_matching_rule(const char *exe, const char *rule_class,
-			 const char *title, const char *type)
+struct game_capture_matching_rule convert_to_matching_rule(const char *exe, const char *rule_class, const char *title,
+							   const char *type)
 {
 	struct game_capture_matching_rule rule = {0};
 
@@ -544,9 +543,8 @@ int get_rule_match_power(struct game_capture_matching_rule *rule)
 	return rule_power;
 }
 
-static int find_matching_rule_for_window(
-	HWND window, game_capture_matching_rule_array_t *matching_rules,
-	int *found_index, int already_matched_power)
+static int find_matching_rule_for_window(HWND window, game_capture_matching_rule_array_t *matching_rules,
+					 int *found_index, int already_matched_power)
 {
 	struct dstr cur_class = {0};
 	struct dstr cur_title = {0};
@@ -576,27 +574,19 @@ static int find_matching_rule_for_window(
 
 		bool rule_matched = true;
 		if (matching_rules->array[i].mask & WINDOW_MATCH_EXE) {
-			if (dstr_cmpi(&cur_exe, matching_rules->array[i]
-							.executable.array) != 0)
+			if (dstr_cmpi(&cur_exe, matching_rules->array[i].executable.array) != 0)
 				rule_matched = false;
 		}
-		if (rule_matched &&
-		    (matching_rules->array[i].mask & WINDOW_MATCH_TITLE)) {
-			if (dstr_find(&cur_title,
-				      matching_rules->array[i].title.array) ==
-			    NULL)
+		if (rule_matched && (matching_rules->array[i].mask & WINDOW_MATCH_TITLE)) {
+			if (dstr_find(&cur_title, matching_rules->array[i].title.array) == NULL)
 				rule_matched = false;
 		}
-		if (rule_matched &&
-		    (matching_rules->array[i].mask & WINDOW_MATCH_CLASS)) {
-			if (dstr_find(&cur_class,
-				      matching_rules->array[i].classW.array) ==
-			    NULL)
+		if (rule_matched && (matching_rules->array[i].mask & WINDOW_MATCH_CLASS)) {
+			if (dstr_find(&cur_class, matching_rules->array[i].classW.array) == NULL)
 				rule_matched = false;
 		}
 
-		if (rule_matched &&
-		    matching_rules->array[i].power > found_match_power) {
+		if (rule_matched && matching_rules->array[i].power > found_match_power) {
 			found_match_power = matching_rules->array[i].power;
 			*found_index = i;
 		}
@@ -666,8 +656,7 @@ HWND ms_find_window(enum window_search_mode mode, enum window_priority priority,
 	return best_window;
 }
 
-HWND find_matching_window(enum window_search_mode mode,
-			  game_capture_matching_rule_array_t *matching_rules,
+HWND find_matching_window(enum window_search_mode mode, game_capture_matching_rule_array_t *matching_rules,
 			  window_handles_t *checked_windows)
 {
 	if (matching_rules->num == 0)
@@ -689,28 +678,21 @@ HWND find_matching_window(enum window_search_mode mode,
 		}
 
 		if (!already_checked_window) {
-			int window_match_power = find_matching_rule_for_window(
-				window, matching_rules, &list_index,
-				best_window_match_power);
+			int window_match_power = find_matching_rule_for_window(window, matching_rules, &list_index,
+									       best_window_match_power);
 			if (window_match_power > best_window_match_power) {
-				if (matching_rules->array[list_index].type ==
-				    WINDOW_MATCH_CAPTURE) {
-					best_window_match_power =
-						window_match_power;
+				if (matching_rules->array[list_index].type == WINDOW_MATCH_CAPTURE) {
+					best_window_match_power = window_match_power;
 					best_window = window;
-					if (matching_rules->array[list_index]
-						    .mask &
-					    (WINDOW_MATCH_EXE |
-					     WINDOW_MATCH_CLASS |
-					     WINDOW_MATCH_TITLE)) {
+					if (matching_rules->array[list_index].mask &
+					    (WINDOW_MATCH_EXE | WINDOW_MATCH_CLASS | WINDOW_MATCH_TITLE)) {
 						break;
 					}
 				}
 			}
 
 			if ((window_match_power <= 0) ||
-			    matching_rules->array[list_index].type ==
-				    WINDOW_MATCH_IGNORE) {
+			    matching_rules->array[list_index].type == WINDOW_MATCH_IGNORE) {
 				da_push_back((*checked_windows), &window);
 			}
 		}
@@ -719,8 +701,7 @@ HWND find_matching_window(enum window_search_mode mode,
 	}
 
 	if (best_window) {
-		da_move_item((*matching_rules), list_index,
-			     matching_rules->num - 1);
+		da_move_item((*matching_rules), list_index, matching_rules->num - 1);
 	}
 
 	return best_window;

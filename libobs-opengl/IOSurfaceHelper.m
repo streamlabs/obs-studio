@@ -87,4 +87,3 @@ void writeIOSurfaceContents(IOSurfaceRef surface, NSString *filePath)
 
     NSLog(@"Completed examining IOSurface.");
 }
-

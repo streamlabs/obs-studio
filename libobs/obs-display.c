@@ -280,8 +280,7 @@ void render_display(struct obs_display *display)
 void obs_display_set_enabled(obs_display_t *display, bool enable)
 {
 	if (display) {
-		blog(LOG_INFO, "obs_display_set_enabled - 0x%p, enable: %d",
-		     display, enable);
+		blog(LOG_INFO, "obs_display_set_enabled - 0x%p, enable: %d", display, enable);
 		display->enabled = enable;
 	}
 }
@@ -314,8 +313,7 @@ void obs_display_size(obs_display_t *display, uint32_t *width, uint32_t *height)
 
 #ifdef __APPLE__
 
-uint32_t obs_display_create_iosurface(obs_display_t *display, uint32_t width,
-				      uint32_t height)
+uint32_t obs_display_create_iosurface(obs_display_t *display, uint32_t width, uint32_t height)
 {
 	obs_enter_graphics();
 	pthread_mutex_lock(&display->draw_info_mutex);

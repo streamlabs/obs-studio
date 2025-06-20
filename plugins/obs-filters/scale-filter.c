@@ -265,8 +265,7 @@ static void scale_filter_prepare_for_rendering(void *data)
 		filter->undistort_factor_param = NULL;
 	}
 
-	filter->multiplier_param =
-		gs_effect_get_param_by_name(filter->effect, "multiplier");
+	filter->multiplier_param = gs_effect_get_param_by_name(filter->effect, "multiplier");
 }
 
 static const char *get_tech_name_and_multiplier(const struct scale_filter_data *filter,
@@ -497,9 +496,7 @@ static obs_properties_t *scale_filter_properties(void *data)
 
 	/* ----------------- */
 
-	p = obs_properties_add_list(props, S_SAMPLING, T_SAMPLING,
-				    OBS_COMBO_TYPE_LIST,
-				    OBS_COMBO_FORMAT_STRING);
+	p = obs_properties_add_list(props, S_SAMPLING, T_SAMPLING, OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 	obs_property_set_modified_callback(p, sampling_modified);
 	obs_property_list_add_string(p, T_SAMPLING_POINT, S_SAMPLING_POINT);
 	obs_property_list_add_string(p, T_SAMPLING_BILINEAR, S_SAMPLING_BILINEAR);
@@ -525,16 +522,13 @@ static obs_properties_t *scale_filter_properties(void *data)
 		cy = ovi.base_height;
 
 		for (size_t i = 0; i < NUM_DOWNSCALES; i++) {
-			downscales[i].cx =
-				(int)((double)cx / downscale_vals[i]);
-			downscales[i].cy =
-				(int)((double)cy / downscale_vals[i]);
+			downscales[i].cx = (int)((double)cx / downscale_vals[i]);
+			downscales[i].cy = (int)((double)cy / downscale_vals[i]);
 		}
 
 		for (size_t i = 0; i < NUM_DOWNSCALES; i++) {
 			char str[32];
-			snprintf(str, sizeof(str), "%dx%d", downscales[i].cx,
-				 downscales[i].cy);
+			snprintf(str, sizeof(str), "%dx%d", downscales[i].cx, downscales[i].cy);
 			obs_property_list_add_string(p, str, str);
 		}
 	}

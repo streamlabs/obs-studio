@@ -319,9 +319,7 @@ static bool init_font(struct ft2_source *srcdata, const char *custom_font)
 {
 	if (!custom_font || strcmp(custom_font, "") == 0) {
 		FT_Long index;
-		const char *path = get_font_path(srcdata->font_name,
-						 srcdata->font_size,
-						 srcdata->font_style,
+		const char *path = get_font_path(srcdata->font_name, srcdata->font_size, srcdata->font_style,
 						 srcdata->font_flags, &index);
 		if (!path)
 			return false;
@@ -331,11 +329,9 @@ static bool init_font(struct ft2_source *srcdata, const char *custom_font)
 			srcdata->font_face = NULL;
 		}
 
-		return FT_New_Face(ft2_lib, path, index, &srcdata->font_face) ==
-		       0;
+		return FT_New_Face(ft2_lib, path, index, &srcdata->font_face) == 0;
 	} else {
-		return FT_New_Face(ft2_lib, custom_font, 0,
-				   &srcdata->font_face) == 0;
+		return FT_New_Face(ft2_lib, custom_font, 0, &srcdata->font_face) == 0;
 	}
 }
 
@@ -461,8 +457,7 @@ static void ft2_source_update(void *data, obs_data_t *settings)
 	srcdata->font_flags = font_flags;
 
 	if (!init_font(srcdata, custom_font) || srcdata->font_face == NULL) {
-		blog(LOG_WARNING, "FT2-text: Failed to load font %s",
-		     srcdata->font_name);
+		blog(LOG_WARNING, "FT2-text: Failed to load font %s", srcdata->font_name);
 		goto error;
 	} else {
 		FT_Set_Pixel_Sizes(srcdata->font_face, 0, srcdata->font_size);

@@ -464,8 +464,7 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	while (os_event_timedwait(ca->exit_event, ca->retry_time) ==
-	       ETIMEDOUT) {
+	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
 		if (coreaudio_init(ca))
 			break;
 	}

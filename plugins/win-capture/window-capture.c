@@ -508,8 +508,7 @@ static bool wc_window_changed(obs_properties_t *props, obs_property_t *p, obs_da
 	if (window == NULL || strlen(window) == 0) {
 		const char *first_window = obs_property_list_item_string(p, 0);
 		if (first_window)
-			obs_data_set_default_string(settings, "window",
-						    first_window);
+			obs_data_set_default_string(settings, "window", first_window);
 	}
 
 	update_settings(wc, settings);
@@ -837,8 +836,7 @@ static void wc_child_enum(void *data, obs_source_enum_proc_t cb, void *param)
 struct obs_source_info window_capture_info = {
 	.id = "window_capture",
 	.type = OBS_SOURCE_TYPE_INPUT,
-	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_AUDIO |
-			OBS_SOURCE_DO_NOT_DUPLICATE | OBS_SOURCE_CUSTOM_DRAW |
+	.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_AUDIO | OBS_SOURCE_DO_NOT_DUPLICATE | OBS_SOURCE_CUSTOM_DRAW |
 			OBS_SOURCE_SRGB,
 	.get_name = wc_getname,
 	.create = wc_create,

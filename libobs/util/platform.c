@@ -695,8 +695,7 @@ static void erase_ch(struct dstr *str, size_t pos)
 	*str = new_str;
 }
 
-char *os_generate_formatted_filename(const char *extension, bool space,
-				     const char *format, obs_video_info_t *ovi)
+char *os_generate_formatted_filename(const char *extension, bool space, const char *format, obs_video_info_t *ovi)
 {
 	time_t now = time(0);
 	struct tm *cur_time;
@@ -739,30 +738,23 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		if (!convert[0]) {
 			if (astrcmp_n(cmp, "%FPS", 4) == 0) {
 				if (ovi->fps_den <= 1) {
-					snprintf(convert, sizeof(convert), "%u",
-						 ovi->fps_num);
+					snprintf(convert, sizeof(convert), "%u", ovi->fps_num);
 				} else {
-					const double obsFPS =
-						(double)ovi->fps_num /
-						(double)ovi->fps_den;
-					snprintf(convert, sizeof(convert),
-						 "%.2f", obsFPS);
+					const double obsFPS = (double)ovi->fps_num / (double)ovi->fps_den;
+					snprintf(convert, sizeof(convert), "%.2f", obsFPS);
 				}
 				replace_text(&sf, pos, 4, convert);
 
 			} else if (astrcmp_n(cmp, "%CRES", 5) == 0) {
-				snprintf(convert, sizeof(convert), "%ux%u",
-					 ovi->base_width, ovi->base_height);
+				snprintf(convert, sizeof(convert), "%ux%u", ovi->base_width, ovi->base_height);
 				replace_text(&sf, pos, 5, convert);
 
 			} else if (astrcmp_n(cmp, "%ORES", 5) == 0) {
-				snprintf(convert, sizeof(convert), "%ux%u",
-					 ovi->output_width, ovi->output_height);
+				snprintf(convert, sizeof(convert), "%ux%u", ovi->output_width, ovi->output_height);
 				replace_text(&sf, pos, 5, convert);
 
 			} else if (astrcmp_n(cmp, "%VF", 3) == 0) {
-				strcpy(convert, get_video_format_name(
-							ovi->output_format));
+				strcpy(convert, get_video_format_name(ovi->output_format));
 				replace_text(&sf, pos, 3, convert);
 
 			} else if (astrcmp_n(cmp, "%s", 2) == 0) {

@@ -91,15 +91,11 @@ bool prefer_current_or_igpu_enc(int *iGPUIndex)
 		return false;
 	}
 
-	typedef HRESULT(WINAPI * LPCREATEDXGIFACTORY)(REFIID riid,
-						      void **ppFactory);
+	typedef HRESULT(WINAPI * LPCREATEDXGIFACTORY)(REFIID riid, void **ppFactory);
 
-	LPCREATEDXGIFACTORY pCreateDXGIFactory =
-		(LPCREATEDXGIFACTORY)GetProcAddress(hDXGI,
-						    "CreateDXGIFactory1");
+	LPCREATEDXGIFACTORY pCreateDXGIFactory = (LPCREATEDXGIFACTORY)GetProcAddress(hDXGI, "CreateDXGIFactory1");
 	if (pCreateDXGIFactory == NULL) {
-		pCreateDXGIFactory = (LPCREATEDXGIFACTORY)GetProcAddress(
-			hDXGI, "CreateDXGIFactory");
+		pCreateDXGIFactory = (LPCREATEDXGIFACTORY)GetProcAddress(hDXGI, "CreateDXGIFactory");
 
 		if (pCreateDXGIFactory == NULL) {
 			FreeLibrary(hDXGI);
@@ -108,8 +104,7 @@ bool prefer_current_or_igpu_enc(int *iGPUIndex)
 	}
 
 	IDXGIFactory *pFactory = NULL;
-	if (FAILED((*pCreateDXGIFactory)(__uuidof(IDXGIFactory),
-					 (void **)(&pFactory)))) {
+	if (FAILED((*pCreateDXGIFactory)(__uuidof(IDXGIFactory), (void **)(&pFactory)))) {
 		FreeLibrary(hDXGI);
 		return false;
 	}
@@ -120,14 +115,11 @@ bool prefer_current_or_igpu_enc(int *iGPUIndex)
 	{
 		ID3D11Device *pDevice = (ID3D11Device *)gs_get_device_obj();
 		Microsoft::WRL::ComPtr<IDXGIDevice> dxgiDevice;
-		if (SUCCEEDED(pDevice->QueryInterface<IDXGIDevice>(
-			    dxgiDevice.GetAddressOf()))) {
+		if (SUCCEEDED(pDevice->QueryInterface<IDXGIDevice>(dxgiDevice.GetAddressOf()))) {
 			Microsoft::WRL::ComPtr<IDXGIAdapter> dxgiAdapter;
-			if (SUCCEEDED(dxgiDevice->GetAdapter(
-				    dxgiAdapter.GetAddressOf()))) {
+			if (SUCCEEDED(dxgiDevice->GetAdapter(dxgiAdapter.GetAddressOf()))) {
 				DXGI_ADAPTER_DESC desc;
-				hasLuid =
-					SUCCEEDED(dxgiAdapter->GetDesc(&desc));
+				hasLuid = SUCCEEDED(dxgiAdapter->GetDesc(&desc));
 				if (hasLuid) {
 					luid = desc.AdapterLuid;
 				}
@@ -137,25 +129,20 @@ bool prefer_current_or_igpu_enc(int *iGPUIndex)
 	obs_leave_graphics();
 
 	// Check for i+I cases (Intel discrete + Intel integrated graphics on the same system). Default will be integrated.
-	for (int adapterIndex = 0;
-	     SUCCEEDED(pFactory->EnumAdapters(adapterIndex, &pAdapter));
-	     ++adapterIndex) {
+	for (int adapterIndex = 0; SUCCEEDED(pFactory->EnumAdapters(adapterIndex, &pAdapter)); ++adapterIndex) {
 		DXGI_ADAPTER_DESC AdapterDesc = {};
 		const HRESULT hr = pAdapter->GetDesc(&AdapterDesc);
 		pAdapter->Release();
 
 		if (SUCCEEDED(hr) && (AdapterDesc.VendorId == 0x8086)) {
-			if (hasLuid &&
-			    (AdapterDesc.AdapterLuid.LowPart == luid.LowPart) &&
-			    (AdapterDesc.AdapterLuid.HighPart ==
-			     luid.HighPart)) {
+			if (hasLuid && (AdapterDesc.AdapterLuid.LowPart == luid.LowPart) &&
+			    (AdapterDesc.AdapterLuid.HighPart == luid.HighPart)) {
 				hasCurrent = true;
 				*iGPUIndex = adapterIndex;
 				break;
 			}
 
-			if (AdapterDesc.DedicatedVideoMemory <=
-			    512 * 1024 * 1024) {
+			if (AdapterDesc.DedicatedVideoMemory <= 512 * 1024 * 1024) {
 				hasIGPU = true;
 				if (iGPUIndex != NULL) {
 					*iGPUIndex = adapterIndex;

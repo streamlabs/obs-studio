@@ -187,7 +187,8 @@ void os_set_thread_name(const char *name)
 		RaiseException(VC_EXCEPTION, 0, THREADNAME_INFO_SIZE, (ULONG_PTR *)&info);
 #ifdef NO_SEH_MINGW
 	}
-	__except1{
+	__except1
+	{
 #else
 	} __except (EXCEPTION_EXECUTE_HANDLER) {
 #endif
@@ -207,8 +208,7 @@ void os_set_thread_name(const char *name)
 		SetDllDirectory(NULL);
 
 		set_thread_description_t std = NULL;
-		std = (set_thread_description_t)GetProcAddress(
-			hModule, "SetThreadDescription");
+		std = (set_thread_description_t)GetProcAddress(hModule, "SetThreadDescription");
 		if (std) {
 			wchar_t *wname;
 			os_utf8_to_wcs_ptr(name, 0, &wname);

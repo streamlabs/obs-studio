@@ -345,12 +345,10 @@ static void *ffmpeg_image_reformat_frame(struct ffmpeg_image *info, AVFrame *fra
 	const int image_resolution_limit = 10000 * 10000;
 	bool downsize = info->cx * info->cy > image_resolution_limit;
 	if (downsize) {
-		float devider = (float)(cx_out * cy_out) /
-				(float)image_resolution_limit;
+		float devider = (float)(cx_out * cy_out) / (float)image_resolution_limit;
 		cx_out = (uint32_t)(cx_out / devider);
 		cy_out = (uint32_t)(cy_out / devider);
-		blog(LOG_WARNING,
-		     "Image resolution over 100MP limit and get downscaled from %d x %d  to %d x %d ",
+		blog(LOG_WARNING, "Image resolution over 100MP limit and get downscaled from %d x %d  to %d x %d ",
 		     info->cx, info->cy, cx_out, cy_out);
 	}
 
@@ -368,8 +366,7 @@ static void *ffmpeg_image_reformat_frame(struct ffmpeg_image *info, AVFrame *fra
 
 	if (!downsize && info->format == AV_PIX_FMT_BGR0) {
 		data = ffmpeg_image_copy_data_straight(info, frame);
-	} else if (!downsize && (info->format == AV_PIX_FMT_RGBA ||
-				 info->format == AV_PIX_FMT_BGRA)) {
+	} else if (!downsize && (info->format == AV_PIX_FMT_RGBA || info->format == AV_PIX_FMT_BGRA)) {
 		if (alpha_mode == GS_IMAGE_ALPHA_STRAIGHT) {
 			data = ffmpeg_image_copy_data_straight(info, frame);
 		} else {
@@ -460,10 +457,8 @@ static void *ffmpeg_image_reformat_frame(struct ffmpeg_image *info, AVFrame *fra
 	} else {
 		static const enum AVPixelFormat format = AV_PIX_FMT_BGRA;
 
-		sws_ctx = sws_getContext(info->cx, info->cy, info->format,
-					 cx_out, cy_out, format,
-					 downsize ? SWS_BICUBIC : SWS_POINT,
-					 NULL, NULL, NULL);
+		sws_ctx = sws_getContext(info->cx, info->cy, info->format, cx_out, cy_out, format,
+					 downsize ? SWS_BICUBIC : SWS_POINT, NULL, NULL, NULL);
 		if (!sws_ctx) {
 			blog(LOG_WARNING,
 			     "Failed to create scale context "
@@ -474,8 +469,7 @@ static void *ffmpeg_image_reformat_frame(struct ffmpeg_image *info, AVFrame *fra
 
 		uint8_t *pointers[4];
 		int linesizes[4];
-		ret = av_image_alloc(pointers, linesizes, cx_out, cy_out,
-				     format, 32);
+		ret = av_image_alloc(pointers, linesizes, cx_out, cy_out, format, 32);
 		if (ret < 0) {
 			blog(LOG_WARNING, "av_image_alloc failed for '%s': %s", info->file, av_err2str(ret));
 			sws_freeContext(sws_ctx);

@@ -252,12 +252,9 @@ struct TextSource {
 	void UpdateFont();
 	void UpdateCustomFont(const wchar_t *font_path);
 	void GetStringFormat(StringFormat &format);
-	void RemoveNewlinePadding(Font *font, const StringFormat &format,
-				  RectF &box);
-	void CalculateTextSizes(Font *font, const StringFormat &format,
-				RectF &bounding_box, SIZE &text_size);
-	void RenderOutlineText(Graphics &graphics, const GraphicsPath &path,
-			       const Brush &brush);
+	void RemoveNewlinePadding(Font *font, const StringFormat &format, RectF &box);
+	void CalculateTextSizes(Font *font, const StringFormat &format, RectF &bounding_box, SIZE &text_size);
+	void RenderOutlineText(Graphics &graphics, const GraphicsPath &path, const Brush &brush);
 	void RenderText();
 	void LoadFileText();
 	void TransformText();
@@ -349,19 +346,16 @@ void TextSource::GetStringFormat(StringFormat &format)
  * calculating the texture size, so we have to calculate the size of '\n' to
  * remove the padding.  Because we always add a newline to the string, we
  * also remove the extra unused newline. */
-void TextSource::RemoveNewlinePadding(Font *font, const StringFormat &format,
-				      RectF &box)
+void TextSource::RemoveNewlinePadding(Font *font, const StringFormat &format, RectF &box)
 {
 	RectF before;
 	RectF after;
 	Status stat;
 
-	stat = graphics.MeasureString(L"W", 2, font, PointF(0.0f, 0.0f),
-				      &format, &before);
+	stat = graphics.MeasureString(L"W", 2, font, PointF(0.0f, 0.0f), &format, &before);
 	warn_stat("MeasureString (without newline)");
 
-	stat = graphics.MeasureString(L"W\n", 3, font, PointF(0.0f, 0.0f),
-				      &format, &after);
+	stat = graphics.MeasureString(L"W\n", 3, font, PointF(0.0f, 0.0f), &format, &after);
 	warn_stat("MeasureString (with newline)");
 
 	float offset_cx = after.Width - before.Width;
@@ -389,8 +383,7 @@ void TextSource::RemoveNewlinePadding(Font *font, const StringFormat &format,
 	box.Height -= offset_cy;
 }
 
-void TextSource::CalculateTextSizes(Font *font, const StringFormat &format,
-				    RectF &bounding_box, SIZE &text_size)
+void TextSource::CalculateTextSizes(Font *font, const StringFormat &format, RectF &bounding_box, SIZE &text_size)
 {
 	RectF layout_box;
 	RectF temp_box;
@@ -407,17 +400,13 @@ void TextSource::CalculateTextSizes(Font *font, const StringFormat &format,
 				layout_box.Height -= outline_size;
 			}
 
-			stat = graphics.MeasureString(text.c_str(),
-						      (int)text.size() + 1,
-						      font, layout_box, &format,
+			stat = graphics.MeasureString(text.c_str(), (int)text.size() + 1, font, layout_box, &format,
 						      &bounding_box);
 			warn_stat("MeasureString (wrapped)");
 
 			temp_box = bounding_box;
 		} else {
-			stat = graphics.MeasureString(text.c_str(),
-						      (int)text.size() + 1,
-						      font, PointF(0.0f, 0.0f),
+			stat = graphics.MeasureString(text.c_str(), (int)text.size() + 1, font, PointF(0.0f, 0.0f),
 						      &format, &bounding_box);
 			warn_stat("MeasureString (non-wrapped)");
 
@@ -524,8 +513,7 @@ void TextSource::RenderText()
 	std::unique_ptr<Font> font;
 	HFONT hfont = NULL;
 
-	INT style = (underline ? FontStyleUnderline : 0) |
-		    (strikeout ? FontStyleStrikeout : 0) |
+	INT style = (underline ? FontStyleUnderline : 0) | (strikeout ? FontStyleStrikeout : 0) |
 		    (italic ? FontStyleItalic : 0) | (bold ? FontStyleBold : 0);
 
 	if (text_transform == S_TRANSFORM_UPPERCASE)
@@ -535,8 +523,7 @@ void TextSource::RenderText()
 
 	/* This has gotten a bit messy. FIXME */
 	if (custom_font)
-		font.reset(new Font(family.get(), REAL(face_size), style,
-				    UnitPixel));
+		font.reset(new Font(family.get(), REAL(face_size), style, UnitPixel));
 	else {
 		/* I realize that we're not passing emSize here, unlike
 		 * above. Unfortunately, since we passed cell height
@@ -594,8 +581,7 @@ void TextSource::RenderText()
 
 			GraphicsPath path;
 
-			stat = path.AddString(text.c_str(), (int)text.size(),
-					      family.get(), font->GetStyle(),
+			stat = path.AddString(text.c_str(), (int)text.size(), family.get(), font->GetStyle(),
 					      font->GetSize(), box, &format);
 			warn_stat("path.AddString");
 
@@ -1044,8 +1030,7 @@ static obs_properties_t *text_get_properties(void *data)
 
 void *text_create(obs_data_t *settings, obs_source_t *source)
 {
-	return reinterpret_cast<void *>(
-		new TextSource(source, settings, false));
+	return reinterpret_cast<void *>(new TextSource(source, settings, false));
 }
 
 void text_destroy(void *data)

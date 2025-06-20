@@ -12,12 +12,7 @@ enum matte_layout {
 	MATTE_LAYOUT_MASK,
 };
 
-enum fit_style {
-	FIT_STYLE_STRETCH,
-	FIT_STYLE_BY_HEIGHT,
-	FIT_STYLE_BY_WIDTH,
-	FIT_STYLE_ONLY_PERFECT
-};
+enum fit_style { FIT_STYLE_STRETCH, FIT_STYLE_BY_HEIGHT, FIT_STYLE_BY_WIDTH, FIT_STYLE_ONLY_PERFECT };
 
 enum fade_style { FADE_STYLE_FADE_OUT_FADE_IN, FADE_STYLE_CROSS_FADE };
 
@@ -87,8 +82,7 @@ static void stinger_update(void *data, obs_data_t *settings)
 	obs_data_set_bool(media_settings, "full_decode", preload);
 	obs_data_set_bool(media_settings, "is_stinger", true);
 	obs_data_set_int(media_settings, "volume", volume);
-	obs_data_set_bool(media_settings, "is_track_matte",
-			  s->track_matte_enabled);
+	obs_data_set_bool(media_settings, "is_track_matte", s->track_matte_enabled);
 
 	obs_source_release(s->media_source);
 	struct dstr name;
@@ -413,18 +407,15 @@ static void stinger_video_render(void *data, gs_effect_t *effect)
 	case FIT_STYLE_STRETCH:
 		break;
 	case FIT_STYLE_BY_HEIGHT:
-		source_cxf =
-			(float)source_cy * (float)media_cx / (float)media_cy;
+		source_cxf = (float)source_cy * (float)media_cx / (float)media_cy;
 		shift_xf = ((float)source_cx - source_cxf) / 2.0f;
 		break;
 	case FIT_STYLE_BY_WIDTH:
-		source_cyf =
-			(float)source_cx * (float)media_cy / (float)media_cx;
+		source_cyf = (float)source_cx * (float)media_cy / (float)media_cx;
 		shift_yf = ((float)source_cy - source_cyf) / 2.0f;
 		break;
 	case FIT_STYLE_ONLY_PERFECT:
-		if (fabsf((float)source_cx / (float)source_cy -
-			  (float)media_cx / (float)media_cy) > 0.01f)
+		if (fabsf((float)source_cx / (float)source_cy - (float)media_cx / (float)media_cy) > 0.01f)
 			return;
 		break;
 	}
@@ -454,8 +445,7 @@ static void stinger_video_render(void *data, gs_effect_t *effect)
 		const bool previous = gs_set_linear_srgb(true);
 		gs_matrix_push();
 		gs_matrix_translate3f(shift_xf, shift_yf, 0.0f);
-		gs_matrix_scale3f(source_cxf / (float)media_cx,
-				  source_cyf / (float)media_cy, 1.0f);
+		gs_matrix_scale3f(source_cxf / (float)media_cx, source_cyf / (float)media_cy, 1.0f);
 		obs_source_video_render(s->media_source);
 		gs_matrix_pop();
 		gs_set_linear_srgb(previous);
@@ -550,10 +540,8 @@ static bool stinger_audio_render(void *data, uint64_t *ts_out, struct obs_source
 	return true;
 }
 
-static bool stinger_audio_render_do(void *data, uint64_t *ts_out,
-				    struct audio_data_mixes_outputs *audio,
-				    uint32_t mixers, size_t channels,
-				    size_t sample_rate)
+static bool stinger_audio_render_do(void *data, uint64_t *ts_out, struct audio_data_mixes_outputs *audio,
+				    uint32_t mixers, size_t channels, size_t sample_rate)
 {
 	struct stinger_info *s = data;
 	uint64_t ts = 0;
@@ -568,9 +556,7 @@ static bool stinger_audio_render_do(void *data, uint64_t *ts_out,
 			return false;
 	}
 
-	bool success = obs_transition_audio_render_do(s->source, ts_out, audio,
-						      mixers, channels,
-						      sample_rate, s->mix_a,
+	bool success = obs_transition_audio_render_do(s->source, ts_out, audio, mixers, channels, sample_rate, s->mix_a,
 						      s->mix_b);
 	if (!ts)
 		return success;
@@ -580,19 +566,14 @@ static bool stinger_audio_render_do(void *data, uint64_t *ts_out,
 
 	struct obs_source_audio_mix child_audio;
 	obs_source_get_audio_mix(s->media_source, &child_audio);
-	for (size_t canvas_idx = 0; canvas_idx < audio->outputs.num;
-	     canvas_idx++) {
+	for (size_t canvas_idx = 0; canvas_idx < audio->outputs.num; canvas_idx++) {
 		for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
 			if ((mixers & (1 << mix)) == 0)
 				continue;
 
 			for (size_t ch = 0; ch < channels; ch++) {
-				register float *out =
-					audio->outputs.array[canvas_idx]
-						.output[mix]
-						.data[ch];
-				register float *in =
-					child_audio.output[mix].data[ch];
+				register float *out = audio->outputs.array[canvas_idx].output[mix].data[ch];
+				register float *in = child_audio.output[mix].data[ch];
 				register float *end = in + AUDIO_OUTPUT_FRAMES;
 
 				while (in < end)
@@ -614,8 +595,7 @@ static void stinger_transition_start(void *data)
 		obs_data_release(settings);
 
 		if (path && !path[0]) {
-			blog(LOG_WARNING,
-			     "Stinger transition file path is empty");
+			blog(LOG_WARNING, "Stinger transition file path is empty");
 			return;
 		}
 
@@ -754,14 +734,11 @@ static bool track_matte_enabled_modified(obs_properties_t *ppts, obs_property_t 
 		obs_property_set_description(prop_tp_type, obs_module_text("TransitionPointType"));
 	}
 
-	obs_property_t *prop_matte_layout =
-		obs_properties_get(ppts, "track_matte_layout");
+	obs_property_t *prop_matte_layout = obs_properties_get(ppts, "track_matte_layout");
 	obs_property_set_visible(prop_matte_layout, track_matte_enabled);
-	obs_property_t *prop_matte_path =
-		obs_properties_get(ppts, "track_matte_path");
+	obs_property_t *prop_matte_path = obs_properties_get(ppts, "track_matte_path");
 	obs_property_set_visible(prop_matte_path, track_matte_enabled);
-	obs_property_t *prop_matte_invert =
-		obs_properties_get(ppts, "invert_matte");
+	obs_property_t *prop_matte_invert = obs_properties_get(ppts, "invert_matte");
 	obs_property_set_visible(prop_matte_invert, track_matte_enabled);
 
 	obs_property_t *prop_fit_style = obs_properties_get(ppts, "fit_style");
@@ -805,17 +782,13 @@ static obs_properties_t *stinger_properties(void *data)
 	{
 		obs_properties_t *track_matte_group = obs_properties_create();
 
-		p = obs_properties_add_bool(
-			track_matte_group, "track_matte_enabled",
-			obs_module_text("TrackMatteEnabled"));
+		p = obs_properties_add_bool(track_matte_group, "track_matte_enabled",
+					    obs_module_text("TrackMatteEnabled"));
 
-		obs_property_set_modified_callback(
-			p, track_matte_enabled_modified);
+		obs_property_set_modified_callback(p, track_matte_enabled_modified);
 
-		p = obs_properties_add_list(track_matte_group,
-					    "track_matte_layout",
-					    obs_module_text("TrackMatteLayout"),
-					    OBS_COMBO_TYPE_LIST,
+		p = obs_properties_add_list(track_matte_group, "track_matte_layout",
+					    obs_module_text("TrackMatteLayout"), OBS_COMBO_TYPE_LIST,
 					    OBS_COMBO_FORMAT_INT);
 		obs_property_list_add_int(p, obs_module_text("TrackMatteLayoutHorizontal"), MATTE_LAYOUT_HORIZONTAL);
 		obs_property_list_add_int(p, obs_module_text("TrackMatteLayoutVertical"), MATTE_LAYOUT_VERTICAL);
@@ -836,10 +809,8 @@ static obs_properties_t *stinger_properties(void *data)
 
 		obs_properties_add_bool(track_matte_group, "invert_matte", obs_module_text("InvertTrackMatte"));
 
-		obs_properties_add_group(ppts, "track_matte_enabled_group",
-					 obs_module_text("TrackMatteEnabled"),
-					 OBS_GROUP_CHECKABLE,
-					 track_matte_group);
+		obs_properties_add_group(ppts, "track_matte_enabled_group", obs_module_text("TrackMatteEnabled"),
+					 OBS_GROUP_CHECKABLE, track_matte_group);
 	}
 	dstr_free(&filter);
 
@@ -860,21 +831,12 @@ static obs_properties_t *stinger_properties(void *data)
 				  FADE_STYLE_FADE_OUT_FADE_IN);
 	obs_property_list_add_int(audio_fade_style, obs_module_text("AudioFadeStyle.CrossFade"), FADE_STYLE_CROSS_FADE);
 
-	obs_property_t *fit_style = obs_properties_add_list(
-		ppts, "fit_style", obs_module_text("FitStyle"),
-		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(fit_style,
-				  obs_module_text("FitStyle.FitHeight"),
-				  FIT_STYLE_BY_HEIGHT);
-	obs_property_list_add_int(fit_style,
-				  obs_module_text("FitStyle.FitWidth"),
-				  FIT_STYLE_BY_WIDTH);
-	obs_property_list_add_int(fit_style,
-				  obs_module_text("FitStyle.Stretch"),
-				  FIT_STYLE_STRETCH);
-	obs_property_list_add_int(fit_style,
-				  obs_module_text("FitStyle.OnlyPerfect"),
-				  FIT_STYLE_ONLY_PERFECT);
+	obs_property_t *fit_style = obs_properties_add_list(ppts, "fit_style", obs_module_text("FitStyle"),
+							    OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(fit_style, obs_module_text("FitStyle.FitHeight"), FIT_STYLE_BY_HEIGHT);
+	obs_property_list_add_int(fit_style, obs_module_text("FitStyle.FitWidth"), FIT_STYLE_BY_WIDTH);
+	obs_property_list_add_int(fit_style, obs_module_text("FitStyle.Stretch"), FIT_STYLE_STRETCH);
+	obs_property_list_add_int(fit_style, obs_module_text("FitStyle.OnlyPerfect"), FIT_STYLE_ONLY_PERFECT);
 
 	UNUSED_PARAMETER(data);
 	return ppts;
