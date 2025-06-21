@@ -151,6 +151,7 @@ struct ffmpeg_mux {
 	struct io_buffer io;
 };
 
+#ifdef _WIN32
 struct pipe_sync_info {
 	HANDLE shutdown_event;
 	HANDLE data_event;
@@ -158,6 +159,7 @@ struct pipe_sync_info {
 };
 
 static struct pipe_sync_info psi = {0};
+#endif // _WIN32
 
 #define SRT_PROTO "srt"
 #define UDP_PROTO "udp"
@@ -257,7 +259,7 @@ static void ffmpeg_mux_free(struct ffmpeg_mux *ffm)
 
 	memset(ffm, 0, sizeof(*ffm));
 }
-
+#ifdef _WIN32
 static inline void build_pipe_name(char *buf, size_t len, DWORD pid)
 {
 	snprintf(buf, len, "\\\\.\\pipe\\FFmpegMuxPipe_%lu", pid);
@@ -322,6 +324,7 @@ static void cleanup_pipe_sync_info(struct pipe_sync_info *psi)
 		CloseHandle(psi->data_event);
 	memset(psi, 0, sizeof(*psi));
 }
+#endif // _WIN32
 
 static bool get_opt_str(int *p_argc, char ***p_argv, char **str,
 			const char *opt)
@@ -729,6 +732,7 @@ static void ffmpeg_mux_header(struct ffmpeg_mux *ffm, uint8_t *data,
 
 static size_t safe_read(void *vdata, size_t size)
 {
+#ifdef _WIN32
 	static struct pipe_sync_info psi = {0};
 	static bool ready = false;
 
@@ -757,11 +761,42 @@ static size_t safe_read(void *vdata, size_t size)
 			dst += got;
 			remain -= got;
 		} else {
-			fprintf(stderr, "safe_read: Wait failed: %lu\n", GetLastError());
+			fprintf(stderr, "safe_read: Wait failed: %lu\n",
+				GetLastError());
 			return 0;
 		}
 	}
 	return size;
+#else
+	uint8_t *dst = vdata;
+	size_t remain = size;
+
+	if (!pipe) {
+		// Assume stdin is used for input, as set up by os_process_pipe_create2
+		ssize_t got = read(STDIN_FILENO, dst, remain);
+		if (got <= 0) {
+			fprintf(stderr,
+				"safe_read: Failed to read from stdin: %s\n",
+				strerror(errno));
+			return 0;
+		}
+		return (size_t)got;
+	}
+
+	size_t total_read = 0;
+	while (remain) {
+		size_t got = os_process_pipe_read(pipe, dst, remain);
+		if (got == 0) {
+			fprintf(stderr,
+				"safe_read: Pipe read failed or closed\n");
+			return total_read;
+		}
+		dst += got;
+		remain -= got;
+		total_read += got;
+	}
+	return total_read;
+#endif
 }
 
 static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
@@ -1404,9 +1439,10 @@ int main(int argc, char *argv[])
 	ffmpeg_mux_free(&ffm);
 	resize_buf_free(&rb);
 	resize_buf_free(&rb_filename);
-	cleanup_pipe_sync_info(&psi);
 
 #ifdef _WIN32
+	cleanup_pipe_sync_info(&psi);
+
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);
