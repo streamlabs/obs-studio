@@ -768,34 +768,19 @@ static size_t safe_read(void *vdata, size_t size)
 	}
 	return size;
 #else
-	uint8_t *dst = vdata;
-	size_t remain = size;
+	uint8_t *data = vdata;
+	size_t total = size;
 
-	if (!pipe) {
-		// Assume stdin is used for input, as set up by os_process_pipe_create2
-		ssize_t got = read(STDIN_FILENO, dst, remain);
-		if (got <= 0) {
-			fprintf(stderr,
-				"safe_read: Failed to read from stdin: %s\n",
-				strerror(errno));
+	while (size > 0) {
+		size_t in_size = fread(data, 1, size, stdin);
+		if (in_size == 0)
 			return 0;
-		}
-		return (size_t)got;
+
+		size -= in_size;
+		data += in_size;
 	}
 
-	size_t total_read = 0;
-	while (remain) {
-		size_t got = os_process_pipe_read(pipe, dst, remain);
-		if (got == 0) {
-			fprintf(stderr,
-				"safe_read: Pipe read failed or closed\n");
-			return total_read;
-		}
-		dst += got;
-		remain -= got;
-		total_read += got;
-	}
-	return total_read;
+	return total;
 #endif
 }
 
