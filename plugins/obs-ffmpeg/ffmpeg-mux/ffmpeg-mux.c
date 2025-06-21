@@ -270,7 +270,6 @@ static bool init_pipe_sync_info(struct pipe_sync_info *psi)
 	DWORD pid = GetCurrentProcessId();
 	char name[64];
 
-	/* shutdown event */
 	snprintf(name, sizeof(name), "FFmpegMuxShutdown_%lu", pid);
 	psi->shutdown_event = OpenEventA(SYNCHRONIZE, FALSE, name);
 	if (!psi->shutdown_event) {
@@ -279,7 +278,6 @@ static bool init_pipe_sync_info(struct pipe_sync_info *psi)
 		return false;
 	}
 
-	/* data event */
 	snprintf(name, sizeof(name), "FFmpegMuxData_%lu", pid);
 	psi->data_event = OpenEventA(SYNCHRONIZE, FALSE, name);
 	if (!psi->data_event) {
@@ -289,10 +287,8 @@ static bool init_pipe_sync_info(struct pipe_sync_info *psi)
 		return false;
 	}
 
-	/* named-pipe client */
 	build_pipe_name(name, sizeof(name), pid);
 
-	/* Wait until server side exists (should be instantaneous) */
 	if (!WaitNamedPipeA(name, NMPWAIT_WAIT_FOREVER)) {
 		fprintf(stderr, "WaitNamedPipe '%s' failed: %lu\n", name,
 			GetLastError());

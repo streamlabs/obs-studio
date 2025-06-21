@@ -68,8 +68,7 @@ bool os_process_pipe_signal_shutdown(os_process_pipe_t *pp)
 	}
 
 	if (!SetEvent(pp->shutdown_event)) {
-		blog(LOG_ERROR, "Failed to signal shutdown event: %lu",
-		     GetLastError());
+		blog(LOG_ERROR, "Failed to signal shutdown event: %lu", GetLastError());
 		return false;
 	}
 	return true;
@@ -92,12 +91,9 @@ static bool create_data_event(os_process_pipe_t *pp, DWORD pid)
 	char event_name[64];
 	snprintf(event_name, sizeof(event_name), "FFmpegMuxData_%lu", pid);
 
-	pp->data_event = CreateEventA(/*lpEventAttributes*/ NULL,
-				      /*bManualReset    */ FALSE,
-				      /*bInitialState   */ FALSE, event_name);
+	pp->data_event = CreateEventA(NULL, FALSE, FALSE, event_name);
 	if (!pp->data_event) {
-		blog(LOG_ERROR, "Failed to create data event '%s': %lu",
-		     event_name, GetLastError());
+		blog(LOG_ERROR, "Failed to create data event '%s': %lu", event_name, GetLastError());
 		return false;
 	}
 	return true;
@@ -109,8 +105,7 @@ bool os_process_pipe_signal_data(os_process_pipe_t *pp)
 		return false;
 
 	if (!SetEvent(pp->data_event)) {
-		blog(LOG_ERROR, "Failed to signal data event: %lu",
-		     GetLastError());
+		blog(LOG_ERROR, "Failed to signal data event: %lu", GetLastError());
 		return false;
 	}
 	return true;
@@ -131,13 +126,13 @@ static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
 
 	pp->handle = CreateNamedPipeA(
 		pipe_name, PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-		PIPE_TYPE_BYTE | /* byte stream                                         */
-			PIPE_WAIT, /* blocking mode                                       */
-		1, /* max instances                                       */
-		64 * 1024, /* out-buf size                                        */
-		0, /* in-buf size  (unused)                               */
+		PIPE_TYPE_BYTE |
+			PIPE_WAIT,
+		1,
+		64 * 1024,
+		0, 
 		0,
-		NULL); /* default timeout / security                          */
+		NULL);
 
 	if (pp->handle == INVALID_HANDLE_VALUE) {
 		blog(LOG_ERROR, "CreateNamedPipe '%s' failed: %lu", pipe_name,
@@ -145,12 +140,10 @@ static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
 		return false;
 	}
 
-	/* Block until child connects; harmless because child launches immediately */
-	BOOL ok = ConnectNamedPipe(pp->handle, NULL) ||
-		  GetLastError() == ERROR_PIPE_CONNECTED;
+	// Block until child connects; harmless because child launches immediately
+	BOOL ok = ConnectNamedPipe(pp->handle, NULL) || GetLastError() == ERROR_PIPE_CONNECTED;
 	if (!ok) {
-		blog(LOG_ERROR, "ConnectNamedPipe '%s' failed: %lu", pipe_name,
-		     GetLastError());
+		blog(LOG_ERROR, "ConnectNamedPipe '%s' failed: %lu", pipe_name, GetLastError());
 		CloseHandle(pp->handle);
 		pp->handle = NULL;
 		return false;
