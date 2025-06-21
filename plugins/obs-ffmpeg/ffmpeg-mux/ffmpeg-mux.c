@@ -151,6 +151,14 @@ struct ffmpeg_mux {
 	struct io_buffer io;
 };
 
+struct pipe_sync_info {
+	HANDLE shutdown_event;
+	HANDLE data_event;
+	HANDLE pipe;
+};
+
+static struct pipe_sync_info psi = {0};
+
 #define SRT_PROTO "srt"
 #define UDP_PROTO "udp"
 #define TCP_PROTO "tcp"
@@ -248,6 +256,71 @@ static void ffmpeg_mux_free(struct ffmpeg_mux *ffm)
 	av_packet_free(&ffm->packet);
 
 	memset(ffm, 0, sizeof(*ffm));
+}
+
+static inline void build_pipe_name(char *buf, size_t len, DWORD pid)
+{
+	snprintf(buf, len, "\\\\.\\pipe\\FFmpegMuxPipe_%lu", pid);
+}
+
+static bool init_pipe_sync_info(struct pipe_sync_info *psi)
+{
+	DWORD pid = GetCurrentProcessId();
+	char name[64];
+
+	/* shutdown event */
+	snprintf(name, sizeof(name), "FFmpegMuxShutdown_%lu", pid);
+	psi->shutdown_event = OpenEventA(SYNCHRONIZE, FALSE, name);
+	if (!psi->shutdown_event) {
+		fprintf(stderr, "OpenEvent '%s' failed: %lu\n", name,
+			GetLastError());
+		return false;
+	}
+
+	/* data event */
+	snprintf(name, sizeof(name), "FFmpegMuxData_%lu", pid);
+	psi->data_event = OpenEventA(SYNCHRONIZE, FALSE, name);
+	if (!psi->data_event) {
+		fprintf(stderr, "OpenEvent '%s' failed: %lu\n", name,
+			GetLastError());
+		CloseHandle(psi->shutdown_event);
+		return false;
+	}
+
+	/* named-pipe client */
+	build_pipe_name(name, sizeof(name), pid);
+
+	/* Wait until server side exists (should be instantaneous) */
+	if (!WaitNamedPipeA(name, NMPWAIT_WAIT_FOREVER)) {
+		fprintf(stderr, "WaitNamedPipe '%s' failed: %lu\n", name,
+			GetLastError());
+		CloseHandle(psi->shutdown_event);
+		CloseHandle(psi->data_event);
+		return false;
+	}
+
+	psi->pipe = CreateFileA(name, GENERIC_READ, 0, NULL, OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL, NULL);
+	if (psi->pipe == INVALID_HANDLE_VALUE) {
+		fprintf(stderr, "CreateFile '%s' failed: %lu\n", name,
+			GetLastError());
+		CloseHandle(psi->shutdown_event);
+		CloseHandle(psi->data_event);
+		return false;
+	}
+
+	return true;
+}
+
+static void cleanup_pipe_sync_info(struct pipe_sync_info *psi)
+{
+	if (psi->pipe && psi->pipe != INVALID_HANDLE_VALUE)
+		CloseHandle(psi->pipe);
+	if (psi->shutdown_event)
+		CloseHandle(psi->shutdown_event);
+	if (psi->data_event)
+		CloseHandle(psi->data_event);
+	memset(psi, 0, sizeof(*psi));
 }
 
 static bool get_opt_str(int *p_argc, char ***p_argv, char **str,
@@ -656,19 +729,39 @@ static void ffmpeg_mux_header(struct ffmpeg_mux *ffm, uint8_t *data,
 
 static size_t safe_read(void *vdata, size_t size)
 {
-	uint8_t *data = vdata;
-	size_t total = size;
+	static struct pipe_sync_info psi = {0};
+	static bool ready = false;
 
-	while (size > 0) {
-		size_t in_size = fread(data, 1, size, stdin);
-		if (in_size == 0)
+	if (!ready) {
+		if (!init_pipe_sync_info(&psi))
 			return 0;
-
-		size -= in_size;
-		data += in_size;
+		ready = true;
 	}
 
-	return total;
+	uint8_t *dst = vdata;
+	size_t remain = size;
+	HANDLE h[2] = {psi.shutdown_event, psi.data_event};
+
+	while (remain) {
+		DWORD wr = WaitForMultipleObjects(2, h, FALSE, INFINITE);
+
+		if (wr == WAIT_OBJECT_0) // shutdown
+			return 0;
+
+		if (wr == WAIT_OBJECT_0 + 1) { // data available
+			DWORD want = (DWORD)remain, got = 0;
+			if (!ReadFile(psi.pipe, dst, want, &got, NULL) ||
+			    got == 0)
+				return 0;
+
+			dst += got;
+			remain -= got;
+		} else {
+			fprintf(stderr, "safe_read: Wait failed: %lu\n", GetLastError());
+			return 0;
+		}
+	}
+	return size;
 }
 
 static bool ffmpeg_mux_get_header(struct ffmpeg_mux *ffm)
@@ -1311,6 +1404,7 @@ int main(int argc, char *argv[])
 	ffmpeg_mux_free(&ffm);
 	resize_buf_free(&rb);
 	resize_buf_free(&rb_filename);
+	cleanup_pipe_sync_info(&psi);
 
 #ifdef _WIN32
 	for (int i = 0; i < argc; i++)
