@@ -97,7 +97,6 @@ target_sources(
     util/cf-lexer.h
     util/cf-parser.c
     util/cf-parser.h
-    util/circlebuf.h
     util/config-file.c
     util/config-file.h
     util/crc32.c
@@ -343,7 +342,6 @@ set(
   util/c99defs.h
   util/cf-lexer.h
   util/cf-parser.h
-  util/circlebuf.h
   util/config-file.h
   util/crc32.h
   util/darray.h
