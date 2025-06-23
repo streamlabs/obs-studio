@@ -42,7 +42,6 @@ find . -type d \( \
     -path ./plugins/decklink/\*/decklink-sdk -o \
     -path ./plugins/enc-amf -o \
     -path ./plugins/mac-syphon/syphon-framework -o \
-    -path ./plugins/obs-outputs/ftl-sdk -o \
     -path ./plugins/sl-vst -o \
     -path ./plugins/obs-browser -o \
     -path ./plugins/win-dshow/libdshowcapture -o \

@@ -51,7 +51,6 @@ find . -type d \( \
     -path ./plugins/mediasoup-connector -o \
     -path ./plugins/sl-vst -o \
     -path ./plugins/mac-syphon/syphon-framework -o \
-    -path ./plugins/obs-outputs/ftl-sdk -o \
     -path ./plugins/obs-websocket/deps -o \
     -path ./plugins/win-spout/deps \
 \) -prune -false -type f -o \
