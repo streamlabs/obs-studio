@@ -703,7 +703,7 @@ static inline bool init_shmem_thread(uint32_t pitch, uint32_t cy)
 }
 
 #ifndef ALIGN
-#define ALIGN(bytes, align) (((bytes) + ((align) - 1)) & ~((align) - 1))
+#define ALIGN(bytes, align) (((bytes) + ((align)-1)) & ~((align)-1))
 #endif
 
 bool capture_init_shmem(struct shmem_data **data, HWND window, uint32_t cx, uint32_t cy, uint32_t pitch,

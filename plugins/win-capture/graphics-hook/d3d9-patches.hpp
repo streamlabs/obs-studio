@@ -49,7 +49,10 @@ struct patch_info {
 	const BYTE *data;
 };
 
-#define NEW_PATCH(x) {sizeof(x), (x)}
+#define NEW_PATCH(x)           \
+	{                      \
+		sizeof(x), (x) \
+	}
 #define MAX_PATCH_SIZE 2
 
 static const BYTE force_jump[] = {0xEB};

@@ -36,7 +36,7 @@ extern "C" {
  *       See DARRAY macro at the bottom of the file for slightly safer usage.
  */
 
-#define DARRAY_INVALID ((size_t) - 1)
+#define DARRAY_INVALID ((size_t)-1)
 
 struct darray {
 	void *array;

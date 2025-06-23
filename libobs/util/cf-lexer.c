@@ -733,7 +733,7 @@ exit:
 	return success;
 }
 
-#define INVALID_INDEX ((size_t) - 1)
+#define INVALID_INDEX ((size_t)-1)
 
 static inline size_t cf_preprocess_get_def_idx(struct cf_preprocessor *pp, const struct strref *def_name)
 {
