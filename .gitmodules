@@ -14,9 +14,6 @@
 	path = plugins/obs-ndi
 	url = https://github.com/streamlabs/obs-ndi.git
 	branch = streamlabs-obs
-[submodule "plugins/slobs-virtual-cam"]
-	path = plugins/slobs-virtual-cam
-	url = https://github.com/streamlabs/slobs-virtual-cam.git
 [submodule "plugins/obs-openvr"]
 	path = plugins/obs-openvr
 	url = https://github.com/streamlabs/OBS-OpenVR-Input-Plugin.git
