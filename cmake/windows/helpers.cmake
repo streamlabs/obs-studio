@@ -26,11 +26,7 @@ function(set_target_properties_obs target)
     elseif(target STREQUAL inject-helper OR target STREQUAL get-graphics-offsets)
       set(OBS_EXECUTABLE_DESTINATION "${OBS_DATA_DESTINATION}/obs-plugins/win-capture")
 
-      # cmake-format: off
-      if(ENABLE_32_TARGETS)
-        _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION} x86)
-      endif()
-      # cmake-format: on
+      _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION} x86)
     endif()
 
     _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION})
@@ -70,19 +66,11 @@ function(set_target_properties_obs target)
       target_add_resource(graphics-hook "${CMAKE_CURRENT_SOURCE_DIR}/obs-vulkan64.json" "${target_destination}")
       target_add_resource(graphics-hook "${CMAKE_CURRENT_SOURCE_DIR}/obs-vulkan32.json" "${target_destination}")
 
-      # cmake-format: off
-      if(ENABLE_32_TARGETS)
-        _target_install_obs(${target} DESTINATION ${target_destination} x86)
-      endif()
-      # cmake-format: on
+      _target_install_obs(${target} DESTINATION ${target_destination} x86)
     elseif(target STREQUAL obs-virtualcam-module)
       set(target_destination "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow")
 
-      # cmake-format: off
-      if(ENABLE_32_TARGETS)
-        _target_install_obs(${target} DESTINATION ${target_destination} x86)
-      endif()
-      # cmake-format: on
+      _target_install_obs(${target} DESTINATION ${target_destination} x86)
     else()
       set(target_destination "${OBS_PLUGIN_DESTINATION}")
     endif()

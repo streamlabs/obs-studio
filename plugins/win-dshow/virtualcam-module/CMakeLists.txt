@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.28...3.30)
 
 option(ENABLE_VIRTUALCAM "Enable Windows Virtual Camera" ON)
@@ -136,20 +135,9 @@ target_add_resource(obs-virtualcam-module "${CMAKE_CURRENT_BINARY_DIR}/virtualca
                     "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow"
 )
 
-
 set_target_properties_obs(
   obs-virtualcam-module PROPERTIES
                         FOLDER plugins/win-dshow
                         OUTPUT_NAME obs-${_OUTPUT_NAME}
                         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
-
-if(ENABLE_32_TARGETS)
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-  add_custom_command(
-    TARGET obs-virtualcam-module
-    POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" --build ${CMAKE_SOURCE_DIR}/build_x86 --config $<CONFIG> -t obs-virtualcam-module
-    COMMENT "Build 32-bit obs-virtualcam")
-endif()
-endif()
