@@ -71,7 +71,6 @@ struct obs_volmeter {
 	DARRAY(struct meter_cb) callbacks;
 
 	enum obs_peak_meter_type peak_meter_type;
-	unsigned int update_ms;
 	float prev_samples[MAX_AUDIO_CHANNELS][4];
 
 	float magnitude[MAX_AUDIO_CHANNELS];
