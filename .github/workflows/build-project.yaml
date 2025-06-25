@@ -202,7 +202,7 @@ jobs:
         env:
             SENTRY_AUTH_TOKEN: ${{secrets.SENTRY_AUTH_TOKEN}}
             BUILDCONFIG: ${{matrix.BuildConfig}}
-             
+
       - name: Symbol Server and Sentry Integration
         uses: ./.github/actions/upload-debug-symbols
         with:
@@ -211,7 +211,7 @@ jobs:
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           buildConfig: RelWithDebInfo
-  
+
       - uses: actions/cache/save@v4
         if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
         with:
@@ -406,9 +406,9 @@ jobs:
           Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
           $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
           $componentsToInstall= @(
-          "Microsoft.VisualStudio.Component.VC.v141.x86.x64"
-          "Microsoft.VisualStudio.Component.VC.14.39.17.9.x86.x64"
-          "Microsoft.VisualStudio.Component.VC.14.39.17.9.ATL"
+          "Microsoft.VisualStudio.Component.VC.v143.x86.x64"
+          "Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64"
+          "Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL"
           )
           [string]$workloadArgs = $componentsToInstall | ForEach-Object {" --add " +  $_}
           $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
@@ -485,4 +485,3 @@ jobs:
         run: aws s3 cp ${{env.TARGET_ARTIFACT}}.7z s3://${{env.RELEASE_BUCKET}} --acl public-read
         env:
           TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
-  
