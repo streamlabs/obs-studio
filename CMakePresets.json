@@ -145,7 +145,7 @@
       "generator": "Visual Studio 17 2022",
       "toolset": "v143",
       "cacheVariables": {
-        "OBS_VERSION_OVERRIDE": "31.0.3-beta1",
+        "OBS_VERSION_OVERRIDE": "31.0.3-sl1",
         "OBS_CMAKE_VERSION": {"type": "STRING", "value": "3.0.0"},
         "ENABLE_BROWSER": true,
         "VIRTUALCAM_GUID": {"type": "STRING", "value": "A3FCE0F5-3493-419F-958A-ABA1250EC20B"},
