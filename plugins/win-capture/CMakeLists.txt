@@ -29,27 +29,28 @@ add_library(OBS::capture ALIAS win-capture)
 target_sources(
   win-capture
   PRIVATE # cmake-format: sortable
-          app-helpers.c
-          app-helpers.h
-          audio-helpers.c
-          audio-helpers.h
-          compat-format-ver.h
-          compat-helpers.c
-          compat-helpers.h
-          cursor-capture.c
-          cursor-capture.h
-          dc-capture.c
-          dc-capture.h
-          duplicator-monitor-capture.c
-          game-capture-file-init.c
-          game-capture.c
-          load-graphics-offsets.c
-          monitor-capture.c
-          nt-stuff.c
-          nt-stuff.h
-          plugin-main.c
-          screen-capture.c
-          window-capture.c)
+    app-helpers.c
+    app-helpers.h
+    audio-helpers.c
+    audio-helpers.h
+    compat-format-ver.h
+    compat-helpers.c
+    compat-helpers.h
+    cursor-capture.c
+    cursor-capture.h
+    dc-capture.c
+    dc-capture.h
+    duplicator-monitor-capture.c
+    game-capture-file-init.c
+    game-capture.c
+    load-graphics-offsets.c
+    monitor-capture.c
+    nt-stuff.c
+    nt-stuff.h
+    plugin-main.c
+    screen-capture.c
+    window-capture.c
+)
 
 target_compile_definitions(
   win-capture

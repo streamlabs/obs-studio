@@ -17,7 +17,9 @@ function(extract_archive file destination)
     execute_process(
       COMMAND 7z x "${file}" -o"${destination}" -y
       RESULT_VARIABLE _result
-      OUTPUT_QUIET ERROR_QUIET)
+      OUTPUT_QUIET
+      ERROR_QUIET
+    )
     if(NOT _result EQUAL 0)
       message(FATAL_ERROR "Failed to extract .7z archive: ${file}")
     endif()
@@ -165,7 +167,7 @@ function(_check_dependencies)
       set(file "${dependency}-${version}-${arch}.7z")
       set(url ${url}/${file})
     else()
-       # TODO: original code from OBS
+      # TODO: original code from OBS
       #set(url ${url}/${version}/${file})
       set(url ${url}/${file})
     endif()
@@ -221,34 +223,62 @@ function(_check_dependencies)
         string(REPLACE "VERSION" "${version}" libmediasoupclient_subdir "${libmediasoupclient_subdir}")
         string(REPLACE "ARCH" "${arch}" libmediasoupclient_subdir "${libmediasoupclient_subdir}")
       endif()
-      set(LIBMEDIASOUPCLIENT_PATH
-          "${dependencies_dir}/${libmediasoupclient_subdir}"
-          CACHE PATH "libmediasoupclient directory" FORCE)
+      set(
+        LIBMEDIASOUPCLIENT_PATH
+        "${dependencies_dir}/${libmediasoupclient_subdir}"
+        CACHE PATH
+        "libmediasoupclient directory"
+        FORCE
+      )
 
-      set(MEDIASOUP_INCLUDE_PATH
-          "${dependencies_dir}/${libmediasoupclient_subdir}/include/mediasoupclient/"
-          CACHE PATH "libmediasoupclient include directory" FORCE)
+      set(
+        MEDIASOUP_INCLUDE_PATH
+        "${dependencies_dir}/${libmediasoupclient_subdir}/include/mediasoupclient/"
+        CACHE PATH
+        "libmediasoupclient include directory"
+        FORCE
+      )
       if(WIN32)
-        set(MEDIASOUP_LIB_PATH
-            "${dependencies_dir}/${libmediasoupclient_subdir}/lib/mediasoupclient.lib"
-            CACHE PATH "libmediasoupclient lib directory" FORCE)
+        set(
+          MEDIASOUP_LIB_PATH
+          "${dependencies_dir}/${libmediasoupclient_subdir}/lib/mediasoupclient.lib"
+          CACHE PATH
+          "libmediasoupclient lib directory"
+          FORCE
+        )
       elseif(APPLE)
-        set(MEDIASOUP_LIB_PATH
-            "${dependencies_dir}/${libmediasoupclient_subdir}/lib/libmediasoupclient.a"
-            CACHE PATH "libmediasoupclient lib directory" FORCE)
+        set(
+          MEDIASOUP_LIB_PATH
+          "${dependencies_dir}/${libmediasoupclient_subdir}/lib/libmediasoupclient.a"
+          CACHE PATH
+          "libmediasoupclient lib directory"
+          FORCE
+        )
       endif()
 
-      set(MEDIASOUP_SDP_INCLUDE_PATH
-          "${dependencies_dir}/${libmediasoupclient_subdir}/include/sdptransform"
-          CACHE PATH "libmediasoupclient sdp include directory" FORCE)
+      set(
+        MEDIASOUP_SDP_INCLUDE_PATH
+        "${dependencies_dir}/${libmediasoupclient_subdir}/include/sdptransform"
+        CACHE PATH
+        "libmediasoupclient sdp include directory"
+        FORCE
+      )
       if(WIN32)
-        set(MEDIASOUP_SDP_LIB_PATH
-            "${dependencies_dir}/${libmediasoupclient_subdir}/lib/sdptransform.lib"
-            CACHE PATH "libmediasoupclient sdp lib directory" FORCE)
+        set(
+          MEDIASOUP_SDP_LIB_PATH
+          "${dependencies_dir}/${libmediasoupclient_subdir}/lib/sdptransform.lib"
+          CACHE PATH
+          "libmediasoupclient sdp lib directory"
+          FORCE
+        )
       elseif(APPLE)
-        set(MEDIASOUP_SDP_LIB_PATH
-            "${dependencies_dir}/${libmediasoupclient_subdir}/lib/libsdptransform.a"
-            CACHE PATH "libmediasoupclient sdp lib directory" FORCE)
+        set(
+          MEDIASOUP_SDP_LIB_PATH
+          "${dependencies_dir}/${libmediasoupclient_subdir}/lib/libsdptransform.a"
+          CACHE PATH
+          "libmediasoupclient sdp lib directory"
+          FORCE
+        )
       endif()
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${libmediasoupclient_subdir}")
     elseif(dependency STREQUAL webrtc)
@@ -260,31 +290,19 @@ function(_check_dependencies)
         string(REPLACE "ARCH" "${arch}" webrtc_subdir "${webrtc_subdir}")
       endif()
 
-      set(WEBRTC_PATH
-          "${dependencies_dir}/${webrtc_subdir}"
-          CACHE PATH "webrtc directory" FORCE)
+      set(WEBRTC_PATH "${dependencies_dir}/${webrtc_subdir}" CACHE PATH "webrtc directory" FORCE)
 
-      set(WEBRTC_INCLUDE_PATH
-          "${dependencies_dir}/${webrtc_subdir}"
-          CACHE PATH "webrtc include directory" FORCE)
+      set(WEBRTC_INCLUDE_PATH "${dependencies_dir}/${webrtc_subdir}" CACHE PATH "webrtc include directory" FORCE)
       if(WIN32)
-        set(WEBRTC_LIB_PATH
-            "${dependencies_dir}/${webrtc_subdir}/webrtc.lib"
-            CACHE PATH "webrtc lib path" FORCE)
+        set(WEBRTC_LIB_PATH "${dependencies_dir}/${webrtc_subdir}/webrtc.lib" CACHE PATH "webrtc lib path" FORCE)
       elseif(APPLE)
-        set(WEBRTC_LIB_PATH
-            "${dependencies_dir}/${webrtc_subdir}/libwebrtc.a"
-            CACHE PATH "webrtc lib path" FORCE)
+        set(WEBRTC_LIB_PATH "${dependencies_dir}/${webrtc_subdir}/libwebrtc.a" CACHE PATH "webrtc lib path" FORCE)
       endif()
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${webrtc_subdir}")
     elseif(dependency STREQUAL grpc)
       set(grpc_subdir "grpc-release-${version}")
-      set(Protobuf_DIR
-          "${dependencies_dir}/${grpc_subdir}/cmake"
-          CACHE PATH "Protobuf directory" FORCE)
-      set(GRPC_PATH
-          "${dependencies_dir}/${grpc_subdir}"
-          CACHE PATH "GRPC directory" FORCE)
+      set(Protobuf_DIR "${dependencies_dir}/${grpc_subdir}/cmake" CACHE PATH "Protobuf directory" FORCE)
+      set(GRPC_PATH "${dependencies_dir}/${grpc_subdir}" CACHE PATH "GRPC directory" FORCE)
 
       list(APPEND CMAKE_PREFIX_PATH "${GRPC_PATH}")
 
@@ -296,30 +314,16 @@ function(_check_dependencies)
       string(REPLACE "VERSION" "${version}" openssl_subdir "${openssl_subdir}")
       string(REPLACE "ARCH" "${arch}" openssl_subdir "${openssl_subdir}")
 
-      set(OPENSSL_PATH
-          "${dependencies_dir}/${openssl_subdir}"
-          CACHE PATH "openssl directory" FORCE)
+      set(OPENSSL_PATH "${dependencies_dir}/${openssl_subdir}" CACHE PATH "openssl directory" FORCE)
 
-      set(OPENSSL_INCLUDE_PATH
-          "${OPENSSL_PATH}/include"
-          CACHE PATH "openssl include directory" FORCE)
-      set(OPENSSL_LIB_PATH
-          "${OPENSSL_PATH}/lib/libssl.a"
-          CACHE PATH "openssl SSL library path" FORCE)
-      set(OPENSSL_CRYPTO_LIB_PATH
-          "${OPENSSL_PATH}/lib/libcrypto.a"
-          CACHE PATH "openssl Crypto library path" FORCE)
+      set(OPENSSL_INCLUDE_PATH "${OPENSSL_PATH}/include" CACHE PATH "openssl include directory" FORCE)
+      set(OPENSSL_LIB_PATH "${OPENSSL_PATH}/lib/libssl.a" CACHE PATH "openssl SSL library path" FORCE)
+      set(OPENSSL_CRYPTO_LIB_PATH "${OPENSSL_PATH}/lib/libcrypto.a" CACHE PATH "openssl Crypto library path" FORCE)
 
       # Explicitly set CMake variables for OpenSSL
-      set(OPENSSL_ROOT_DIR
-          "${OPENSSL_PATH}"
-          CACHE PATH "OpenSSL root directory" FORCE)
-      set(OPENSSL_INCLUDE_DIR
-          "${OPENSSL_INCLUDE_PATH}"
-          CACHE PATH "OpenSSL include directory" FORCE)
-      set(OPENSSL_LIBRARIES
-          "${OPENSSL_LIB_PATH};${OPENSSL_CRYPTO_LIB_PATH}"
-          CACHE PATH "OpenSSL libraries" FORCE)
+      set(OPENSSL_ROOT_DIR "${OPENSSL_PATH}" CACHE PATH "OpenSSL root directory" FORCE)
+      set(OPENSSL_INCLUDE_DIR "${OPENSSL_INCLUDE_PATH}" CACHE PATH "OpenSSL include directory" FORCE)
+      set(OPENSSL_LIBRARIES "${OPENSSL_LIB_PATH};${OPENSSL_CRYPTO_LIB_PATH}" CACHE PATH "OpenSSL libraries" FORCE)
 
       list(APPEND CMAKE_PREFIX_PATH "${OPENSSL_PATH}")
 

@@ -191,12 +191,7 @@ macro(FFmpeg_find_dll)
   endif()
 
   if(NOT FFmpeg_FFMPEG_EXECUTABLE)
-    find_program(
-      FFmpeg_FFMPEG_EXECUTABLE
-      NAMES ffmpeg.exe
-      HINTS ${_implib_path} ${_bin_path}
-      DOC "Path to ffmpeg.exe"
-    )
+    find_program(FFmpeg_FFMPEG_EXECUTABLE NAMES ffmpeg.exe HINTS ${_implib_path} ${_bin_path} DOC "Path to ffmpeg.exe")
   endif()
 
   if(NOT FFmpeg_FFPROBE_EXECUTABLE)
@@ -310,36 +305,22 @@ endif()
 
 if(NOT WIN32)
   if(NOT FFmpeg_FFMPEG_EXECUTABLE)
-    find_program(
-      FFmpeg_FFMPEG_EXECUTABLE
-      NAMES ffmpeg
-      DOC "Path to ffmpeg (non-Windows fallback)"
-    )
+    find_program(FFmpeg_FFMPEG_EXECUTABLE NAMES ffmpeg DOC "Path to ffmpeg (non-Windows fallback)")
   endif()
 
   if(NOT FFmpeg_FFPROBE_EXECUTABLE)
-    find_program(
-      FFmpeg_FFPROBE_EXECUTABLE
-      NAMES ffprobe
-      DOC "Path to ffprobe (non-Windows fallback)"
-    )
+    find_program(FFmpeg_FFPROBE_EXECUTABLE NAMES ffprobe DOC "Path to ffprobe (non-Windows fallback)")
   endif()
 endif()
 
 if(FFmpeg_FFMPEG_EXECUTABLE AND NOT TARGET FFmpeg::ffmpegexe)
   add_executable(FFmpeg::ffmpegexe IMPORTED)
-  set_target_properties(FFmpeg::ffmpegexe
-    PROPERTIES
-      IMPORTED_LOCATION "${FFmpeg_FFMPEG_EXECUTABLE}"
-  )
+  set_target_properties(FFmpeg::ffmpegexe PROPERTIES IMPORTED_LOCATION "${FFmpeg_FFMPEG_EXECUTABLE}")
 endif()
 
 if(FFmpeg_FFPROBE_EXECUTABLE AND NOT TARGET FFmpeg::ffprobeexe)
   add_executable(FFmpeg::ffprobeexe IMPORTED)
-  set_target_properties(FFmpeg::ffprobeexe
-    PROPERTIES
-      IMPORTED_LOCATION "${FFmpeg_FFPROBE_EXECUTABLE}"
-  )
+  set_target_properties(FFmpeg::ffprobeexe PROPERTIES IMPORTED_LOCATION "${FFmpeg_FFPROBE_EXECUTABLE}")
 endif()
 
 mark_as_advanced(FFmpeg_FFMPEG_EXECUTABLE FFmpeg_FFPROBE_EXECUTABLE)

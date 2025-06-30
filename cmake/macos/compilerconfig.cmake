@@ -28,33 +28,37 @@ function(check_sdk_requirements)
     COMMAND xcrun --sdk macosx --show-sdk-platform-version
     OUTPUT_VARIABLE obs_macos_current_sdk
     RESULT_VARIABLE result
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
   if(NOT result EQUAL 0)
     message(
       FATAL_ERROR
-        "Failed to fetch macOS SDK version. "
-        "Ensure that the macOS SDK is installed and that xcode-select points at the Xcode developer directory.")
+      "Failed to fetch macOS SDK version. "
+      "Ensure that the macOS SDK is installed and that xcode-select points at the Xcode developer directory."
+    )
   endif()
   message(DEBUG "macOS SDK version: ${obs_macos_current_sdk}")
   if(obs_macos_current_sdk VERSION_LESS obs_macos_minimum_sdk)
     message(
-      FATAL_ERROR "Your macOS SDK version (${obs_macos_current_sdk}) is too low. "
-                  "The macOS ${obs_macos_minimum_sdk} SDK (Xcode ${obs_macos_minimum_xcode}) is required to build OBS.")
+      FATAL_ERROR
+      "Your macOS SDK version (${obs_macos_current_sdk}) is too low. "
+      "The macOS ${obs_macos_minimum_sdk} SDK (Xcode ${obs_macos_minimum_xcode}) is required to build OBS."
+    )
   endif()
-  execute_process(
-    COMMAND xcrun --find xcodebuild
-    OUTPUT_VARIABLE obs_macos_xcodebuild
-    RESULT_VARIABLE result)
+  execute_process(COMMAND xcrun --find xcodebuild OUTPUT_VARIABLE obs_macos_xcodebuild RESULT_VARIABLE result)
   if(NOT result EQUAL 0)
     message(
-      FATAL_ERROR "Xcode was not found. "
-                  "Ensure you have installed Xcode and that xcode-select points at the Xcode developer directory.")
+      FATAL_ERROR
+      "Xcode was not found. "
+      "Ensure you have installed Xcode and that xcode-select points at the Xcode developer directory."
+    )
   endif()
   message(DEBUG "Path to xcodebuild binary: ${obs_macos_xcodebuild}")
   if(XCODE_VERSION VERSION_LESS obs_macos_minimum_xcode)
     message(
       FATAL_ERROR
-        "Your Xcode version (${XCODE_VERSION}) is too low. Xcode ${obs_macos_minimum_xcode} is required to build OBS.")
+      "Your Xcode version (${XCODE_VERSION}) is too low. Xcode ${obs_macos_minimum_xcode} is required to build OBS."
+    )
   endif()
 endfunction()
 

@@ -21,29 +21,29 @@ endif()
 target_sources(
   libobs-opengl
   PRIVATE # cmake-format: sortable
-          $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:gl-wayland-egl.c>
-          $<$<PLATFORM_ID:Darwin>:gl-cocoa.m>
-          $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.h>
-          $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.m>
-          $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-egl-common.c>
-          $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-nix.c>
-          $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-x11-egl.c>
-          $<$<PLATFORM_ID:Windows>:gl-windows.c>
-          gl-helpers.c
-          gl-helpers.h
-          gl-indexbuffer.c
-          gl-shader.c
-          gl-shaderparser.c
-          gl-shaderparser.h
-          gl-stagesurf.c
-          gl-subsystem.c
-          gl-subsystem.h
-          gl-texture2d.c
-          gl-texture3d.c
-          gl-texturecube.c
-          gl-vertexbuffer.c
-          gl-zstencil.c
-          )
+    $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:gl-wayland-egl.c>
+    $<$<PLATFORM_ID:Darwin>:gl-cocoa.m>
+    $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.h>
+    $<$<PLATFORM_ID:Darwin>:IOSurfaceHelper.m>
+    $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-egl-common.c>
+    $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-nix.c>
+    $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:gl-x11-egl.c>
+    $<$<PLATFORM_ID:Windows>:gl-windows.c>
+    gl-helpers.c
+    gl-helpers.h
+    gl-indexbuffer.c
+    gl-shader.c
+    gl-shaderparser.c
+    gl-shaderparser.h
+    gl-stagesurf.c
+    gl-subsystem.c
+    gl-subsystem.h
+    gl-texture2d.c
+    gl-texture3d.c
+    gl-texturecube.c
+    gl-vertexbuffer.c
+    gl-zstencil.c
+)
 
 target_compile_options(libobs-opengl PRIVATE $<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang>:-Wno-strict-prototypes>)
 
@@ -51,17 +51,17 @@ target_compile_definitions(libobs-opengl PRIVATE $<$<PLATFORM_ID:Darwin>:GL_SILE
 
 target_link_libraries(
   libobs-opengl
-  PRIVATE 
-          OBS::libobs
-          OBS::glad
-          "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,Cocoa.framework>>"
-          "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,IOSurface.framework>>"
-          "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,CoreImage.framework>>"
-          $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:xcb::xcb>
-          $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:X11::x11-xcb>
-          $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:OpenGL::EGL>
-          $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:Wayland::EGL>
-          )
+  PRIVATE
+    OBS::libobs
+    OBS::glad
+    "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,Cocoa.framework>>"
+    "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,IOSurface.framework>>"
+    "$<$<PLATFORM_ID:Darwin>:$<LINK_LIBRARY:FRAMEWORK,CoreImage.framework>>"
+    $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:xcb::xcb>
+    $<$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>:X11::x11-xcb>
+    $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:OpenGL::EGL>
+    $<$<AND:$<PLATFORM_ID:Linux,FreeBSD,OpenBSD>,$<BOOL:${ENABLE_WAYLAND}>>:Wayland::EGL>
+)
 
 if(OS_WINDOWS)
   configure_file(cmake/windows/obs-module.rc.in libobs-opengl.rc)

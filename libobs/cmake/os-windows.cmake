@@ -61,9 +61,8 @@ target_sources(
 
 target_include_directories(
   libobs
-  PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util/windows>
-#  $<INSTALL_INTERFACE:util/windows>
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/util/windows>
+  #  $<INSTALL_INTERFACE:util/windows>
 )
 
 target_compile_options(libobs PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/EHc->)
@@ -86,7 +85,8 @@ set_target_properties(libobs PROPERTIES PREFIX "" OUTPUT_NAME "obs")
 find_package(LibDataChannel 0.20 REQUIRED)
 
 if(NOT ENABLE_UI)
-  set(DEPENDENCY_DLLS
+  set(
+    DEPENDENCY_DLLS
     $<TARGET_FILE:FFmpeg::avcodec>
     $<TARGET_FILE:FFmpeg::avformat>
     $<TARGET_FILE:FFmpeg::avutil>
@@ -97,16 +97,15 @@ if(NOT ENABLE_UI)
     $<TARGET_FILE:FFmpeg::ffmpegexe>
     $<TARGET_FILE:FFmpeg::ffprobeexe>
     $<TARGET_FILE:Libx264::Libx264>
-
     "$<TARGET_FILE_DIR:ZLIB::ZLIB>/../bin/zlib.dll"
     "$<TARGET_FILE_DIR:Librist::Librist>/../bin/librist.dll"
     "$<TARGET_FILE_DIR:Libsrt::Libsrt>/../bin/srt.dll"
-
     "$<TARGET_FILE_DIR:CURL::libcurl>/../bin/libcurl.dll"
     "$<TARGET_FILE_DIR:LibDataChannel::LibDataChannel>/../bin/datachannel.dll"
   )
 
-  set(DEPENDENCY_LIBS
+  set(
+    DEPENDENCY_LIBS
     $<TARGET_FILE:Libsrt::Libsrt>
     $<TARGET_FILE:Librist::Librist>
     $<TARGET_FILE:ZLIB::ZLIB>

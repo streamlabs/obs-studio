@@ -6,15 +6,16 @@ add_library(OBS::transition ALIAS obs-transitions)
 target_sources(
   obs-transitions
   PRIVATE # cmake-format: sortable
-          obs-transitions.c
-          transition-cut.c
-          transition-fade-to-color.c
-          transition-fade.c
-          transition-luma-wipe.c
-          transition-shuffle.c
-          transition-slide.c
-          transition-stinger.c
-          transition-swipe.c)
+    obs-transitions.c
+    transition-cut.c
+    transition-fade-to-color.c
+    transition-fade.c
+    transition-luma-wipe.c
+    transition-shuffle.c
+    transition-slide.c
+    transition-stinger.c
+    transition-swipe.c
+)
 
 target_link_libraries(obs-transitions PRIVATE OBS::libobs)
 

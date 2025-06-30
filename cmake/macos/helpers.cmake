@@ -97,9 +97,11 @@ function(set_target_properties_obs target)
         add_custom_command(
           TARGET ${target}
           POST_BUILD
-          COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${executable}>"
-                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/MacOS/"
-          COMMENT "Copy ${executable} to application bundle")
+          COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${executable}>"
+            "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/MacOS/"
+          COMMENT "Copy ${executable} to application bundle"
+        )
       endforeach()
 
       if(VIRTUALCAM_DEVICE_UUID AND VIRTUALCAM_SOURCE_UUID AND VIRTUALCAM_SINK_UUID)
@@ -153,18 +155,22 @@ function(set_target_properties_obs target)
         add_custom_command(
           TARGET ${target}
           POST_BUILD
-          COMMAND "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:obs-dal-plugin>"
-                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/$<TARGET_BUNDLE_DIR_NAME:obs-dal-plugin>"
-          COMMENT "Add OBS DAL plugin to application bundle")
+          COMMAND
+            "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:obs-dal-plugin>"
+            "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources/$<TARGET_BUNDLE_DIR_NAME:obs-dal-plugin>"
+          COMMENT "Add OBS DAL plugin to application bundle"
+        )
       endif()
 
       if(TARGET obspython)
         add_custom_command(
           TARGET ${target}
           POST_BUILD
-          COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE_DIR:obspython>/obspython.py"
-                  "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources"
-          COMMENT "Add OBS::python import module")
+          COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE_DIR:obspython>/obspython.py"
+            "$<TARGET_BUNDLE_CONTENT_DIR:${target}>/Resources"
+          COMMENT "Add OBS::python import module"
+        )
       endif()
 
       if(
@@ -356,8 +362,12 @@ function(target_install_resources target)
     file(GLOB_RECURSE data_files "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
 
     foreach(data_file IN LISTS data_files)
-      cmake_path(RELATIVE_PATH data_file BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data/" OUTPUT_VARIABLE
-                 relative_path)
+      cmake_path(
+        RELATIVE_PATH
+        data_file
+        BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data/"
+        OUTPUT_VARIABLE relative_path
+      )
       cmake_path(GET relative_path PARENT_PATH relative_path)
       target_sources(${target} PRIVATE "${data_file}")
       set_property(SOURCE "${data_file}" PROPERTY MACOSX_PACKAGE_LOCATION "Resources/${relative_path}")
@@ -381,10 +391,12 @@ function(target_install_ffmpeg_and_ffprobe target)
       message(STATUS "Found ffmpeg at ${ffmpeg_path}.")
       # Run the fix_deps_paths.sh script at install time with the full absolute path
       install(
-        CODE "
+        CODE
+          "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffmpeg_path}\" \"${destination}\")
-      ")
+      "
+      )
     else()
       message(WARNING "ffmpeg not found at ${ffmpeg_path}")
     endif()
@@ -394,10 +406,12 @@ function(target_install_ffmpeg_and_ffprobe target)
       message(STATUS "Found ffprobe at ${ffprobe_path}")
       # Run the fix_deps_paths.sh script for ffprobe with the full absolute path
       install(
-        CODE "
+        CODE
+          "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffprobe_path}\" \"${destination}\")
-      ")
+      "
+      )
     else()
       message(WARNING "ffprobe not found at ${ffprobe_path}")
     endif()
@@ -493,8 +507,10 @@ function(_bundle_dependencies target)
     cmake_path(SET plugin_stem_dir NORMALIZE "${plugin_base_dir}")
     cmake_path(RELATIVE_PATH plugin_path BASE_DIRECTORY "${plugin_stem_dir}" OUTPUT_VARIABLE plugin_file_name)
     target_sources(${target} PRIVATE "${plugin}")
-    set_source_files_properties("${plugin}" PROPERTIES MACOSX_PACKAGE_LOCATION "plugins/${plugin_file_name}"
-                                                       XCODE_FILE_ATTRIBUTES "CodeSignOnCopy")
+    set_source_files_properties(
+      "${plugin}"
+      PROPERTIES MACOSX_PACKAGE_LOCATION "plugins/${plugin_file_name}" XCODE_FILE_ATTRIBUTES "CodeSignOnCopy"
+    )
     source_group("Qt plugins" FILES "${plugin}")
   endforeach()
 

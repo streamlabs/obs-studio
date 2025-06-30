@@ -31,7 +31,16 @@ function(_check_dependencies_windows)
     set(dependencies_list prebuilt)
   else()
     string(TOLOWER "${CMAKE_VS_PLATFORM_NAME}" arch)
-    set(dependencies_list prebuilt qt6 cef webrtc libmediasoupclient grpc openssl)
+    set(
+      dependencies_list
+      prebuilt
+      qt6
+      cef
+      webrtc
+      libmediasoupclient
+      grpc
+      openssl
+    )
   endif()
   set(platform windows-${arch})
 
