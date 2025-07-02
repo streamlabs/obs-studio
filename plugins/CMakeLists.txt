@@ -33,8 +33,10 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
     endif()
   endmacro()
 
+  # cmake-format: off
   # Add plugins in alphabetical order to retain order in IDE projects
   # add_obs_plugin(aja PLATFORMS WINDOWS MACOS LINUX WITH_MESSAGE)
+  # cmake-format: on
   add_obs_plugin(coreaudio-encoder PLATFORMS WINDOWS MACOS)
   add_obs_plugin(decklink PLATFORMS WINDOWS MACOS LINUX WITH_MESSAGE)
   add_obs_plugin(image-source)
