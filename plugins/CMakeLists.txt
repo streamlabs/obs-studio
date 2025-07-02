@@ -71,6 +71,7 @@ add_obs_plugin(
 )
 add_obs_plugin(obs-text PLATFORMS WINDOWS)
 add_obs_plugin(obs-transitions)
+add_obs_plugin(sl-vst PLATFORMS WINDOWS WITH_MESSAGE)
 add_obs_plugin(obs-webrtc)
 
 check_obs_websocket()
