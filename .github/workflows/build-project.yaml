@@ -72,6 +72,7 @@ jobs:
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       PACKAGE_NAME: "libobs"
       ReleaseName: release
+      SKIP_OBS_STEP: true # Skip unsupported OBS steps
     defaults:
       run:
         shell: zsh --no-rcs --errexit --pipefail {0}
@@ -150,6 +151,7 @@ jobs:
           # provisioningProfileUUID: ${{ steps.codesign.outputs.provisioningProfileUUID }}
 
       - name: Package OBS Studio 📀
+        if: ${{ env.SKIP_OBS_STEP == 'false' }}
         uses: ./.github/actions/package-obs
         with:
           target: ${{ matrix.target }}
@@ -163,6 +165,7 @@ jobs:
           # codesignPass: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
 
       - name: Upload Artifacts 📡
+        if: ${{ env.SKIP_OBS_STEP == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: obs-studio-macos-${{ matrix.target }}-${{ needs.check-event.outputs.commitHash }}
