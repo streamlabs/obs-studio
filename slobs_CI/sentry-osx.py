@@ -55,4 +55,4 @@ for var in required_env_vars:
         print(f"Warning: Environment variable {var} is not set!")
 
 # Upload obs debug files
-process_sentry(os.path.join(os.environ.get('PWD', ''), "build" , os.environ.get('InstallPath', '')))
+process_sentry(os.path.join(os.environ.get('PWD', ''), "build_macos" , os.environ.get('InstallPath', '')))
