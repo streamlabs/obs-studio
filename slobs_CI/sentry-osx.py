@@ -38,7 +38,7 @@ def process_sentry(directory):
                 print(f"Processing file: {path}")
                 
                 # Run dsymutil on the file
-                run_command(f"dsymutil {path}")
+                run_command(f"dsymutil '{path}'")
                 
                 # Upload the debug file to Sentry
                 sentry_command = f"sentry-cli --auth-token {os.environ.get('SENTRY_AUTH_TOKEN', '')} upload-dif --org streamlabs-desktop --project obs-server {path}.dSYM/Contents/Resources/DWARF/{file}"
