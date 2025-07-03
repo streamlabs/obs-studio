@@ -207,6 +207,7 @@ jobs:
             BUILDCONFIG: ${{matrix.BuildConfig}}
              
       - name: Symbol Server and Sentry Integration
+        if: ${{ env.SKIP_OBS_STEP == 'false' }}
         uses: ./.github/actions/upload-debug-symbols
         with:
           githubWorkspace: ${{ github.workspace }}
