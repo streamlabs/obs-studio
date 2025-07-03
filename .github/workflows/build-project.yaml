@@ -173,18 +173,18 @@ jobs:
 
       - name: Upload Debug Symbol Artifacts 🪲
         uses: actions/upload-artifact@v4
-        if: ${{ needs.check-event.outputs.config == 'Release' }}
+        if: ${{ env.SKIP_OBS_STEP == 'false' && needs.check-event.outputs.config == 'Release' }}
         with:
           name: obs-studio-macos-${{ matrix.target }}-${{ needs.check-event.outputs.commitHash }}-dSYMs
           path: ${{ github.workspace }}/build_macos/obs-studio-*-macos-${{ steps.setup.outputs.cpuName }}-dSYMs.tar.xz
 
       - name: Tar artifact for deployment
         if: startsWith(github.ref, 'refs/tags/')
-        run:  |
-            : Add items into tar file
-            cd build_macos/${{env.InstallPath}}
-            7z a -r ../../${{env.TARGET_ARTIFACT}}.7z *
-            cd ../..
+        run: |
+          : Add items into tar file
+          cd build_macos/${{env.InstallPath}}
+          7z a -r ../../${{env.TARGET_ARTIFACT}}.7z *
+          cd ../..
         env:
           TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{env.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
       - name: Configure AWS credentials
