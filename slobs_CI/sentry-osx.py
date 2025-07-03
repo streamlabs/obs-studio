@@ -41,11 +41,11 @@ def process_sentry(directory):
                 run_command(f"dsymutil {path}")
                 
                 # Upload the debug file to Sentry
-                sentry_command = f"sentry-cli --auth-token {os.environ.get('SENTRY_AUTH_TOKEN', '')} upload-dif --project obs-server {path}.dSYM/Contents/Resources/DWARF/{file}"
+                sentry_command = f"sentry-cli --auth-token {os.environ.get('SENTRY_AUTH_TOKEN', '')} upload-dif --org streamlabs-desktop --project obs-server {path}.dSYM/Contents/Resources/DWARF/{file}"
                 run_command(sentry_command)
                 
                 # Repeat the upload for the second project
-                sentry_command_preview = f"sentry-cli --auth-token {os.environ.get('SENTRY_AUTH_TOKEN', '')} upload-dif --project obs-server-preview {path}.dSYM/Contents/Resources/DWARF/{file}"
+                sentry_command_preview = f"sentry-cli --auth-token {os.environ.get('SENTRY_AUTH_TOKEN', '')} upload-dif --org streamlabs-desktop --project obs-server-preview {path}.dSYM/Contents/Resources/DWARF/{file}"
                 run_command(sentry_command_preview)
 
 # Check if the required environment variables are set
