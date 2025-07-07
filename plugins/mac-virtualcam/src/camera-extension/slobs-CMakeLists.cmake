@@ -41,7 +41,7 @@ set_target_properties(
              CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/entitlements.plist"
              PRODUCT_NAME com.streamlabs.slobs.mac-camera-extension
              PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-camera-extension
-             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.streamlabs.slobs"
+             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.streamlabs.slobs.mac-camera-extension"
              CURRENT_PROJECT_VERSION 1.0
              MARKETING_VERSION 1.0
              COPY_PHASE_STRIP NO
