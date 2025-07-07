@@ -15,6 +15,10 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
+// Can't use start because it will bug out OBS frontend thinking vcam is already activated.
+static const char *VIRTUAL_CAM_CONNECTED = "reconnect_success";
+static const char *VIRTUAL_CAM_FAILED = "deactivate";
+
 static bool cmio_extension_supported()
 {
     if (@available(macOS 13.0, *)) {
@@ -22,6 +26,15 @@ static bool cmio_extension_supported()
     } else {
         return false;
     }
+}
+
+static void sendVirtualCamSignal(obs_output_t *output, const char *signal)
+{
+    signal_handler_t *vcamHandler = obs_output_get_signal_handler(output);
+    struct calldata params = {0};
+    calldata_set_ptr(&params, "output", output);
+    signal_handler_signal(vcamHandler, signal, &params);
+    calldata_free(&params);
 }
 
 struct virtualcam_data {
@@ -80,7 +93,6 @@ struct virtualcam_data {
 {
     NSString *errorMessage;
     int severity;
-
     switch (error.code) {
         case OSSystemExtensionErrorUnsupportedParentBundleLocation:
             self.lastErrorMessage =
@@ -96,7 +108,16 @@ struct virtualcam_data {
             break;
     }
 
+    const char *signalText = VIRTUAL_CAM_FAILED;
+#if defined(VIRTUALCAM_BYPASS_SYSTEM_CHECK)
+    blog(LOG_INFO, "mac-camera-extension bypassed error %s", errorMessage.UTF8String);
+    signalText =
+        VIRTUAL_CAM_CONNECTED;  // Assume system extension was installed and code is running outside of an app bundle
+    self.installed = YES;
+#else
     blog(severity, "mac-camera-extension: %s", errorMessage.UTF8String);
+#endif
+    sendVirtualCamSignal(_vcam->output, signalText);
 }
 
 - (void)request:(nonnull OSSystemExtensionRequest *)request didFinishWithResult:(OSSystemExtensionRequestResult)result
@@ -105,11 +126,13 @@ struct virtualcam_data {
         case OSSystemExtensionRequestCompleted:
             self.installed = YES;
             blog(LOG_INFO, "macOS Camera Extension activated successfully.");
+            sendVirtualCamSignal(_vcam->output, VIRTUAL_CAM_CONNECTED);
             break;
         case OSSystemExtensionRequestWillCompleteAfterReboot:
             self.lastErrorMessage =
                 [NSString stringWithUTF8String:obs_module_text("Error.SystemExtension.CompleteAfterReboot")];
             blog(LOG_INFO, "macOS Camera Extension will activate after reboot.");
+            sendVirtualCamSignal(_vcam->output, VIRTUAL_CAM_FAILED);
             break;
     }
 }
@@ -125,7 +148,7 @@ struct virtualcam_data {
 static void install_cmio_system_extension(struct virtualcam_data *vcam)
 {
     OSSystemExtensionRequest *request = [OSSystemExtensionRequest
-        activationRequestForExtension:@"com.obsproject.obs-studio.mac-camera-extension"
+        activationRequestForExtension:@"com.streamlabs.slobs.mac-camera-extension"
                                 queue:dispatch_get_main_queue()];
     request.delegate = vcam->extensionDelegate;
 
@@ -306,7 +329,12 @@ static bool virtualcam_output_start(void *data)
                                                delegate.lastErrorMessage]
                         .UTF8String);
             } else {
-                obs_output_set_last_error(vcam->output, obs_module_text("Error.SystemExtension.NotInstalled"));
+                if (@available(macOS 15.0, *)) {
+                    obs_output_set_last_error(vcam->output,
+                                              obs_module_text("Error.SystemExtension.NotInstalled.MacOS15"));
+                } else {
+                    obs_output_set_last_error(vcam->output, obs_module_text("Error.SystemExtension.NotInstalled"));
+                }
             }
 
             return false;
@@ -377,7 +405,7 @@ static bool virtualcam_output_start(void *data)
         CMIOObjectGetPropertyData(kCMIOObjectSystemObject, &address, 0, NULL, size, &used, device_data);
 
         vcam->deviceID = 0;
-        NSString *OBSVirtualCamUUID = [[NSBundle bundleWithIdentifier:@"com.obsproject.mac-virtualcam"]
+        NSString *OBSVirtualCamUUID = [[NSBundle bundleWithIdentifier:@"com.streamlabs.slobs.mac-virtualcam"]
             objectForInfoDictionaryKey:@"OBSCameraDeviceUUID"];
 
         size_t num_elements = size / sizeof(CMIOObjectID);
