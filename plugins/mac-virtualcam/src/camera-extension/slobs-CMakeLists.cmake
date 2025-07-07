@@ -1,6 +1,22 @@
 cmake_minimum_required(VERSION 3.22...3.25)
 project(mac-camera-extension)
 
+# set_target_xcode_properties: Sets Xcode-specific target attributes
+function(set_target_xcode_properties target)
+  message(STATUS "[set_target_xcode_properties] Setting target properties for ${target}...")
+  set(options "")
+  set(oneValueArgs "")
+  set(multiValueArgs PROPERTIES)
+  cmake_parse_arguments(PARSE_ARGV 0 _STXP "${options}" "${oneValueArgs}" "${multiValueArgs}")
+
+  message(DEBUG "Setting Xcode properties for target ${target}...")
+
+  while(_STXP_PROPERTIES)
+    list(POP_FRONT _STXP_PROPERTIES key value)
+    set_property(TARGET ${target} PROPERTY XCODE_ATTRIBUTE_${key} "${value}")
+  endwhile()
+endfunction()
+
 foreach(_uuid IN ITEMS VIRTUALCAM_DEVICE_UUID VIRTUALCAM_SOURCE_UUID VIRTUALCAM_SINK_UUID)
   set(VALID_UUID FALSE)
   if(NOT ${_uuid})
@@ -36,12 +52,15 @@ set_target_properties(
              MACOSX_BUNDLE ON
              MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/Info.plist.in"
              BUNDLE_EXTENSION systemextension
-             XCODE_PRODUCT_TYPE com.apple.product-type.system-extension
+             XCODE_PRODUCT_TYPE com.apple.product-type.system-extension)
+
+set_target_xcode_properties(
+  mac-camera-extension
+  PROPERTIES SWIFT_VERSION 5.0
              MACOSX_DEPLOYMENT_TARGET 13.0
              CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/entitlements.plist"
              PRODUCT_NAME com.streamlabs.slobs.mac-camera-extension
              PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-camera-extension
-             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.streamlabs.slobs.mac-camera-extension"
              CURRENT_PROJECT_VERSION 1.0
              MARKETING_VERSION 1.0
              COPY_PHASE_STRIP NO
@@ -53,6 +72,4 @@ set_target_properties(
 set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic)
 set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development")
 set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM $ENV{APPLE_TEAM_ID})
-# Use Swift version 5.0 by default
-set(CMAKE_XCODE_ATTRIBUTE_SWIFT_VERSION 5.0)
 # cmake-format: on
