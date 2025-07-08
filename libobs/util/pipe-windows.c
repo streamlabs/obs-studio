@@ -233,7 +233,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line,
 	bool read_pipe;
 	bool is_named_pipe = false;
 	HANDLE process;
-	HANDLE output;
+	HANDLE output = NULL;
 	HANDLE input = NULL;
 	HANDLE err_input, err_output;
 	bool success;
