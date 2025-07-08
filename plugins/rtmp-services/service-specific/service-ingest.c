@@ -181,6 +181,7 @@ struct ingest get_ingest(struct service_ingests *si, size_t idx)
 	struct ingest ingest;
 
 	if (si->cur_ingests.num <= idx) {
+		blog(LOG_WARNING, "Invalid response from Twitch's ingests API");
 		ingest.name = NULL;
 		ingest.url = NULL;
 		ingest.rtmps_url = NULL;
