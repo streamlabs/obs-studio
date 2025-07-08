@@ -266,7 +266,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line,
 
 	success = !!SetHandleInformation(read_pipe ? input : output,
 					 HANDLE_FLAG_INHERIT, false);
-	if (!success) {
+	if (!success && !is_named_pipe) {
 		goto error;
 	}
 
