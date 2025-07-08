@@ -56,7 +56,7 @@ function(set_target_properties_obs target)
 
       set_target_xcode_properties(
         ${target}
-        PROPERTIES PRODUCT_BUNDLE_IDENTIFIER com.obsproject.obs-studio
+        PROPERTIES PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs
                    PRODUCT_NAME OBS
                    ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
                    CURRENT_PROJECT_VERSION ${OBS_BUILD_NUMBER}
