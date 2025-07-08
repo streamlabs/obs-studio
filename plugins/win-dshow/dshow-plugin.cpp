@@ -28,7 +28,6 @@ static bool vcam_installed(bool b64)
 	StringCbPrintf(temp, sizeof(temp), L"CLSID\\%s", cls_str);
 
 	DWORD flags = KEY_READ;
-	flags |= b64 ? KEY_WOW64_64KEY : KEY_WOW64_32KEY;
 
 	LSTATUS status = RegOpenKeyExW(HKEY_CLASSES_ROOT, temp, 0, flags, &key);
 	if (status != ERROR_SUCCESS) {
