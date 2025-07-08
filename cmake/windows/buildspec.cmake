@@ -9,8 +9,9 @@ function(_check_dependencies_windows)
   set(dependencies_dir "${CMAKE_CURRENT_SOURCE_DIR}/.deps")
   set(prebuilt_filename "windows-deps-VERSION-ARCH-REVISION.zip")
   set(prebuilt_destination "obs-deps-VERSION-ARCH")
-  set(qt6_filename "windows-deps-qt6-VERSION-ARCH-REVISION.zip")
-  set(qt6_destination "obs-deps-qt6-VERSION-ARCH")
+  # Not used by Streamlabs
+  #set(qt6_filename "windows-deps-qt6-VERSION-ARCH-REVISION.zip")
+  #set(qt6_destination "obs-deps-qt6-VERSION-ARCH")
   set(cef_filename "cef_binary_VERSION_windows_ARCH_REVISION.zip")
   set(cef_destination "cef_binary_VERSION_windows_ARCH")
 
@@ -34,7 +35,7 @@ function(_check_dependencies_windows)
     set(
       dependencies_list
       prebuilt
-      qt6
+      #qt6 # Not used by Streamlabs
       cef
       webrtc
       libmediasoupclient
