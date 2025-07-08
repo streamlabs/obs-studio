@@ -62,7 +62,9 @@ check_obs_browser()
 add_obs_plugin(obs-ffmpeg)
 add_obs_plugin(obs-filters)
 add_obs_plugin(obs-libfdk)
-add_obs_plugin(obs-ndi)
+# TODO: This needs to be updated to the latest version
+# See https://github.com/DistroAV/DistroAV
+#add_obs_plugin(obs-ndi)
 add_obs_plugin(obs-nvenc PLATFORMS WINDOWS LINUX)
 add_obs_plugin(obs-outputs)
 add_obs_plugin(
