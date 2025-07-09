@@ -314,7 +314,7 @@ void start_pipe(struct ffmpeg_muxer *stream, const char *path)
 {
 	os_process_args_t *args = NULL;
 	build_command_line(stream, &args, path);
-	stream->pipe = os_process_pipe_create2(args, "w");
+	stream->pipe = os_process_pipe_create2(args, "m");
 	os_process_args_destroy(args);
 }
 
