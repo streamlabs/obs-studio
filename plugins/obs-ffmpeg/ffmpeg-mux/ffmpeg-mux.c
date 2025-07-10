@@ -762,6 +762,12 @@ static size_t safe_read(void *vdata, size_t size)
 			return 0;
 		}
 	}
+
+	DWORD avail = 0;
+	if (!PeekNamedPipe(psi.pipe, NULL, 0, NULL, &avail, NULL) || avail == 0) {
+		ResetEvent(psi.data_event);
+	}
+
 	return size;
 #else
 	uint8_t *data = vdata;

@@ -81,6 +81,7 @@ void os_process_pipe_cleanup_shutdown_event(os_process_pipe_t *pp)
 		pp->shutdown_event = NULL;
 	}
 }
+
 static inline void build_pipe_name(char *buf, size_t len, DWORD pid)
 {
 	snprintf(buf, len, "\\\\.\\pipe\\FFmpegMuxPipe_%lu", pid);
@@ -91,7 +92,7 @@ static bool create_data_event(os_process_pipe_t *pp, DWORD pid)
 	char event_name[64];
 	snprintf(event_name, sizeof(event_name), "FFmpegMuxData_%lu", pid);
 
-	pp->data_event = CreateEventA(NULL, FALSE, FALSE, event_name);
+	pp->data_event = CreateEventA(NULL, TRUE, FALSE, event_name);
 	if (!pp->data_event) {
 		blog(LOG_ERROR, "Failed to create data event '%s': %lu", event_name, GetLastError());
 		return false;
@@ -126,13 +127,7 @@ static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
 
 	pp->handle = CreateNamedPipeA(
 		pipe_name, PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-		PIPE_TYPE_BYTE |
-			PIPE_WAIT,
-		1,
-		64 * 1024,
-		0, 
-		0,
-		NULL);
+		PIPE_TYPE_BYTE | PIPE_WAIT, 1, 64 * 1024, 64 * 1024, 0, NULL);
 
 	if (pp->handle == INVALID_HANDLE_VALUE) {
 		blog(LOG_ERROR, "CreateNamedPipe '%s' failed: %lu", pipe_name,
@@ -407,12 +402,12 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 
 		os_process_pipe_signal_shutdown(pp);
 
+		CloseHandle(pp->handle);
+		CloseHandle(pp->handle_err);
+
 		WaitForSingleObject(pp->process, INFINITE);
 		if (GetExitCodeProcess(pp->process, &code))
 			ret = (int)code;
-
-		CloseHandle(pp->handle);
-		CloseHandle(pp->handle_err);
 
 		CloseHandle(pp->process);
 		os_process_pipe_cleanup_shutdown_event(pp);
