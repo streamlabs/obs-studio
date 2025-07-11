@@ -138,8 +138,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type
 
 	read_pipe = *type == 'r';
 
-	success = !!SetHandleInformation(read_pipe ? input : output,
-					 HANDLE_FLAG_INHERIT, false);
+	success = !!SetHandleInformation(read_pipe ? input : output, HANDLE_FLAG_INHERIT, false);
 	if (!success) {
 		goto error;
 	}
