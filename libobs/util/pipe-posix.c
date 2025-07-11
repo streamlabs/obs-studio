@@ -131,11 +131,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type
 os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const char *type)
 {
 	char **argv = os_process_args_get_argv(args);
-	const char *internal_type = type;
-	if (type && (type[0] == 'f' || type[0] == 'm')) {
-		internal_type = (type[0] == 'f') ? "r" : "w";
-	}
-	return os_process_pipe_create_internal(argv[0], argv, internal_type);
+	return os_process_pipe_create_internal(argv[0], argv, type);
 }
 
 int os_process_pipe_destroy(os_process_pipe_t *pp)

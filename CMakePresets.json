@@ -149,7 +149,7 @@
         "OBS_CMAKE_VERSION": {"type": "STRING", "value": "3.0.0"},
         "ENABLE_BROWSER": true,
         "ENABLE_WEBSOCKET": false,
-        "VIRTUALCAM_GUID": {"type": "STRING", "value": "A3FCE0F5-3493-419F-958A-ABA1250EC20B"},
+        "VIRTUALCAM_GUID": {"type": "STRING", "value": "27B05C2D-93DC-474A-A5DA-9BBA34CB2A9C"},
         "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
         "ENABLE_CCACHE": false,
         "ENABLE_UI": false

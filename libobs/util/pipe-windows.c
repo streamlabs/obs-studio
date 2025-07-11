@@ -27,9 +27,6 @@ struct os_process_pipe {
 	HANDLE handle;
 	HANDLE handle_err;
 	HANDLE process;
-	// extended ipc
-	HANDLE shutdown_event;
-	HANDLE data_event;
 };
 
 static bool create_pipe(HANDLE *input, HANDLE *output)
@@ -43,111 +40,6 @@ static bool create_pipe(HANDLE *input, HANDLE *output)
 		return false;
 	}
 
-	return true;
-}
-
-static bool create_shutdown_event(os_process_pipe_t *pp, DWORD pid)
-{
-	char event_name[64];
-	snprintf(event_name, sizeof(event_name), "FFmpegMuxShutdown_%lu", pid);
-
-	pp->shutdown_event = CreateEventA(NULL, TRUE, FALSE, event_name);
-	if (!pp->shutdown_event) {
-		blog(LOG_ERROR, "Failed to create shutdown event '%s': %lu",
-		     event_name, GetLastError());
-		return false;
-	}
-	return true;
-}
-
-bool os_process_pipe_signal_shutdown(os_process_pipe_t *pp)
-{
-	if (!pp || !pp->shutdown_event) {
-		blog(LOG_WARNING, "Cannot signal shutdown: No shutdown event");
-		return false;
-	}
-
-	if (!SetEvent(pp->shutdown_event)) {
-		blog(LOG_ERROR, "Failed to signal shutdown event: %lu", GetLastError());
-		return false;
-	}
-	return true;
-}
-
-void os_process_pipe_cleanup_shutdown_event(os_process_pipe_t *pp)
-{
-	if (pp && pp->shutdown_event) {
-		CloseHandle(pp->shutdown_event);
-		pp->shutdown_event = NULL;
-	}
-}
-static inline void build_pipe_name(char *buf, size_t len, DWORD pid)
-{
-	snprintf(buf, len, "\\\\.\\pipe\\FFmpegMuxPipe_%lu", pid);
-}
-
-static bool create_data_event(os_process_pipe_t *pp, DWORD pid)
-{
-	char event_name[64];
-	snprintf(event_name, sizeof(event_name), "FFmpegMuxData_%lu", pid);
-
-	pp->data_event = CreateEventA(NULL, FALSE, FALSE, event_name);
-	if (!pp->data_event) {
-		blog(LOG_ERROR, "Failed to create data event '%s': %lu", event_name, GetLastError());
-		return false;
-	}
-	return true;
-}
-
-bool os_process_pipe_signal_data(os_process_pipe_t *pp)
-{
-	if (!pp || !pp->data_event)
-		return false;
-
-	if (!SetEvent(pp->data_event)) {
-		blog(LOG_ERROR, "Failed to signal data event: %lu", GetLastError());
-		return false;
-	}
-	return true;
-}
-
-void os_process_pipe_cleanup_data_event(os_process_pipe_t *pp)
-{
-	if (pp && pp->data_event) {
-		CloseHandle(pp->data_event);
-		pp->data_event = NULL;
-	}
-}
-
-static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
-{
-	char pipe_name[64];
-	build_pipe_name(pipe_name, sizeof(pipe_name), pid);
-
-	pp->handle = CreateNamedPipeA(
-		pipe_name, PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-		PIPE_TYPE_BYTE |
-			PIPE_WAIT,
-		1,
-		64 * 1024,
-		0, 
-		0,
-		NULL);
-
-	if (pp->handle == INVALID_HANDLE_VALUE) {
-		blog(LOG_ERROR, "CreateNamedPipe '%s' failed: %lu", pipe_name,
-		     GetLastError());
-		return false;
-	}
-
-	// Block until child connects; harmless because child launches immediately
-	BOOL ok = ConnectNamedPipe(pp->handle, NULL) || GetLastError() == ERROR_PIPE_CONNECTED;
-	if (!ok) {
-		blog(LOG_ERROR, "ConnectNamedPipe '%s' failed: %lu", pipe_name, GetLastError());
-		CloseHandle(pp->handle);
-		pp->handle = NULL;
-		return false;
-	}
 	return true;
 }
 
@@ -224,41 +116,31 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type
 {
 	os_process_pipe_t *pp = NULL;
 	bool read_pipe;
-	bool is_named_pipe = false;
 	HANDLE process;
-	HANDLE output = NULL;
-	HANDLE input = NULL;
+	HANDLE output;
 	HANDLE err_input, err_output;
+	HANDLE input;
 	bool success;
 
 	if (!cmd_line || !type) {
 		return NULL;
 	}
-
-	if (*type == 'f' || *type == 'm') {
-		is_named_pipe = true;
-	} else if (*type != 'r' && *type != 'w') {
+	if (*type != 'r' && *type != 'w') {
 		return NULL;
 	}
-
-	read_pipe = (*type == 'r' || *type == 'f');
-
-	if (!is_named_pipe || read_pipe) {
-		if (!create_pipe(&input, &output)) {
-			return NULL;
-		}
+	if (!create_pipe(&input, &output)) {
+		return NULL;
 	}
 
 	if (!create_pipe(&err_input, &err_output)) {
-		if (input)
-			CloseHandle(input);
-		if (output)
-			CloseHandle(output);
 		return NULL;
 	}
 
-	success = !!SetHandleInformation(read_pipe ? input : output, HANDLE_FLAG_INHERIT, false);
-	if (!success && !is_named_pipe) {
+	read_pipe = *type == 'r';
+
+	success = !!SetHandleInformation(read_pipe ? input : output,
+					 HANDLE_FLAG_INHERIT, false);
+	if (!success) {
 		goto error;
 	}
 
@@ -278,50 +160,14 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type
 	pp->read_pipe = read_pipe;
 	pp->process = process;
 	pp->handle_err = err_input;
-	pp->shutdown_event = NULL;
-	pp->data_event = NULL;
 
-	DWORD pid = GetProcessId(process);
-	if (!pid || !create_shutdown_event(pp, pid)) {
-		os_process_pipe_destroy(pp);
-		pp = NULL;
-		goto error;
-	}
-
-	if (!create_data_event(pp, pid)) {
-		os_process_pipe_destroy(pp);
-		pp = NULL;
-		goto error;
-	}
-
-	if (is_named_pipe) {
-		if (!create_data_pipe(pp, pid)) {
-			os_process_pipe_destroy(pp);
-			pp = NULL;
-			goto error;
-		}
-	}
-
-	if (read_pipe) {
-		if (output)
-			CloseHandle(output);
-	} else {
-		if (input)
-			CloseHandle(input);
-	}
+	CloseHandle(read_pipe ? output : input);
 	CloseHandle(err_output);
-
 	return pp;
 
 error:
-	if (output)
-		CloseHandle(output);
-	if (input)
-		CloseHandle(input);
-	if (err_input)
-		CloseHandle(err_input);
-	if (err_output)
-		CloseHandle(err_output);
+	CloseHandle(output);
+	CloseHandle(input);
 	return NULL;
 }
 
@@ -392,18 +238,14 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 	if (pp) {
 		DWORD code;
 
-		os_process_pipe_signal_shutdown(pp);
+		CloseHandle(pp->handle);
+		CloseHandle(pp->handle_err);
 
 		WaitForSingleObject(pp->process, INFINITE);
 		if (GetExitCodeProcess(pp->process, &code))
 			ret = (int)code;
 
-		CloseHandle(pp->handle);
-		CloseHandle(pp->handle_err);
-
 		CloseHandle(pp->process);
-		os_process_pipe_cleanup_shutdown_event(pp);
-		os_process_pipe_cleanup_data_event(pp);
 		bfree(pp);
 	}
 
@@ -462,7 +304,6 @@ size_t os_process_pipe_write(os_process_pipe_t *pp, const uint8_t *data, size_t 
 
 	success = !!WriteFile(pp->handle, data, (DWORD)len, &bytes_written, NULL);
 	if (success && bytes_written) {
-		os_process_pipe_signal_data(pp);
 		return bytes_written;
 	}
 

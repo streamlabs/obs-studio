@@ -860,7 +860,7 @@ static void vaapi_defaults_internal(obs_data_t *settings, enum codec_type codec)
 	else if (codec == CODEC_AV1)
 		obs_data_set_default_int(settings, "profile", FF_PROFILE_AV1_MAIN);
 	obs_data_set_default_int(settings, "level", FF_LEVEL_UNKNOWN);
-	obs_data_set_default_int(settings, "bitrate", 2500);
+	obs_data_set_default_int(settings, "bitrate", 4500);
 	obs_data_set_default_int(settings, "keyint_sec", 0);
 	obs_data_set_default_int(settings, "bf", 0);
 	obs_data_set_default_int(settings, "qp", 20);
