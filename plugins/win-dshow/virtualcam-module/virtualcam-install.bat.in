@@ -18,8 +18,8 @@ goto checkAdmin
 		echo 32-bit Virtual Cam found, skipping install...
 		echo.
 	) else (
-		echo 32-bit Virtual Cam not found, installing...
-		goto install32DLL
+		echo 32-bit Virtual Cam not found, skipping...
+		goto CheckDLLContinue
 	)
 
 :CheckDLLContinue
