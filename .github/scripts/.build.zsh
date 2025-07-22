@@ -205,7 +205,7 @@ build() {
 
           rm -rf OBS.app
           mkdir OBS.app
-          ditto UI/${config}/OBS.app OBS.app
+          ditto frontend/${config}/OBS.app OBS.app
         }
       }
       popd

@@ -603,6 +603,7 @@ static int find_matching_rule_for_window(HWND window, game_capture_matching_rule
 
 static const char *generic_class_substrings[] = {
 	"Chrome",
+	"SDL_app",
 	NULL,
 };
 

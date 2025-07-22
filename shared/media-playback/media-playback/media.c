@@ -495,6 +495,12 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 	AVFrame *f = d->frame;
 	struct obs_source_frame *frame;
 
+	if (!f->width || !f->height) {
+		blog(LOG_ERROR, "MP: media frame width or height are zero ('%s': %" PRIu32 "x%" PRIu32 ")", m->path,
+		     f->width, f->height);
+		return;
+	}
+	
 	if (m->video.index_eof < 0 || !m->enable_caching) {
 		if (!preload) {
 			if (!mp_media_can_play_frame(m, d)) {

@@ -41,7 +41,7 @@
 #define S_STRENGTH_DEFAULT 0.5
 #define TEXT_MODE_BLUR_STRENGTH MT_("Nvvfx.Method.Blur.Strength")
 
-enum nvvfx_filter_id { S_FX_AIGS, S_FX_BLUR, S_FX_BG_BLUR };
+enum nvvfx_fx_id { S_FX_AIGS, S_FX_BLUR, S_FX_BG_BLUR };
 
 bool nvvfx_loaded = false;
 bool nvvfx_new_sdk = false;
@@ -91,7 +91,7 @@ struct nvvfx_data {
 	int processing_counter;
 
 	/* blur specific */
-	enum nvvfx_filter_id filter_id;
+	enum nvvfx_fx_id filter_id;
 	NvVFX_Handle handle_blur;
 	CUstream stream_blur;        // cuda stream
 	float strength;              // from 0 to 1, default = 0.5
@@ -243,7 +243,7 @@ static bool nvvfx_filter_create_internal(struct nvvfx_data *filter)
 	}
 	if (NVCV_SUCCESS != vfxErr)
 		log_nverror_destroy(filter, vfxErr);
-		/* debug */
+	/* debug */
 #ifdef _DEBUG
 	const char *info;
 	vfxErr = NvVFX_GetString(filter->handle_blur, NVVFX_INFO, &info);

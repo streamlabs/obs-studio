@@ -79,6 +79,11 @@ struct packet_callback {
 	void *param;
 };
 
+struct reconnect_callback {
+	bool (*reconnect_cb)(void *data, obs_output_t *output, int code);
+	void *param;
+};
+
 /* ------------------------------------------------------------------------- */
 /* validity checks */
 
@@ -211,12 +216,19 @@ void obs_hotkey_name_map_free(void);
 /* ------------------------------------------------------------------------- */
 /* views */
 
+enum view_type {
+	INVALID_VIEW,
+	MAIN_VIEW,
+	AUX_VIEW,
+};
+
 struct obs_view {
 	pthread_mutex_t channels_mutex;
 	obs_source_t *channels[MAX_CHANNELS];
+	enum view_type type;
 };
 
-extern bool obs_view_init(struct obs_view *view);
+extern bool obs_view_init(struct obs_view *view, enum view_type type);
 extern void obs_view_free(struct obs_view *view);
 
 /* ------------------------------------------------------------------------- */
@@ -316,6 +328,8 @@ struct obs_core_video_mix {
 
 	bool encoder_only_mix;
 	long encoder_refs;
+
+	bool mix_audio;
 };
 
 extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi);
@@ -371,7 +385,6 @@ struct obs_core_video {
 
 	pthread_mutex_t mixes_mutex;
 	DARRAY(struct obs_core_video_mix *) mixes;
-	struct obs_core_video_mix *main_mix;
 };
 
 extern void add_ready_encoder_group(obs_encoder_t *encoder);
@@ -406,6 +419,9 @@ struct obs_core_data {
 	struct obs_source *sources;        /* Lookup by UUID (hh_uuid) */
 	struct obs_source *public_sources; /* Lookup by name (hh) */
 
+	struct obs_canvas *canvases;       /* Lookup by UUID (hh_uuid) */
+	struct obs_canvas *named_canvases; /* Lookup by name (hh) */
+
 	/* Linked lists */
 	struct obs_source *first_audio_source;
 	struct obs_display *first_display;
@@ -420,11 +436,14 @@ struct obs_core_data {
 	pthread_mutex_t services_mutex;
 	pthread_mutex_t audio_sources_mutex;
 	pthread_mutex_t draw_callbacks_mutex;
+	pthread_mutex_t canvases_mutex;
 	DARRAY(struct draw_callback) draw_callbacks;
 	DARRAY(struct rendered_callback) rendered_callbacks;
 	DARRAY(struct tick_callback) tick_callbacks;
 
-	struct obs_view main_view;
+	/* Main canvas, guaranteed to exist for the lifetime of the program */
+	struct obs_canvas *main_canvas;
+	// TODO: refactor these views ?????????????????????????????
 	struct obs_view stream_view;
 	struct obs_view record_view;
 
@@ -604,8 +623,8 @@ extern void obs_context_data_insert_name(struct obs_context_data *context, pthre
 extern void obs_context_data_insert_uuid(struct obs_context_data *context, pthread_mutex_t *mutex, void *first_uuid);
 
 extern void obs_context_data_remove(struct obs_context_data *context);
-extern void obs_context_data_remove_name(struct obs_context_data *context, void *phead);
-extern void obs_context_data_remove_uuid(struct obs_context_data *context, void *puuid_head);
+extern void obs_context_data_remove_name(struct obs_context_data *context, pthread_mutex_t *mutex, void *phead);
+extern void obs_context_data_remove_uuid(struct obs_context_data *context, pthread_mutex_t *mutex, void *puuid_head);
 
 extern void obs_context_wait(struct obs_context_data *context);
 
@@ -652,6 +671,41 @@ static inline bool obs_weak_ref_expired(struct obs_weak_ref *ref)
 	long owners = os_atomic_load_long(&ref->refs);
 	return owners < 0;
 }
+
+/* ------------------------------------------------------------------------- */
+/* canvases */
+
+struct obs_weak_canvas {
+	struct obs_weak_ref ref;
+	struct obs_canvas *canvas;
+};
+
+struct obs_canvas {
+	struct obs_context_data context;
+
+	/* obs_canvas_flags */
+	uint32_t flags;
+	/* Video info for this canvas, FPS ignored */
+	struct obs_video_info ovi;
+
+	/* Hash table containing scenes (and groups) associated with this canvas */
+	struct obs_source *sources;
+	pthread_mutex_t sources_mutex;
+
+	/* For now, canvas objects mainly act as a proxy for the existing view and video mix objects,
+	 * though this may change in the future. */
+	struct obs_view view;
+	struct obs_core_video_mix *mix;
+};
+
+extern obs_canvas_t *obs_create_main_canvas(void);
+extern void obs_canvas_destroy(obs_canvas_t *canvas);
+extern void obs_canvas_clear_mix(obs_canvas_t *canvas);
+extern void obs_free_canvas_mixes(void);
+extern bool obs_canvas_reset_video_internal(obs_canvas_t *canvas, struct obs_video_info *ovi);
+extern void obs_canvas_insert_source(obs_canvas_t *canvas, obs_source_t *source);
+extern void obs_canvas_remove_source(obs_source_t *source);
+extern void obs_canvas_rename_source(obs_source_t *source, const char *name);
 
 /* ------------------------------------------------------------------------- */
 /* sources  */
@@ -909,6 +963,9 @@ struct obs_source {
 
 	/* private data */
 	obs_data_t *private_settings;
+
+	/* canvas this source belongs to (only used for scenes) */
+	obs_weak_canvas_t *canvas;
 };
 
 extern void set_source_audio_output_buf_size(struct obs_source *source, size_t canvases);
@@ -939,16 +996,14 @@ struct audio_monitor *audio_monitor_create(obs_source_t *source);
 void audio_monitor_reset(struct audio_monitor *monitor);
 extern void audio_monitor_destroy(struct audio_monitor *monitor);
 
-extern obs_source_t *obs_source_create_set_last_ver(const char *id, const char *name, const char *uuid,
-						    obs_data_t *settings, obs_data_t *hotkey_data,
+extern obs_source_t *obs_source_create_canvas(obs_canvas_t *canvas, const char *id, const char *name,
+					      obs_data_t *settings, obs_data_t *hotkey_data);
+extern obs_source_t *obs_source_create_set_last_ver(obs_canvas_t *canvas, const char *id, const char *name,
+						    const char *uuid, obs_data_t *settings, obs_data_t *hotkey_data,
 						    uint32_t last_obs_ver, bool is_private);
+
 extern void obs_source_destroy(struct obs_source *source);
 extern void obs_source_addref(obs_source_t *source);
-
-enum view_type {
-	MAIN_VIEW,
-	AUX_VIEW,
-};
 
 static inline void obs_source_dosignal(struct obs_source *source, const char *signal_obs, const char *signal_source)
 {
@@ -957,6 +1012,21 @@ static inline void obs_source_dosignal(struct obs_source *source, const char *si
 
 	calldata_init_fixed(&data, stack, sizeof(stack));
 	calldata_set_ptr(&data, "source", source);
+	if (signal_obs && !source->context.private)
+		signal_handler_signal(obs->signals, signal_obs, &data);
+	if (signal_source)
+		signal_handler_signal(source->context.signals, signal_source, &data);
+}
+
+static inline void obs_source_dosignal_canvas(struct obs_source *source, struct obs_canvas *canvas,
+					      const char *signal_obs, const char *signal_source)
+{
+	struct calldata data;
+	uint8_t stack[128];
+
+	calldata_init_fixed(&data, stack, sizeof(stack));
+	calldata_set_ptr(&data, "source", source);
+	calldata_set_ptr(&data, "canvas", canvas);
 	if (signal_obs && !source->context.private)
 		signal_handler_signal(obs->signals, signal_obs, &data);
 	if (signal_source)
@@ -1189,6 +1259,8 @@ struct obs_output {
 	pthread_mutex_t pkt_callbacks_mutex;
 	DARRAY(struct packet_callback) pkt_callbacks;
 
+	struct reconnect_callback reconnect_callback;
+
 	bool valid;
 
 	uint64_t active_delay_ns;
@@ -1278,6 +1350,8 @@ struct obs_encoder {
 	uint32_t scaled_width;
 	uint32_t scaled_height;
 	enum video_format preferred_format;
+	enum video_colorspace preferred_space;
+	enum video_range_type preferred_range;
 
 	volatile bool active;
 	volatile bool paused;

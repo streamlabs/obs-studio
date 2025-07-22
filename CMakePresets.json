@@ -33,8 +33,8 @@
       "generator": "Xcode",
       "binaryDir": "${sourceDir}/build_macos",
       "cacheVariables": {
-        "ENABLE_BROWSER": true,
-        "CMAKE_OSX_DEPLOYMENT_TARGET": {"type": "STRING", "value": "11.0"},
+        "CMAKE_OSX_DEPLOYMENT_TARGET": {"type": "STRING", "value": "12.0"},
+        "OBS_CODESIGN_IDENTITY": {"type": "STRING", "value": "$penv{CODESIGN_IDENT}"},
         "OBS_CODESIGN_TEAM": {"type": "STRING", "value": "$penv{CODESIGN_TEAM}"},
         "OBS_CODESIGN_IDENTITY": {"type": "STRING", "value": "$penv{CODESIGN_IDENT}"},
         "OBS_PROVISIONING_PROFILE": {"type": "STRING", "value": "$penv{PROVISIONING_PROFILE}"},
@@ -42,7 +42,8 @@
         "VIRTUALCAM_SOURCE_UUID": {"type": "STRING", "value": "1E2D9632-D9A4-445C-B3CB-7C474442C1DF"},
         "VIRTUALCAM_SINK_UUID": {"type": "STRING", "value": "CE9DCB01-5C0C-4F3E-AC1A-971D26CB77D1"},
         "SPARKLE_APPCAST_URL": {"type": "STRING", "value": ""},
-        "SPARKLE_PUBLIC_KEY": {"type": "STRING", "value": ""}
+        "SPARKLE_PUBLIC_KEY": {"type": "STRING", "value": ""},
+        "ENABLE_BROWSER": true
       }
     },
     {
@@ -164,6 +165,38 @@
       "cacheVariables": {
         "CMAKE_COMPILE_WARNING_AS_ERROR": true
       }
+    },
+    {
+      "name": "windows-arm64",
+      "displayName": "Windows ARM64",
+      "description": "Default Windows build (ARM64)",
+      "inherits": ["environmentVars"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": "ARM64,version=10.0.22621",
+      "binaryDir": "${sourceDir}/build_arm64",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
+        "VIRTUALCAM_GUID": {"type": "STRING", "value": "A3FCE0F5-3493-419F-958A-ABA1250EC20B"},
+        "ENABLE_AJA": false,
+        "ENABLE_BROWSER": true,
+        "ENABLE_SCRIPTING": false,
+        "ENABLE_VST": false
+      }
+    },
+    {
+      "name": "windows-ci-arm64",
+      "displayName": "Windows ARM64 (CI)",
+      "description": "CI Windows build (ARM64)",
+      "inherits": ["windows-arm64"],
+      "warnings": {"dev": true, "deprecated": true},
+      "cacheVariables": {
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true
+      }
     }
   ],
   "buildPresets": [
@@ -186,6 +219,13 @@
       "configurePreset": "windows-x64",
       "displayName": "Windows 64-bit",
       "description": "Windows build for 64-bit (aka x64)",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-arm64",
+      "configurePreset": "windows-arm64",
+      "displayName": "Windows on ARM 64-bit",
+      "description": "Windows build for ARM 64-bit (aka ARM64)",
       "configuration": "RelWithDebInfo"
     },
     {

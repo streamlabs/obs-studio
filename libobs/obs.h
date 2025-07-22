@@ -51,7 +51,7 @@ struct obs_service;
 struct obs_module;
 struct obs_fader;
 struct obs_volmeter;
-struct obs_core_video_mix;
+struct obs_canvas;
 
 typedef struct obs_context_data obs_object_t;
 typedef struct obs_display obs_display_t;
@@ -66,13 +66,14 @@ typedef struct obs_service obs_service_t;
 typedef struct obs_module obs_module_t;
 typedef struct obs_fader obs_fader_t;
 typedef struct obs_volmeter obs_volmeter_t;
-typedef struct obs_core_video_mix obs_core_video_mix_t;
+typedef struct obs_canvas obs_canvas_t;
 
 typedef struct obs_weak_object obs_weak_object_t;
 typedef struct obs_weak_source obs_weak_source_t;
 typedef struct obs_weak_output obs_weak_output_t;
 typedef struct obs_weak_encoder obs_weak_encoder_t;
 typedef struct obs_weak_service obs_weak_service_t;
+typedef struct obs_weak_canvas obs_weak_canvas_t;
 
 #include "obs-missing-files.h"
 #include "obs-source.h"
@@ -344,13 +345,15 @@ struct obs_cmdline_args {
  */
 EXPORT char *obs_find_data_file(const char *file);
 
+// TODO: Remove after deprecation grace period
 /**
  * Add a path to search libobs data files in.
  * @param path Full path to directory to look in.
  *             The string is copied.
  */
-EXPORT void obs_add_data_path(const char *path);
+OBS_DEPRECATED EXPORT void obs_add_data_path(const char *path);
 
+// TODO: Remove after deprecation grace period
 /**
  * Remove a path from libobs core data paths.
  * @param path The path to compare to currently set paths.
@@ -359,7 +362,7 @@ EXPORT void obs_add_data_path(const char *path);
  * @return Whether or not the path was successfully removed.
  *         If false, the path could not be found.
  */
-EXPORT bool obs_remove_data_path(const char *path);
+OBS_DEPRECATED EXPORT bool obs_remove_data_path(const char *path);
 
 /**
  * Initializes OBS
@@ -474,6 +477,9 @@ EXPORT struct obs_video_info *obs_create_video_info();
 EXPORT bool obs_reset_audio(const struct obs_audio_info *oai);
 EXPORT bool obs_reset_audio2(const struct obs_audio_info2 *oai);
 
+/** Gets the current video settings, returns false if no video */
+EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
+
 /** Gets the SDR white level, returns 300.f if no video */
 EXPORT float obs_get_video_sdr_white_level(void);
 
@@ -485,6 +491,12 @@ EXPORT void obs_set_video_levels(float sdr_white_level, float hdr_nominal_peak_l
 
 /** Gets the current audio settings, returns false if no audio */
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
+
+/**
+ * Gets the v2 audio settings that includes buffering information.
+ * Returns false if no audio.
+ */
+EXPORT bool obs_get_audio_info2(struct obs_audio_info2 *oai2);
 
 /**
  * Opens a plugin module directly from a specific path.
@@ -750,6 +762,9 @@ EXPORT void obs_enum_encoders(bool (*enum_proc)(void *, obs_encoder_t *), void *
 /** Enumerates encoders */
 EXPORT void obs_enum_services(bool (*enum_proc)(void *, obs_service_t *), void *param);
 
+/** Enumerates canvases */
+EXPORT void obs_enum_canvases(bool (*enum_proc)(void *, obs_canvas_t *), void *param);
+
 /** Check if global obs object know that reference */
 EXPORT bool obs_scene_is_present(obs_scene_t *checking_scene);
 EXPORT bool obs_source_is_present(obs_source_t *checking_source);
@@ -771,10 +786,10 @@ EXPORT obs_source_t *obs_get_source_by_name(const char *name);
 EXPORT obs_source_t *obs_get_source_by_uuid(const char *uuid);
 
 /** Get a transition source by its name. */
-EXPORT obs_source_t *obs_get_transition_by_name(const char *name);
+OBS_DEPRECATED EXPORT obs_source_t *obs_get_transition_by_name(const char *name);
 
 /** Get a transition source by its UUID. */
-EXPORT obs_source_t *obs_get_transition_by_uuid(const char *uuid);
+OBS_DEPRECATED EXPORT obs_source_t *obs_get_transition_by_uuid(const char *uuid);
 
 /** Gets an output by its name. */
 EXPORT obs_output_t *obs_get_output_by_name(const char *name);
@@ -784,6 +799,11 @@ EXPORT obs_encoder_t *obs_get_encoder_by_name(const char *name);
 
 /** Gets an service by its name. */
 EXPORT obs_service_t *obs_get_service_by_name(const char *name);
+
+/** Get a canvas by its name. */
+EXPORT obs_canvas_t *obs_get_canvas_by_name(const char *name);
+/** Get a canvas by its UUID. */
+EXPORT obs_canvas_t *obs_get_canvas_by_uuid(const char *uuid);
 
 enum obs_base_effect {
 	OBS_EFFECT_DEFAULT,             /**< RGB/YUV */
@@ -811,10 +831,17 @@ EXPORT proc_handler_t *obs_get_proc_handler(void);
 EXPORT void obs_render_main_texture(void);
 
 /** Renders the output texture for a specific output*/
-EXPORT void obs_render_texture(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
+// TODO: remove
+// EXPORT void obs_render_texture(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
 
 /** Renders the last main output texture ignoring background color */
 EXPORT void obs_render_main_texture_src_color_only(void);
+
+/** Renders the last canvas output texture */
+EXPORT void obs_render_canvas_texture(obs_canvas_t *canvas);
+
+/** Renders the last main output texture ignoring background color */
+EXPORT void obs_render_canvas_texture_src_color_only(obs_canvas_t *canvas);
 
 /** Returns the last main output texture.  This can return NULL if the texture
  * is unavailable. */
@@ -891,6 +918,7 @@ enum obs_obj_type {
 	OBS_OBJ_TYPE_OUTPUT,
 	OBS_OBJ_TYPE_ENCODER,
 	OBS_OBJ_TYPE_SERVICE,
+	OBS_OBJ_TYPE_CANVAS,
 };
 
 EXPORT enum obs_obj_type obs_obj_get_type(void *obj);
@@ -938,8 +966,8 @@ EXPORT uint64_t obs_get_frame_interval_ns(void);
 EXPORT uint32_t obs_get_total_frames(void);
 EXPORT uint32_t obs_get_lagged_frames(void);
 
-EXPORT bool obs_nv12_tex_active(void);
-EXPORT bool obs_p010_tex_active(void);
+OBS_DEPRECATED EXPORT bool obs_nv12_tex_active(void);
+OBS_DEPRECATED EXPORT bool obs_p010_tex_active(void);
 
 EXPORT void obs_apply_private_data(obs_data_t *settings);
 EXPORT void obs_set_private_data(obs_data_t *settings);
@@ -995,7 +1023,7 @@ EXPORT obs_source_t *obs_view_get_source(obs_view_t *view, uint32_t channel);
 /** Renders the sources of this view context */
 EXPORT void obs_view_render(obs_view_t *view);
 
-/** Adds a view to the main render loop */
+/** Adds a view to the main render loop, with current obs_get_video_info state */
 EXPORT video_t *obs_view_add(obs_view_t *view);
 
 /** Adds a view to the main render loop */
@@ -1601,6 +1629,9 @@ EXPORT void obs_source_media_set_time(obs_source_t *source, int64_t ms);
 EXPORT enum obs_media_state obs_source_media_get_state(obs_source_t *source);
 EXPORT void obs_source_media_started(obs_source_t *source);
 EXPORT void obs_source_media_ended(obs_source_t *source);
+
+/** Get canvas this source belongs to (reference incremented) */
+EXPORT obs_canvas_t *obs_source_get_canvas(const obs_source_t *source);
 
 /* ------------------------------------------------------------------------- */
 /* Transition-specific functions */
@@ -2211,6 +2242,12 @@ EXPORT void obs_output_remove_packet_callback(obs_output_t *output,
 								struct encoder_packet_time *pkt_time, void *param),
 					      void *param);
 
+/* Sets a callback to be called when the output checks if it should attempt to reconnect.
+ * If the callback returns false, the output will not attempt to reconnect. */
+EXPORT void obs_output_set_reconnect_callback(obs_output_t *output,
+					      bool (*reconnect_cb)(void *data, obs_output_t *output, int code),
+					      void *param);
+
 /* ------------------------------------------------------------------------- */
 /* Functions used by outputs */
 
@@ -2397,9 +2434,28 @@ EXPORT size_t obs_encoder_get_mixer_index(const obs_encoder_t *encoder);
  *
  * If the format is set to VIDEO_FORMAT_NONE, will revert to the default
  * functionality of converting only when absolutely necessary.
+ *
+ * If GPU scaling is enabled, conversion will happen on the GPU.
  */
 EXPORT void obs_encoder_set_preferred_video_format(obs_encoder_t *encoder, enum video_format format);
 EXPORT enum video_format obs_encoder_get_preferred_video_format(const obs_encoder_t *encoder);
+
+/**
+ * Sets the preferred colorspace for an encoder, e.g., to simultaneous SDR and
+ * HDR output.
+ * 
+ * Only supported when GPU scaling is enabled.
+ */
+EXPORT void obs_encoder_set_preferred_color_space(obs_encoder_t *encoder, enum video_colorspace colorspace);
+EXPORT enum video_colorspace obs_encoder_get_preferred_color_space(const obs_encoder_t *encoder);
+
+/**
+ * Sets the preferred range for an encoder.
+ * 
+ * Only supported when GPU scaling is enabled.
+ */
+EXPORT void obs_encoder_set_preferred_range(obs_encoder_t *encoder, enum video_range_type range);
+EXPORT enum video_range_type obs_encoder_get_preferred_range(const obs_encoder_t *encoder);
 
 /** Gets the default settings for an encoder type */
 EXPORT obs_data_t *obs_encoder_defaults(const char *id);
@@ -2444,6 +2500,9 @@ EXPORT video_t *obs_encoder_video(const obs_encoder_t *encoder);
  * context would not otherwise be gettable.
  */
 EXPORT video_t *obs_encoder_parent_video(const obs_encoder_t *encoder);
+
+/** Returns if the encoder's video output context supports shared textures for the specified video format. */
+EXPORT bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_format format);
 
 /**
  * Returns the audio output context used with this encoder, or NULL if not
@@ -2603,6 +2662,102 @@ EXPORT void obs_source_frame_copy(struct obs_source_frame *dst, const struct obs
 /* ------------------------------------------------------------------------- */
 /* Get source icon type */
 EXPORT enum obs_icon_type obs_source_get_icon_type(const char *id);
+
+/* ------------------------------------------------------------------------- */
+/* Canvases */
+
+/* Canvas flags */
+enum obs_canvas_flags {
+	MAIN = 1 << 0,      // Main canvas created by libobs, cannot be renamed or reset, cannot be set by user
+	ACTIVATE = 1 << 1,  // Canvas sources will become active when they are visible
+	MIX_AUDIO = 1 << 2, // Audio from channels in this canvas will be mixed into the audio output
+	SCENE_REF = 1 << 3, // Canvas will hold references for scene sources
+	EPHEMERAL = 1 << 4, // Indicates this canvas is not supposed to be saved
+
+	/* Presets */
+	PROGRAM = ACTIVATE | MIX_AUDIO | SCENE_REF,
+	PREVIEW = EPHEMERAL,
+	DEVICE = ACTIVATE | EPHEMERAL,
+};
+
+/** Get a strong reference to the main OBS canvas */
+EXPORT obs_canvas_t *obs_get_main_canvas(void);
+
+/** Creates a new canvas */
+EXPORT obs_canvas_t *obs_canvas_create(const char *name, struct obs_video_info *ovi, uint32_t flags);
+/** Creates a new private canvas */
+EXPORT obs_canvas_t *obs_canvas_create_private(const char *name, struct obs_video_info *ovi, uint32_t flags);
+
+/** Signal that references to canvas should be released and mark the canvas as removed. */
+EXPORT void obs_canvas_remove(obs_canvas_t *canvas);
+/** Returns if a canvas is marked as removed (i.e., should no longer be used). */
+EXPORT bool obs_canvas_removed(obs_canvas_t *canvas);
+
+/* Canvas properties */
+/** Set canvas name */
+EXPORT void obs_canvas_set_name(obs_canvas_t *canvas, const char *name);
+/** Get canvas name */
+EXPORT const char *obs_canvas_get_name(const obs_canvas_t *canvas);
+/** Get canvas UUID */
+EXPORT const char *obs_canvas_get_uuid(const obs_canvas_t *canvas);
+/** Gets flags set on a canvas */
+EXPORT uint32_t obs_canvas_get_flags(const obs_canvas_t *canvas);
+
+/* Saving/Loading */
+/** Saves a canvas to settings data */
+EXPORT obs_data_t *obs_save_canvas(obs_canvas_t *source);
+/** Loads a canvas from settings data */
+EXPORT obs_canvas_t *obs_load_canvas(obs_data_t *data);
+
+/* Reference counting */
+/** Add strong reference */
+EXPORT obs_canvas_t *obs_canvas_get_ref(obs_canvas_t *canvas);
+/** Release strong reference */
+EXPORT void obs_canvas_release(obs_canvas_t *canvas);
+/** Add weak reference */
+EXPORT void obs_weak_canvas_addref(obs_weak_canvas_t *weak);
+/** Release weak reference */
+EXPORT void obs_weak_canvas_release(obs_weak_canvas_t *weak);
+
+/** Get weak reference from strong reference */
+EXPORT obs_weak_canvas_t *obs_canvas_get_weak_canvas(obs_canvas_t *canvas);
+/** Get strong reference from weak reference */
+EXPORT obs_canvas_t *obs_weak_canvas_get_canvas(obs_weak_canvas_t *weak);
+
+/** Returns the signal handler for a canvas */
+EXPORT signal_handler_t *obs_canvas_get_signal_handler(obs_canvas_t *canvas);
+
+/* Channels */
+/** Sets the source to be used for this canvas. */
+EXPORT void obs_canvas_set_channel(obs_canvas_t *canvas, uint32_t channel, obs_source_t *source);
+/** Gets the source currently in use for this view context */
+EXPORT obs_source_t *obs_canvas_get_channel(obs_canvas_t *canvas, uint32_t channel);
+
+/* Canvas sources */
+/** Create scene attached to a canvas */
+EXPORT obs_scene_t *obs_canvas_scene_create(obs_canvas_t *canvas, const char *name);
+/** Remove a scene from a canvas */
+EXPORT void obs_canvas_scene_remove(obs_scene_t *scene);
+/** Move scene to another canvas, detaching it from the previous one and deduplicating the name if needed */
+EXPORT void obs_canvas_move_scene(obs_scene_t *scene, obs_canvas_t *dst);
+/** Enumerates scenes belonging to a canvas */
+EXPORT void obs_canvas_enum_scenes(obs_canvas_t *canvas, bool (*enum_proc)(void *, obs_source_t *), void *param);
+/** Get a canvas source by name */
+EXPORT obs_source_t *obs_canvas_get_source_by_name(obs_canvas_t *canvas, const char *name);
+/** Get a canvas source by UUID */
+EXPORT obs_scene_t *obs_canvas_get_scene_by_name(obs_canvas_t *canvas, const char *name);
+
+/* Canvas video */
+/** Reset a canvas's video mix */
+EXPORT bool obs_canvas_reset_video(obs_canvas_t *canvas, struct obs_video_info *ovi);
+/** Returns true if the canvas video is configured */
+EXPORT bool obs_canvas_has_video(obs_canvas_t *canvas);
+/** Get canvas video output */
+EXPORT video_t *obs_canvas_get_video(const obs_canvas_t *canvas);
+/** Get canvas video info (if it exists) */
+EXPORT bool obs_canvas_get_video_info(const obs_canvas_t *canvas, struct obs_video_info *ovi);
+/** Renders the sources of this canvas's view context */
+EXPORT void obs_canvas_render(obs_canvas_t *canvas);
 
 #ifdef __cplusplus
 }

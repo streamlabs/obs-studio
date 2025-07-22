@@ -8,11 +8,11 @@
 !/deps
 !/dependencies
 !/docs
+!/frontend
 !/libobs*
 !/plugins
 !/shared
 !/test
-!/UI
 !.cirrus.xml
 !.clang-format
 !.editorconfig
