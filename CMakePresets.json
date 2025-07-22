@@ -36,7 +36,6 @@
         "CMAKE_OSX_DEPLOYMENT_TARGET": {"type": "STRING", "value": "12.0"},
         "OBS_CODESIGN_IDENTITY": {"type": "STRING", "value": "$penv{CODESIGN_IDENT}"},
         "OBS_CODESIGN_TEAM": {"type": "STRING", "value": "$penv{CODESIGN_TEAM}"},
-        "OBS_CODESIGN_IDENTITY": {"type": "STRING", "value": "$penv{CODESIGN_IDENT}"},
         "OBS_PROVISIONING_PROFILE": {"type": "STRING", "value": "$penv{PROVISIONING_PROFILE}"},
         "VIRTUALCAM_DEVICE_UUID": {"type": "STRING", "value": "6FA459EA-EE8A-3CA4-894E-DB77E160355E"},
         "VIRTUALCAM_SOURCE_UUID": {"type": "STRING", "value": "1E2D9632-D9A4-445C-B3CB-7C474442C1DF"},
