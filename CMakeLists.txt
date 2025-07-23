@@ -45,8 +45,6 @@ endif()
 add_subdirectory(libobs-opengl)
 add_subdirectory(plugins)
 
-add_subdirectory(test/test-input)
-
 add_subdirectory(frontend)
 
 message_configuration()

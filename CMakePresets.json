@@ -42,7 +42,8 @@
         "VIRTUALCAM_SINK_UUID": {"type": "STRING", "value": "CE9DCB01-5C0C-4F3E-AC1A-971D26CB77D1"},
         "SPARKLE_APPCAST_URL": {"type": "STRING", "value": ""},
         "SPARKLE_PUBLIC_KEY": {"type": "STRING", "value": ""},
-        "ENABLE_BROWSER": true
+        "ENABLE_BROWSER": true,
+        "ENABLE_FRONTEND": false
       }
     },
     {
@@ -145,14 +146,15 @@
       "generator": "Visual Studio 17 2022",
       "toolset": "v143",
       "cacheVariables": {
-        "OBS_VERSION_OVERRIDE": "31.0.3-sl1",
+        "OBS_VERSION_OVERRIDE": "31.1.1-sl1",
         "OBS_CMAKE_VERSION": {"type": "STRING", "value": "3.0.0"},
         "ENABLE_BROWSER": true,
         "ENABLE_WEBSOCKET": false,
         "VIRTUALCAM_GUID": {"type": "STRING", "value": "27B05C2D-93DC-474A-A5DA-9BBA34CB2A9C"},
         "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
         "ENABLE_CCACHE": false,
-        "ENABLE_UI": false
+        "ENABLE_UI": false,
+        "ENABLE_FRONTEND": false
       }
     },
     {
