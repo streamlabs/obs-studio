@@ -1,25 +1,25 @@
 {
     "dependencies": {
         "prebuilt": {
-            "version": "2025-07-11sl3",
+            "version": "2025-07-11sl4",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built obs-deps",
             "hashes": {
-                "macos-x86_64": "ac010e79e7a7d2fb21440c0f47bcc03a37a926078bded01598846f357110a29c",
-                "macos-arm64": "c9e2630153bc0d2ac4f9c756417a91218a3286ed24dff2763ce239e63b981ea5",
-                "macos-universal": "7b9b0e38feb5cc580c0f27d1adf2bcb55e8197899b9046428df8d2c715984d1e",
-                "windows-x64": "e803f26e4ad235d81176a703678a4b922aa7b161bc4a783a564bdc61ab604d40",
-                "windows-x86": "8ff3b292e0e11bd652c6b33ee004c9d18b37e5c6f36ce45e4334aa31fd3d2f2e"
+                "macos-x86_64": "828e0fdbbc5b09acccd72d3e4765b08eb3627b2be32f9e79797ac1870c457b2a",
+                "macos-arm64": "ad3edb1839c564450bd2624a894041130ea5f35e5d42d964bdf75373531dd823",
+                "macos-universal": "1ad6297a9f8b439657cf5b84063843fb2783c2a323453c5759bef0897731f9e0",
+                "windows-x64": "7e67f5f6cda4752b618832d9aa0c3b1e8fa4b03ca2539961d5bfcd0b2cd7a163",
+                "windows-x86": "b370bf5cc7fe68f9be982261562a9e1275fd771b055be60387ae9b89a3be36c9"
             }
         },
         "qt6": {
-            "version": "2025-07-11sl3",
+            "version": "2025-07-11sl4",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built Qt6",
             "hashes": {
-                "macos-x86_64": "669ead6bd4a8c3b3ee8e75bf6b450a5a186e6f40c8452a88292bd09fec7bd788",
-                "macos-arm64": "560055b2eb8d0e77f7b7a1e7cd01d4408a3f459ba4591d02fdebc26f9b14a6b7",
-                "macos-universal": "23c53dc5b4776779fae08be703bbb5a81e99872267381c6ccd96332374f83557"
+                "macos-x86_64": "f3ac5bba3999889d8eac478b8587300ba910c68d32d271e6ba41aa11215c6b8f",
+                "macos-arm64": "b7b33526925b8d684ffade0384269ca7fca3e3b19301ab5dc69ced8b01ce3bcc",
+                "macos-universal": "1352299814ad646f8013dbf16f6e584c1560839e90f7100526e41edb3136cc94"
             }
         },
         "cef": {
