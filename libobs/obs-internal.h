@@ -443,9 +443,6 @@ struct obs_core_data {
 
 	/* Main canvas, guaranteed to exist for the lifetime of the program */
 	struct obs_canvas *main_canvas;
-	// TODO: refactor these views ?????????????????????????????
-	struct obs_view stream_view;
-	struct obs_view record_view;
 
 	long long unnamed_index;
 

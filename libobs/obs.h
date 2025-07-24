@@ -1026,12 +1026,6 @@ EXPORT void obs_view_render(obs_view_t *view);
 /** Adds a view to the main render loop, with current obs_get_video_info state */
 EXPORT video_t *obs_view_add(obs_view_t *view);
 
-/** Adds a view to the main render loop */
-EXPORT video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi);
-
-/** Adds a view to the main render loop */
-EXPORT video_t *obs_record_view_add(obs_view_t *view, struct obs_video_info *ovi);
-
 /** Adds a view to the main render loop, with custom video settings */
 EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
 
@@ -2443,7 +2437,7 @@ EXPORT enum video_format obs_encoder_get_preferred_video_format(const obs_encode
 /**
  * Sets the preferred colorspace for an encoder, e.g., to simultaneous SDR and
  * HDR output.
- * 
+ *
  * Only supported when GPU scaling is enabled.
  */
 EXPORT void obs_encoder_set_preferred_color_space(obs_encoder_t *encoder, enum video_colorspace colorspace);
@@ -2451,7 +2445,7 @@ EXPORT enum video_colorspace obs_encoder_get_preferred_color_space(const obs_enc
 
 /**
  * Sets the preferred range for an encoder.
- * 
+ *
  * Only supported when GPU scaling is enabled.
  */
 EXPORT void obs_encoder_set_preferred_range(obs_encoder_t *encoder, enum video_range_type range);

@@ -977,10 +977,6 @@ static bool obs_init_data(void)
 		goto fail;
 	if (pthread_mutex_init_recursive(&obs->data.canvases_mutex) != 0)
 		goto fail;
-	if (!obs_view_init(&data->stream_view))
-		goto fail;
-	if (!obs_view_init(&data->record_view))
-		goto fail;
 
 	data->sources = NULL;
 	data->public_sources = NULL;
@@ -1035,12 +1031,8 @@ static void obs_free_data(void)
 	data->valid = false;
 
 	/* Free main canvas */
-	obs_canvas_release(data->main_canvas);
-	obs_view_remove(&data->stream_view);
-	obs_main_view_free(&data->stream_view);
-	obs_view_remove(&data->record_view);
-	obs_main_view_free(&data->record_view);
 	blog(LOG_INFO, "Freeing OBS context data");
+	obs_canvas_release(data->main_canvas);
 
 	FREE_OBS_LINKED_LIST(output);
 	FREE_OBS_LINKED_LIST(encoder);

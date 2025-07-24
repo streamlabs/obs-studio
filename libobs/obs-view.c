@@ -180,45 +180,6 @@ video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi)
 	return mix->video;
 }
 
-video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi)
-{
-	if (!view)
-		return NULL;
-
-	struct obs_core_video_mix *mix = obs_create_video_mix(ovi);
-	if (!mix) {
-		return NULL;
-	}
-	mix->view = view;
-	mix->rendering_mode = OBS_STREAMING_VIDEO_RENDERING;
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	da_push_back(obs->video.mixes, &mix);
-
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	return mix->video;
-}
-
-video_t *obs_record_view_add(obs_view_t *view, struct obs_video_info *ovi)
-{
-	if (!view)
-		return NULL;
-
-	struct obs_core_video_mix *mix = obs_create_video_mix(ovi);
-	if (!mix) {
-		return NULL;
-	}
-	mix->view = view;
-	mix->rendering_mode = OBS_RECORDING_VIDEO_RENDERING;
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	da_push_back(obs->video.mixes, &mix);
-
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	return mix->video;
-}
-
 void obs_view_remove(obs_view_t *view)
 {
 	if (!view)
