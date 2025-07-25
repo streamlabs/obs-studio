@@ -79,5 +79,5 @@ add_custom_command(
     POST_BUILD
     COMMAND
     "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:mac-camera-extension>"
-    "$<TARGET_BUNDLE_CONTENT_DIR:mac-camera-extension>/Library/SystemExtensions/$<TARGET_BUNDLE_DIR_NAME:mac-camera-extension>"
+    "$<TARGET_BUNDLE_CONTENT_DIR:SlobsVirtualCamInstaller>/Library/SystemExtensions/$<TARGET_BUNDLE_DIR_NAME:mac-camera-extension>"
     COMMENT "Add Camera Extension to application bundle")
