@@ -73,3 +73,11 @@ set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic)
 set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development")
 set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM $ENV{APPLE_TEAM_ID})
 # cmake-format: on
+
+add_custom_command(
+    TARGET mac-camera-extension
+    POST_BUILD
+    COMMAND
+    "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:mac-camera-extension>"
+    "$<TARGET_BUNDLE_CONTENT_DIR:mac-camera-extension>/Library/SystemExtensions/$<TARGET_BUNDLE_DIR_NAME:mac-camera-extension>"
+    COMMENT "Add Camera Extension to application bundle")
