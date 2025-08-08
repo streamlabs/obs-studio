@@ -47,7 +47,7 @@ set(CODESIGN_TEAM $ENV{APPLE_TEAM_ID})
 string(TIMESTAMP CURRENT_YEAR "%Y")
 set_target_properties(
   mac-camera-extension
-  PROPERTIES OUTPUT_NAME com.streamlabs.slobs.mac-camera-extension
+  PROPERTIES OUTPUT_NAME com.streamlabs.slobs
              RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
              MACOSX_BUNDLE ON
              MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/Info.plist.in"
@@ -59,8 +59,8 @@ set_target_xcode_properties(
   PROPERTIES SWIFT_VERSION 5.0
              MACOSX_DEPLOYMENT_TARGET 13.0
              CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos/entitlements.plist"
-             PRODUCT_NAME com.streamlabs.slobs.mac-camera-extension
-             PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-camera-extension
+             PRODUCT_NAME com.streamlabs.slobs
+             PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs
              CURRENT_PROJECT_VERSION 1.0
              MARKETING_VERSION 1.0
              COPY_PHASE_STRIP NO
