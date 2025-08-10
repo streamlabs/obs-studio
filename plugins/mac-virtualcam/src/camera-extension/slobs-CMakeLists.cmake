@@ -65,11 +65,12 @@ set_target_xcode_properties(
              MARKETING_VERSION 1.0
              COPY_PHASE_STRIP NO
              GENERATE_INFOPLIST_FILE YES
+             INFOPLIST_KEY_CFBundleDisplayName "Streamlabs Virtual Camera"
+             INFOPLIST_KEY_CFBundleIdentifier "com.streamlabs.slobs.mac-camera-extension"
              INFOPLIST_KEY_NSHumanReadableCopyright "(c) 2022-${CURRENT_YEAR} Sebastian Beckmann, Patrick Heyer"
              INFOPLIST_KEY_NSSystemExtensionUsageDescription "This Camera Extension enables virtual camera functionality in Streamlabs Desktop.")
 
 # Switch to automatic codesigning via valid team ID
 set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic)
-set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development")
 set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM $ENV{APPLE_TEAM_ID})
 # cmake-format: on
