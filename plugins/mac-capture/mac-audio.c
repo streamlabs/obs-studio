@@ -818,6 +818,10 @@ static void coreaudio_uninit(struct coreaudio_data *ca)
 		bfree(ca->channel_names);
 		ca->channel_names = NULL;
 	}
+	ca->available_channels = 0;
+	ca->sample_rate = 0;
+	ca->format = AUDIO_FORMAT_UNKNOWN;
+	ca->speakers = SPEAKERS_UNKNOWN;
 }
 
 /* ------------------------------------------------------------------------- */
