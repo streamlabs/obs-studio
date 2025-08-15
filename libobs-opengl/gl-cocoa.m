@@ -502,6 +502,7 @@ bool gs_texture_rebind_iosurface(gs_texture_t *texture, void *iosurf)
 
 uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
 {
+	blog(LOG_INFO, "create_iosurface was entered");
     if (!device) {
         blog(LOG_ERROR, "create_iosurface was sent a null device");
         return 0;
@@ -511,24 +512,29 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
         blog(LOG_ERROR, "create_iosurface failed to acquire swap chain");
         return 0;
     }
+	blog(LOG_INFO, "create_iosurface 1");
+
 
     swap->wi->surfaceID = 0;
+	blog(LOG_INFO, "create_iosurface 2");
     // Creates a shared IOSurface by setting kIOSurfaceIsGlobal to true
     NSDictionary *surfaceAttributes = [[NSDictionary alloc]
         initWithObjectsAndKeys:[NSNumber numberWithBool:YES], (NSString *) kIOSurfaceIsGlobal,
                                [NSNumber numberWithUnsignedInteger:(NSUInteger) width], (NSString *) kIOSurfaceWidth,
                                [NSNumber numberWithUnsignedInteger:(NSUInteger) height], (NSString *) kIOSurfaceHeight,
                                [NSNumber numberWithUnsignedInteger:4U], (NSString *) kIOSurfaceBytesPerElement, nil];
-
+	blog(LOG_INFO, "create_iosurface 3");
     IOSurfaceRef _surfaceRef = IOSurfaceCreate((CFDictionaryRef) surfaceAttributes);
-
+	blog(LOG_INFO, "create_iosurface 4");
     if (_surfaceRef) {
+	    blog(LOG_INFO, "create_iosurface 5");
         swap->wi->surfaceID = IOSurfaceGetID(_surfaceRef);
     } else {
         blog(LOG_ERROR, "create_iosurface IOSurfaceCreate failed");
     }
-
+	blog(LOG_INFO, "create_iosurface 6");
     [surfaceAttributes release];
+blog(LOG_INFO, "create_iosurface has finished");
 
     return swap->wi->surfaceID;
 }
