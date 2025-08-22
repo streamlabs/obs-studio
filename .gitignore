@@ -11,6 +11,7 @@
 !/libobs*
 !/plugins
 !/test
+!/shared
 !/UI
 !.cirrus.xml
 !.clang-format

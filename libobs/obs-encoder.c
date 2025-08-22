@@ -655,13 +655,6 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 	maybe_set_up_gpu_rescale(encoder);
 
 	if (encoder->orig_info.create) {
-		pthread_mutex_lock(&obs->video.mixes_mutex);
-		if (!obs->video.main_mix) {
-			// App is at shutdown state if no main mix
-			pthread_mutex_unlock(&obs->video.mixes_mutex);
-			return false;
-		}
-
 		can_reroute = true;
 		encoder->info = encoder->orig_info;
 		if (!encoder->video)
@@ -669,8 +662,6 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 		encoder->context.data = encoder->orig_info.create(
 			encoder->context.settings, encoder);
 		can_reroute = false;
-
-		pthread_mutex_unlock(&obs->video.mixes_mutex);
 	}
 	if (!encoder->context.data)
 		return false;
@@ -1176,6 +1167,22 @@ size_t obs_encoder_get_frame_size(const obs_encoder_t *encoder)
 	}
 
 	return encoder->framesize;
+}
+
+size_t obs_encoder_get_mixer_index(const obs_encoder_t *encoder)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_get_mixer_index"))
+		return 0;
+
+	if (encoder->info.type != OBS_ENCODER_AUDIO) {
+		blog(LOG_WARNING,
+		     "obs_encoder_get_mixer_index: "
+		     "encoder '%s' is not an audio encoder",
+		     obs_encoder_get_name(encoder));
+		return 0;
+	}
+
+	return encoder->mixer_idx;
 }
 
 void obs_encoder_set_video(obs_encoder_t *encoder, video_t *video)
@@ -2220,4 +2227,16 @@ void obs_encoder_group_destroy(obs_encoder_group_t *group)
 	}
 
 	obs_encoder_group_actually_destroy(group);
+}
+
+bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_format format)
+{
+	struct obs_core_video_mix *mix = get_mix_for_video(encoder->media);
+
+	if (format == VIDEO_FORMAT_NV12)
+		return mix->using_nv12_tex;
+	if (format == VIDEO_FORMAT_P010)
+		return mix->using_p010_tex;
+
+	return false;
 }

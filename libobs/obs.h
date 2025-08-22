@@ -457,6 +457,7 @@ EXPORT bool obs_get_video_info_current(struct obs_video_info *ovi);
 EXPORT size_t obs_get_video_info_count();
 EXPORT bool obs_get_video_info_by_index(size_t index,
 					struct obs_video_info *ovi);
+EXPORT struct obs_video_info * obs_get_video_info_by_index2(size_t index);
 /** Gets video info used by output*/
 EXPORT bool obs_get_video_info_for_output(obs_output_t *output,
 					  struct obs_video_info *ovi,
@@ -493,6 +494,7 @@ EXPORT void obs_set_video_levels(float sdr_white_level,
 
 /** Gets the current audio settings, returns false if no audio */
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
+EXPORT bool obs_get_audio_info2(struct obs_audio_info2 *oai2);
 
 /**
  * Opens a plugin module directly from a specific path.
@@ -2683,6 +2685,9 @@ EXPORT uint32_t obs_encoder_get_sample_rate(const obs_encoder_t *encoder);
 /** For audio encoders, returns the frame size of the audio packet */
 EXPORT size_t obs_encoder_get_frame_size(const obs_encoder_t *encoder);
 
+/** For audio encoders, returns the mixer index */
+EXPORT size_t obs_encoder_get_mixer_index(const obs_encoder_t *encoder);
+
 /**
  * Sets the preferred video format for a video encoder.  If the encoder can use
  * the format specified, it will force a conversion to that format if the
@@ -2740,6 +2745,9 @@ EXPORT video_t *obs_encoder_video(const obs_encoder_t *encoder);
  * context would not otherwise be gettable.
  */
 EXPORT video_t *obs_encoder_parent_video(const obs_encoder_t *encoder);
+
+/** Returns if the encoder's video output context supports shared textures for the specified video format. */
+EXPORT bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_format format);
 
 /**
  * Returns the audio output context used with this encoder, or NULL if not

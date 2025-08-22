@@ -1876,7 +1876,8 @@ bool obs_get_video_info(struct obs_video_info *ovi)
 
 int obs_remove_video_info(struct obs_video_info *ovi)
 {
-	blog(LOG_INFO, "[VIDEO_CANVAS] remove %p", ovi);
+	blog(LOG_INFO, "[VIDEO_CANVAS] remove %p, canvases count (before removal): %d", ovi, (int)obs->video.canvases.num);
+
 	int ret = obs_deactivate_video_info();
 	if (ret != OBS_VIDEO_SUCCESS)
 		return ret;
@@ -1894,6 +1895,8 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
 
+	blog(LOG_INFO, "[VIDEO_CANVAS] remove canvases count (after removal): %d", (int)obs->video.canvases.num);
+
 	return obs_init_video();
 }
 
@@ -1903,7 +1906,7 @@ struct obs_video_info *obs_create_video_info()
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	da_push_back(obs->video.canvases, &ovi);
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
-	blog(LOG_INFO, "[VIDEO_CANVAS] created %p", ovi);
+	blog(LOG_INFO, "[VIDEO_CANVAS] created %p, canvases count: %d", ovi, (int)obs->video.canvases.num);
 
 #ifdef _WIN32
 	ovi->graphics_module = "libobs-d3d11.dll";
@@ -1936,12 +1939,23 @@ size_t obs_get_video_info_count()
 
 bool obs_get_video_info_by_index(size_t index, struct obs_video_info *ovi)
 {
-	blog(LOG_INFO, "[VIDEO_CANVAS] get video info by index %zu", index);
+	blog(LOG_INFO, "[VIDEO_CANVAS] obs_get_video_info_by_index - %zu", index);
 	if (index >= obs->video.canvases.num)
 		return false;
 	*ovi = *obs->video.canvases.array[index];
 	return true;
 }
+
+struct obs_video_info * obs_get_video_info_by_index2(size_t index)
+{
+	blog(LOG_INFO, "[VIDEO_CANVAS] obs_get_video_info_by_index2 - %zu", index);
+
+	if (index >= obs->video.canvases.num)
+		return NULL;
+
+	return obs->video.canvases.array[index];
+}
+
 
 float obs_get_video_sdr_white_level(void)
 {
@@ -1977,6 +1991,23 @@ bool obs_get_audio_info(struct obs_audio_info *oai)
 	oai->samples_per_sec = info->samples_per_sec;
 	oai->speakers = info->speakers;
 	return true;
+}
+
+bool obs_get_audio_info2(struct obs_audio_info2 *oai2)
+{
+       struct obs_core_audio *audio = &obs->audio;
+       struct obs_audio_info oai;
+
+       if (!obs_get_audio_info(&oai) || !oai2 || !audio->audio) {
+               return false;
+       } else {
+               oai2->samples_per_sec = oai.samples_per_sec;
+               oai2->speakers = oai.speakers;
+               oai2->fixed_buffering = audio->fixed_buffer;
+               oai2->max_buffering_ms =
+                       audio->max_buffering_ticks * AUDIO_OUTPUT_FRAMES * SEC_TO_MSEC / (int)oai2->samples_per_sec;
+               return true;
+       }
 }
 
 bool obs_enum_source_types(size_t idx, const char **id)
