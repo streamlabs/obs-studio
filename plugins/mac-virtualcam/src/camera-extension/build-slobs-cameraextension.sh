@@ -8,8 +8,14 @@ cp CMakeLists.txt backup-CMakeLists.txt
 # Copy over the slobs version to build the project.
 cp slobs-CMakeLists.cmake CMakeLists.txt
 
+cmake_args=()
+
+if [ $# -ge 1 ]; then
+  cmake_args+=(-DCMAKE_OSX_ARCHITECTURES="$1")
+done
+
 # Build the project using the custom SLOBS build.
-cmake --preset macos
+cmake --preset macos "${cmake_args[@]}"
 cmake --build build_macos --preset macos
 cp backup-CMakeLists.txt CMakeLists.txt
 rm backup-CMakeLists.txt
