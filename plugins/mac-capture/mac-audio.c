@@ -1140,7 +1140,7 @@ static obs_properties_t *coreaudio_properties(bool input, void *data)
 	obs_property_set_modified_callback2(property, coreaudio_downmix_changed,
 					    ca);
 
-	if (ca != NULL) {
+	if (ca != NULL && ca->au_initialized) {
 		uint32_t channels = get_audio_channels(ca->speakers);
 		ensure_output_channels_visible(props, ca, channels);
 
