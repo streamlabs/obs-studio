@@ -89,7 +89,7 @@ function Build {
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
 
-    Log-Group "Chech for changes in dependencies..."
+    Log-Group "Check for changes in dependencies..."
     Invoke-External cmake @CmakeCheckArgs
 
     Log-Group "Installing obs-studio..."
