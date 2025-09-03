@@ -14,7 +14,7 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Darwin)" OR OBS_CMAKE_VERSION VERSION_GREATE
   include(defaults)
   include(helpers)
 
-  option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
+  option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
   option(ENABLE_SCRIPTING "Enable scripting support" ON)
   option(ENABLE_HEVC "Enable HEVC encoders" ON)
 
@@ -29,7 +29,7 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Darwin)" OR OBS_CMAKE_VERSION VERSION_GREATE
   add_subdirectory(test/test-input)
 
   add_subdirectory(UI)
-  
+
   if(WIN32)
     include(FetchContent)
 
@@ -96,7 +96,7 @@ if(ENABLE_HEVC)
   add_compile_definitions(ENABLE_HEVC)
 endif()
 option(BUILD_FOR_DISTRIBUTION "Build for distribution (enables optimizations)" OFF)
-option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
+option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
 if (NOT ENABLE_UI)
   if(MSVC)
     include(CopyMSVCBins)
