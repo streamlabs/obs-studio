@@ -34,16 +34,18 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Darwin)" OR OBS_CMAKE_VERSION VERSION_GREATE
     include(FetchContent)
 
     # Compare current linked libs with prev
-    FetchContent_Declare(deps_checker URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd" DOWNLOAD_NO_EXTRACT true)
+    FetchContent_Declare(
+      deps_checker
+      URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
+      DOWNLOAD_NO_EXTRACT true)
     FetchContent_MakeAvailable(deps_checker)
 
-    add_custom_target(check_dependencies COMMAND ${CMAKE_COMMAND}
-      "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}"
-      "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
-      "-Ddeps_CONFIG=$<CONFIG>"
-      "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-
-      -P "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake" )
+    add_custom_target(
+      check_dependencies
+      COMMAND
+        ${CMAKE_COMMAND} "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}" "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
+        "-Ddeps_CONFIG=$<CONFIG>" "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}" -P
+        "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake")
   endif()
 
   message_configuration()
@@ -97,7 +99,7 @@ if(ENABLE_HEVC)
 endif()
 option(BUILD_FOR_DISTRIBUTION "Build for distribution (enables optimizations)" OFF)
 option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
-if (NOT ENABLE_UI)
+if(NOT ENABLE_UI)
   if(MSVC)
     include(CopyMSVCBins)
   endif()
@@ -159,12 +161,16 @@ if(BUILD_TESTS OR ENABLE_UNIT_TESTS)
 endif()
 
 if(WIN32)
-	include(FetchContent)
+  include(FetchContent)
 
-	# Compare current linked libs with prev
-	FetchContent_Declare(deps_checker URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd" DOWNLOAD_NO_EXTRACT true)
-	FetchContent_MakeAvailable(deps_checker)
+  # Compare current linked libs with prev
+  FetchContent_Declare(
+    deps_checker
+    URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
+    DOWNLOAD_NO_EXTRACT true)
+  FetchContent_MakeAvailable(deps_checker)
 
+  # cmake-format: off
 	add_custom_target(check_dependencies COMMAND ${CMAKE_COMMAND}
 		"-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}"
 		"-Ddeps_CONFIGURATION=$<CONFIGURATION>"
@@ -172,8 +178,10 @@ if(WIN32)
 		"-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
 
 		-P "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake" )
+  # cmake-format: on
 endif()
 
+# cmake-format: off
 if(ENABLE_32_TARGETS)
  #Configure 32-bit projects
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
@@ -211,3 +219,4 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
   endif()
 endif()
 endif()
+# cmake-format: on
