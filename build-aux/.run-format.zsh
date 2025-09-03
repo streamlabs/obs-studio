@@ -76,8 +76,8 @@ invoke_formatter() {
       }
 
       if (( ! #source_files )) source_files=((libobs|libobs-*|UI|plugins|deps|cmake)/**/(CMakeLists.txt|*.cmake)(.N))
-
-      source_files=(${source_files:#*/(obs-outputs/ftl-sdk|jansson|decklink/*/decklink-sdk|obs-websocket|obs-browser|win-dshow/libdshowcapture)/*})
+      # TODO: remove obs-ffmpeg and obs-nvenc from the list below after the OBS 31 merge
+      source_files=(${source_files:#*/(obs-outputs/ftl-sdk|jansson|decklink/*/decklink-sdk|obs-websocket|obs-browser|win-dshow/libdshowcapture|obs-ffmpeg|obs-nvenc)/*})
 
       local -a format_args=()
       if (( _loglevel > 2 )) format_args+=(--log-level debug)

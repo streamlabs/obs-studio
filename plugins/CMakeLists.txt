@@ -60,7 +60,14 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   add_obs_plugin(obs-libfdk)
   add_obs_plugin(obs-ndi)
   add_obs_plugin(obs-outputs)
-  add_obs_plugin(obs-nvenc PLATFORMS WINDOWS LINUX ARCHITECTURES x64 x86_64)
+  add_obs_plugin(
+    obs-nvenc
+    PLATFORMS
+    WINDOWS
+    LINUX
+    ARCHITECTURES
+    x64
+    x86_64)
   add_obs_plugin(obs-qsv11 PLATFORMS WINDOWS LINUX)
   add_obs_plugin(obs-text PLATFORMS WINDOWS)
   add_obs_plugin(obs-transitions)
