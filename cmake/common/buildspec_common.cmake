@@ -165,7 +165,9 @@ function(_check_dependencies)
       set(file "${dependency}-${version}-${arch}.7z")
       set(url ${url}/${file})
     else()
-      set(url ${url}/${version}/${file})
+      # TODO: original code from OBS
+      #set(url ${url}/${version}/${file})
+      set(url ${url}/${file})
     endif()
 
     message(STATUS "Working on url ${url}, file ${file}")

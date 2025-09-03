@@ -32,19 +32,6 @@
 
 using namespace amf;
 
-// TODO: this block of code is temporary and should be removed with the DEPS update
-
-#define AMF_VIDEO_ENCODER_AV1_CAP_BFRAMES                           L"AV1BFrames"                       // amf_bool; if b frames are supported for AV1
-
-#define AMF_VIDEO_ENCODER_AV1_Q_INDEX_INTER_B                       L"Av1QIndex_Inter_B"                // amf_int64; default = depends on USAGE; inter-frame QIndex (bi-directional); range = 1-255
-
-// properties for AV1 B-frame (VCN5 feature)
-#define AMF_VIDEO_ENCODER_AV1_MAX_CONSECUTIVE_BPICTURES             L"Av1MaxConsecutiveBPictures"        // amf_int64; default 0. Maximum number of consecutive B frames for B frame encoding
-#define AMF_VIDEO_ENCODER_AV1_B_PIC_PATTERN                         L"Av1BPicturesPattern"               // amf_int64; default 0. Number of B frames for B frame encoding
-#define AMF_VIDEO_ENCODER_AV1_ADAPTIVE_MINIGOP                      L"Av1AdaptiveMiniGop"                // amf_bool; default false. Adaptive miniGOP size for B frame encoding
-
-//////////////////////////////////////////////////////////////////////////////////////////////
-
 /* ========================================================================= */
 /* Junk                                                                      */
 
