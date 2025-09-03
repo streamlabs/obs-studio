@@ -4,7 +4,7 @@ legacy_check()
 
 add_subdirectory(obs-frontend-api)
 
-option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
+option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
 
 if(NOT ENABLE_UI)
   target_disable_feature(obs "User Interface")
