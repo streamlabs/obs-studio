@@ -74,6 +74,12 @@ struct rendered_callback {
 	void *param;
 };
 
+struct packet_callback {
+	void (*packet_cb)(obs_output_t *output, struct encoder_packet *pkt, struct encoder_packet_time *pkt_time,
+			  void *param);
+	void *param;
+};
+
 /* ------------------------------------------------------------------------- */
 /* validity checks */
 
@@ -1107,9 +1113,11 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
+	bool packet_time_valid;
+	struct encoder_packet_time packet_time;
 };
 
-typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet);
+typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet, struct encoder_packet_time *frame_time);
 
 struct obs_weak_output {
 	struct obs_weak_ref ref;
@@ -1227,6 +1235,13 @@ struct obs_output {
 	// captions are output per track
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
+	DARRAY(struct encoder_packet_time)
+	encoder_packet_times[MAX_OUTPUT_VIDEO_ENCODERS];
+
+	/* Packet callbacks */
+	pthread_mutex_t pkt_callbacks_mutex;
+	DARRAY(struct packet_callback) pkt_callbacks;
+
 	bool valid;
 
 	uint64_t active_delay_ns;
@@ -1254,7 +1269,7 @@ static inline void do_output_signal(struct obs_output *output,
 	calldata_free(&params);
 }
 
-extern void process_delay(void *data, struct encoder_packet *packet);
+extern void process_delay(void *data, struct encoder_packet *packet, struct encoder_packet_time *packet_time);
 extern void obs_output_cleanup_delay(obs_output_t *output);
 extern bool obs_output_delay_start(obs_output_t *output);
 extern void obs_output_delay_stop(obs_output_t *output);
@@ -1282,7 +1297,7 @@ struct obs_weak_encoder {
 
 struct encoder_callback {
 	bool sent_first_packet;
-	void (*new_packet)(void *param, struct encoder_packet *packet);
+	encoded_callback_t new_packet;
 	void *param;
 };
 
@@ -1343,6 +1358,9 @@ struct obs_encoder {
 	uint32_t frame_rate_divisor_counter; // only used for GPU encoders
 	video_t *fps_override;
 
+	// Number of frames successfully encoded
+	uint32_t encoded_frames;
+
 	/* Regions of interest to prioritize during encoding */
 	pthread_mutex_t roi_mutex;
 	DARRAY(struct obs_encoder_roi) roi;
@@ -1376,6 +1394,8 @@ struct obs_encoder {
 	pthread_mutex_t callbacks_mutex;
 	DARRAY(struct encoder_callback) callbacks;
 
+	DARRAY(struct encoder_packet_time) encoder_packet_times;
+
 	struct pause_data pause;
 
 	const char *profile_encoder_encode_name;
@@ -1392,12 +1412,10 @@ extern bool obs_encoder_initialize(obs_encoder_t *encoder);
 extern void obs_encoder_shutdown(obs_encoder_t *encoder);
 
 extern void obs_encoder_start(obs_encoder_t *encoder,
-			      void (*new_packet)(void *param,
-						 struct encoder_packet *packet),
+			      encoded_callback_t new_packet,
 			      void *param);
 extern void obs_encoder_stop(obs_encoder_t *encoder,
-			     void (*new_packet)(void *param,
-						struct encoder_packet *packet),
+			     encoded_callback_t new_packet,
 			     void *param);
 
 extern void obs_encoder_add_output(struct obs_encoder *encoder,
@@ -1408,7 +1426,7 @@ extern void obs_encoder_remove_output(struct obs_encoder *encoder,
 extern bool start_gpu_encode(obs_encoder_t *encoder);
 extern void stop_gpu_encode(obs_encoder_t *encoder);
 
-extern bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame);
+extern bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame, const uint64_t *frame_cts);
 extern void send_off_encoder_packet(obs_encoder_t *encoder, bool success,
 				    bool received, struct encoder_packet *pkt);
 

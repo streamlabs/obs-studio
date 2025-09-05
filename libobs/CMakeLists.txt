@@ -37,6 +37,11 @@ endif()
 add_library(libobs SHARED)
 add_library(OBS::libobs ALIAS libobs)
 
+if(NOT TARGET OBS::bpm)
+  add_subdirectory("${CMAKE_SOURCE_DIR}/shared/bpm" bpm)
+  target_sources(libobs PRIVATE $<TARGET_OBJECTS:bpm>)
+endif()
+
 target_sources(
   libobs
   PRIVATE # cmake-format: sortable
