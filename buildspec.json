@@ -30,15 +30,15 @@
             "baseUrl": "https://streamlabs-cef-dist.s3.us-west-2.amazonaws.com",
             "label": "Chromium Embedded Framework",
             "hashes": {
-                "macos-x86_64": "4B3AC2FF135C2858FE8ECAB19D936A0DD95D9374373946CB5528CB2FD8E0A89F",
-                "macos-arm64": "B554146651D8E3823A2708FC738F720CA9D373263D6896CF4B4A51E2DA82C439",
+                "macos-x86_64": "140bfd517b4b9d12343ac000abba7bb16eecefe80ecbd7225993d03f0b9c0603",
+                "macos-arm64": "3970a781132b033bb9be6a9fe328a07e97fa7737fdf1575b1c5db24a3e130da1",
                 "linux-x86_64": "bf4aa9388bab7e94fa945cc3bba16b6da63b6a30f9c0342d42235468b39d84bf",
                 "linux-aarch64": "68d915c9ba2639cba762a54cd3430fce2527aa6355d831d3cfcb6157664206b0",
                 "windows-x64": "7480e9ed5688e09919db67237d130eef9a4c24df32ba2a7b8a5587de45ff8e69"
             },
             "revision": {
-                "macos-x86_64": 3,
-                "macos-arm64": 3,
+                "macos-x86_64": 4,
+                "macos-arm64": 4,
                 "windows-x64": 3
             }
         },
