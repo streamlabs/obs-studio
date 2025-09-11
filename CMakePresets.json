@@ -42,7 +42,8 @@
         "VIRTUALCAM_SOURCE_UUID": {"type": "STRING", "value": "1E2D9632-D9A4-445C-B3CB-7C474442C1DF"},
         "VIRTUALCAM_SINK_UUID": {"type": "STRING", "value": "CE9DCB01-5C0C-4F3E-AC1A-971D26CB77D1"},
         "SPARKLE_APPCAST_URL": {"type": "STRING", "value": ""},
-        "SPARKLE_PUBLIC_KEY": {"type": "STRING", "value": ""}
+        "SPARKLE_PUBLIC_KEY": {"type": "STRING", "value": ""},
+        "ENABLE_UI": true
       }
     },
     {
