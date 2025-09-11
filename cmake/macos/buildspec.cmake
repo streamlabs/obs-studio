@@ -24,7 +24,7 @@ function(_check_dependencies_macos)
   set(webrtc_filename "webrtc-VERSION-osx-ARCH.zip")
   set(webrtc_destination "webrtc-VERSION-osx-ARCH")
 
-  set(dependencies_list prebuilt cef libmediasoupclient webrtc)
+  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc)
 
   _check_dependencies()
 
