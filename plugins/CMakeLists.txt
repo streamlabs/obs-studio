@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.22...3.25)
 
 option(ENABLE_PLUGINS "Enable building OBS plugins" ON)
 
-add_subdirectory(sl-bgblur-filter)
-
 if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   if(NOT ENABLE_PLUGINS)
     set_property(GLOBAL APPEND PROPERTY OBS_FEATURES_DISABLED "Plugin Support")
