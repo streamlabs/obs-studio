@@ -83,6 +83,10 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   add_obs_plugin(obs-openvr PLATFORMS WINDOWS)
   add_obs_plugin(win-spout PLATFORMS WINDOWS)
 
+  if(OS_WINDOWS)
+    add_subdirectory(sl-bgblur-filter)    
+  endif()
+
   return()
 endif()
 
