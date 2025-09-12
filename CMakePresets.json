@@ -147,7 +147,8 @@
         "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
         "ENABLE_CCACHE": false,
         "ENABLE_32_TARGETS": false,
-        "ENABLE_UI": false
+        "ENABLE_UI": false,
+        "CMAKE_COMPILE_WARNING_AS_ERROR": false
       }
     },
     {
