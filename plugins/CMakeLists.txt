@@ -84,7 +84,7 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   add_obs_plugin(win-spout PLATFORMS WINDOWS)
 
   if(OS_WINDOWS)
-    add_subdirectory(sl-bgblur-filter)    
+    add_obs_plugin(sl-bgblur-filter PLATFORMS WINDOWS)
   endif()
 
   return()
