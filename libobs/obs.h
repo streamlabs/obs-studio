@@ -1234,6 +1234,9 @@ EXPORT void obs_source_update(obs_source_t *source, obs_data_t *settings);
 EXPORT void obs_source_reset_settings(obs_source_t *source,
 				      obs_data_t *settings);
 
+EXPORT void obs_source_send_message(obs_source_t *source, obs_data_t *settings);
+EXPORT obs_data_array_t *obs_source_get_messages(obs_source_t *source);
+
 /** Renders a video source. */
 EXPORT void obs_source_video_render(obs_source_t *source);
 
