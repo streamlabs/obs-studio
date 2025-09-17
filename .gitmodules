@@ -38,3 +38,6 @@
 [submodule "plugins/obs-websocket"]
 	path = plugins/obs-websocket
 	url = https://github.com/streamlabs/obs-websocket.git
+[submodule "plugins/sl-bgblur-filter/sl-bgblur-filter"]
+	path = plugins/sl-bgblur-filter/sl-bgblur-filter
+	url = https://github.com/streamlabs/sl-bgblur-filter.git
