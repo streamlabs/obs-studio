@@ -12,17 +12,15 @@
             }
         },
         "qt6": {
-            "version": "2024-09-10v4",
+            "version": "2025-08-23",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built Qt6",
             "hashes": {
-                "macos-x86_64": "82118c65905ba373849c56682d8a0da3e7d4f83a9c22be5a3dfef29a20a7e152",
-                "macos-arm64": "72460fbc0875b75c9d605454434d9fcfc23a47cc23b3592215047fa6a555a222",
-                "macos-universal": "b53ec9b86c95e0883d7ba920cf87a5f86c00db4da36fe9316e375e2c1e61149b",
-                "windows-x64": "b91f0d0ea2ebbbd006a5a1a0bf82a0ffaec24282cfe75a095c3a4ba4b47f7714"
+                "macos-universal": "990f11638b80a4509e14e8c315f6e4caa0861e37fcd3113a256fbff835ffca29",
+                "windows-x64": "c62e82483bc7c0bf199e8ac3220c66a85a6e8a0cd69a05b6d44f873b830e415f"
             },
             "debugSymbols": {
-                "windows-x64": "7400a4d195e16d0220d43c1cc296c6ff288118826b34ac4c74a1e069c9b1ea68"
+                "windows-x64": "aae88a17e0211cb37db6a8602f2e20d69255be1f9700c699008ca5adbce1dde2"
             }
         },
         "cef": {

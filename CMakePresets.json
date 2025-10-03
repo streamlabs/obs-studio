@@ -52,7 +52,8 @@
       "inherits": ["macos"],
       "warnings": {"dev": true, "deprecated": true},
       "cacheVariables": {
-        "CMAKE_COMPILE_WARNING_AS_ERROR": true
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
+        "ENABLE_CCACHE": true
       }
     },
     {
@@ -124,7 +125,11 @@
       "inherits": "linux-x86_64",
       "cacheVariables": {
         "ENABLE_RELEASE_BUILD": true,
-        "ENABLE_BROWSER": true
+        "ENABLE_BROWSER": true,
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
+        "CMAKE_COLOR_DIAGNOSTICS": true,
+        "ENABLE_CCACHE": true
       }
     },
     {
@@ -157,8 +162,7 @@
       "inherits": ["windows-x64"],
       "warnings": {"dev": true, "deprecated": true},
       "cacheVariables": {
-        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
-        "ENABLE_CCACHE": false
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true
       }
     }
   ],
