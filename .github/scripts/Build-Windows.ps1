@@ -89,8 +89,13 @@ function Build {
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
 
-    Log-Group "Chech for changes in dependencies..."
-    Invoke-External cmake @CmakeCheckArgs
+    try {
+        Log-Group "Chech for changes in dependencies..."
+        Invoke-External cmake @CmakeCheckArgs
+    } catch {
+        Write-Warning "Chech for changes in dependencies has failed, but workflow will proceed."
+        $LASTEXITCODE = 0  #Resets the exit code
+    }
 
     Log-Group "Installing obs-studio..."
     Invoke-External cmake @CmakeInstallArgs

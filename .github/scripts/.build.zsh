@@ -103,7 +103,7 @@ build() {
   set -- ${(@)args}
 
   check_${host_os}
-  setup_ccache
+  #setup_ccache
 
   if [[ ${host_os} == ubuntu ]] {
     autoload -Uz setup_ubuntu && setup_ubuntu

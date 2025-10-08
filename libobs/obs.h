@@ -457,6 +457,7 @@ EXPORT bool obs_get_video_info_current(struct obs_video_info *ovi);
 EXPORT size_t obs_get_video_info_count();
 EXPORT bool obs_get_video_info_by_index(size_t index,
 					struct obs_video_info *ovi);
+EXPORT struct obs_video_info * obs_get_video_info_by_index2(size_t index);
 /** Gets video info used by output*/
 EXPORT bool obs_get_video_info_for_output(obs_output_t *output,
 					  struct obs_video_info *ovi,
@@ -493,6 +494,7 @@ EXPORT void obs_set_video_levels(float sdr_white_level,
 
 /** Gets the current audio settings, returns false if no audio */
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
+EXPORT bool obs_get_audio_info2(struct obs_audio_info2 *oai2);
 
 /**
  * Opens a plugin module directly from a specific path.
@@ -2492,6 +2494,28 @@ EXPORT const char *obs_get_output_supported_video_codecs(const char *id);
 
 EXPORT const char *obs_get_output_supported_audio_codecs(const char *id);
 
+/* Add/remove packet-processing callbacks that are invoked in
+ * send_interleaved(), before forwarding packets to the output service.
+ * This provides a mechanism to perform packet processing outside of
+ * libobs, however any callback function registering with this API should keep
+ * keep code to a minimum and understand it is running synchronously with the
+ * calling thread.
+ */
+EXPORT void obs_output_add_packet_callback(obs_output_t *output,
+					   void (*packet_cb)(obs_output_t *output, struct encoder_packet *pkt,
+							     struct encoder_packet_time *pkt_time, void *param),
+					   void *param);
+EXPORT void obs_output_remove_packet_callback(obs_output_t *output,
+					      void (*packet_cb)(obs_output_t *output, struct encoder_packet *pkt,
+								struct encoder_packet_time *pkt_time, void *param),
+					      void *param);
+
+/* Sets a callback to be called when the output checks if it should attempt to reconnect.
+ * If the callback returns false, the output will not attempt to reconnect. */
+EXPORT void obs_output_set_reconnect_callback(obs_output_t *output,
+					      bool (*reconnect_cb)(void *data, obs_output_t *output, int code),
+					      void *param);
+
 /* ------------------------------------------------------------------------- */
 /* Functions used by outputs */
 
@@ -2680,11 +2704,17 @@ EXPORT enum obs_scale_type obs_encoder_get_scale_type(obs_encoder_t *encoder);
 /** For video encoders, returns the frame rate divisor (default is 1) */
 EXPORT uint32_t obs_encoder_get_frame_rate_divisor(const obs_encoder_t *encoder);
 
+/** For video encoders, returns the number of frames encoded */
+EXPORT uint32_t obs_encoder_get_encoded_frames(const obs_encoder_t *encoder);
+
 /** For audio encoders, returns the sample rate of the audio */
 EXPORT uint32_t obs_encoder_get_sample_rate(const obs_encoder_t *encoder);
 
 /** For audio encoders, returns the frame size of the audio packet */
 EXPORT size_t obs_encoder_get_frame_size(const obs_encoder_t *encoder);
+
+/** For audio encoders, returns the mixer index */
+EXPORT size_t obs_encoder_get_mixer_index(const obs_encoder_t *encoder);
 
 /**
  * Sets the preferred video format for a video encoder.  If the encoder can use
@@ -2743,6 +2773,9 @@ EXPORT video_t *obs_encoder_video(const obs_encoder_t *encoder);
  * context would not otherwise be gettable.
  */
 EXPORT video_t *obs_encoder_parent_video(const obs_encoder_t *encoder);
+
+/** Returns if the encoder's video output context supports shared textures for the specified video format. */
+EXPORT bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_format format);
 
 /**
  * Returns the audio output context used with this encoder, or NULL if not
@@ -2954,6 +2987,21 @@ EXPORT void obs_source_frame_copy(struct obs_source_frame *dst,
 /* ------------------------------------------------------------------------- */
 /* Get source icon type */
 EXPORT enum obs_icon_type obs_source_get_icon_type(const char *id);
+
+/* BPM callback. Allocation of BPM metrics data happens automatically
+ * with the first invokation of the callback associated with the output.
+ * Deallocation must be done explicitly with bpm_destroy(), after the
+ * callback is removed.
+ *
+ * BPM is designed to operate at the packet level. The bpm_inject()
+ * callback function must be registered and unregistered with
+ * obs_output_add_packet_callback() and obs_output_remove_packet_callback(),
+ * respectively.
+ */
+EXPORT void bpm_inject(obs_output_t *output, struct encoder_packet *pkt, struct encoder_packet_time *pkt_time, void *param);
+
+/* BPM function to destroy all allocations for a given output. */
+EXPORT void bpm_destroy(obs_output_t *output);
 
 #ifdef __cplusplus
 }

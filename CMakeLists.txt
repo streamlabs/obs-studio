@@ -14,7 +14,7 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Darwin)" OR OBS_CMAKE_VERSION VERSION_GREATE
   include(defaults)
   include(helpers)
 
-  option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
+  option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
   option(ENABLE_SCRIPTING "Enable scripting support" ON)
   option(ENABLE_HEVC "Enable HEVC encoders" ON)
 
@@ -29,21 +29,23 @@ if(CMAKE_HOST_SYSTEM_NAME MATCHES "(Darwin)" OR OBS_CMAKE_VERSION VERSION_GREATE
   add_subdirectory(test/test-input)
 
   add_subdirectory(UI)
-  
+
   if(WIN32)
     include(FetchContent)
 
     # Compare current linked libs with prev
-    FetchContent_Declare(deps_checker URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd" DOWNLOAD_NO_EXTRACT true)
+    FetchContent_Declare(
+      deps_checker
+      URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
+      DOWNLOAD_NO_EXTRACT true)
     FetchContent_MakeAvailable(deps_checker)
 
-    add_custom_target(check_dependencies COMMAND ${CMAKE_COMMAND}
-      "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}"
-      "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
-      "-Ddeps_CONFIG=$<CONFIG>"
-      "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-
-      -P "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake" )
+    add_custom_target(
+      check_dependencies
+      COMMAND
+        ${CMAKE_COMMAND} "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}" "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
+        "-Ddeps_CONFIG=$<CONFIG>" "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}" -P
+        "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake")
   endif()
 
   message_configuration()
@@ -96,8 +98,8 @@ if(ENABLE_HEVC)
   add_compile_definitions(ENABLE_HEVC)
 endif()
 option(BUILD_FOR_DISTRIBUTION "Build for distribution (enables optimizations)" OFF)
-option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
-if (NOT ENABLE_UI)
+option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
+if(NOT ENABLE_UI)
   if(MSVC)
     include(CopyMSVCBins)
   endif()
@@ -159,12 +161,16 @@ if(BUILD_TESTS OR ENABLE_UNIT_TESTS)
 endif()
 
 if(WIN32)
-	include(FetchContent)
+  include(FetchContent)
 
-	# Compare current linked libs with prev
-	FetchContent_Declare(deps_checker URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd" DOWNLOAD_NO_EXTRACT true)
-	FetchContent_MakeAvailable(deps_checker)
+  # Compare current linked libs with prev
+  FetchContent_Declare(
+    deps_checker
+    URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
+    DOWNLOAD_NO_EXTRACT true)
+  FetchContent_MakeAvailable(deps_checker)
 
+  # cmake-format: off
 	add_custom_target(check_dependencies COMMAND ${CMAKE_COMMAND}
 		"-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}"
 		"-Ddeps_CONFIGURATION=$<CONFIGURATION>"
@@ -172,12 +178,13 @@ if(WIN32)
 		"-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
 
 		-P "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake" )
+  # cmake-format: on
 endif()
 
+# cmake-format: off
 if(ENABLE_32_TARGETS)
  #Configure 32-bit projects
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-  #message(FATAL_ERROR "CURL_INCLUDE_DIR: ${CURL_INCLUDE_DIR}, CMAKE_INSTALL_PREFIX: ${CMAKE_INSTALL_PREFIX}, PREFIX_PATH_X86: ${PREFIX_PATH_X86}, OBS_VERSION: ${OBS_VERSION}, OBS_VERSION_OVERRIDE: ${OBS_VERSION_OVERRIDE}")
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     execute_process(
       COMMAND
@@ -211,3 +218,4 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
   endif()
 endif()
 endif()
+# cmake-format: on

@@ -1,6 +1,6 @@
 add_subdirectory(obs-frontend-api)
 
-option(ENABLE_UI "Enable building with UI (requires Qt)" ON)
+option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
 if(NOT ENABLE_UI)
   obs_status(DISABLED "OBS UI")
   return()
