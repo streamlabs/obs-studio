@@ -904,10 +904,12 @@ static void update_settings_visibility(obs_properties_t *props,
 {
 	pthread_mutex_lock(&capture->update_mutex);
 
-	const enum window_capture_method method = capture->method;
-	const bool dxgi_options = method == METHOD_DXGI;
-	const bool wgc_options = method == METHOD_WGC;
-
+const enum window_capture_method method =
+		(enum window_capture_method)capture->method;
+	const bool dxgi_options = method ==
+				  (enum window_capture_method)METHOD_DXGI;
+	const bool wgc_options = method ==
+				 (enum window_capture_method)METHOD_WGC;
 	const bool wgc_cursor_toggle =
 		wgc_options &&
 		capture->exports.winrt_capture_cursor_toggle_supported();

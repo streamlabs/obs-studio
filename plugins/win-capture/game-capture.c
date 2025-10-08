@@ -2973,7 +2973,7 @@ static bool window_changed_callback(obs_properties_t *ppts, obs_property_t *p,
 		return modified;
 	}
 
-	obs_property_set_long_description(p_warn, compat->message);
+	obs_property_set_description(p_warn, compat->message);
 	obs_property_text_set_info_type(p_warn, compat->severity);
 	obs_property_set_visible(p_warn, true);
 
@@ -3065,8 +3065,11 @@ static obs_properties_t *game_capture_properties(void *data)
 	obs_property_list_add_int(p, TEXT_MATCH_CLASS, WINDOW_PRIORITY_CLASS);
 	obs_property_list_add_int(p, TEXT_MATCH_EXE, WINDOW_PRIORITY_EXE);
 
-	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO, NULL,
+	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO,
+				    "Specified window is not a game",
 				    OBS_TEXT_INFO);
+	obs_property_text_set_info_type(p, OBS_TEXT_INFO_ERROR);
+	obs_property_set_visible(p, false);
 	obs_property_set_enabled(p, false);
 
 	if (audio_capture_available()) {
@@ -3075,11 +3078,6 @@ static obs_properties_t *game_capture_properties(void *data)
 		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
 	}
 
-	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO,
-				    "Specified window is not a game",
-				    OBS_TEXT_INFO);
-	obs_property_text_set_info_type(p, OBS_TEXT_INFO_ERROR);
-	obs_property_set_visible(p, false);
 	if (data) {
 		struct game_capture *gc = data;
 		obs_data_t *settings = obs_source_get_settings(gc->source);
