@@ -2384,7 +2384,7 @@ static void game_capture_tick(void *data, float seconds)
 		if (gc->capturing) {
 			obs_data_t *settings =
 				obs_source_get_settings(gc->source);
-			if (obs_data_get_bool(settings, COMPAT_INFO_VISIBLE)) {
+			if (is_compat_info_visible(gc)) {
 				set_compat_info_visible(gc, false);
 			}
 			obs_data_release(settings);
@@ -2969,13 +2969,14 @@ static bool window_changed_callback(obs_properties_t *ppts, obs_property_t *p,
 
 	if (!compat) {
 		modified = obs_property_visible(p_warn) || modified;
-		obs_property_set_visible(p_warn, false);
+		//set a default msg, will be set as visible or not in game_capture_tick
+		obs_property_set_description(p_warn,
+					     "Attempting to hook process...");
 		return modified;
 	}
 
-	obs_property_set_long_description(p_warn, compat->message);
+	obs_property_set_description(p_warn, compat->message);
 	obs_property_text_set_info_type(p_warn, compat->severity);
-	obs_property_set_visible(p_warn, true);
 
 	compat_result_free(compat);
 
@@ -3065,29 +3066,26 @@ static obs_properties_t *game_capture_properties(void *data)
 	obs_property_list_add_int(p, TEXT_MATCH_CLASS, WINDOW_PRIORITY_CLASS);
 	obs_property_list_add_int(p, TEXT_MATCH_EXE, WINDOW_PRIORITY_EXE);
 
-	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO, NULL,
-				    OBS_TEXT_INFO);
-	obs_property_set_enabled(p, false);
-
-	if (audio_capture_available()) {
-		p = obs_properties_add_bool(ppts, SETTING_CAPTURE_AUDIO,
-					    TEXT_CAPTURE_AUDIO);
-		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
-	}
-
 	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO,
 				    "Specified window is not a game",
 				    OBS_TEXT_INFO);
 	obs_property_text_set_info_type(p, OBS_TEXT_INFO_ERROR);
-	obs_property_set_visible(p, false);
+	obs_property_set_enabled(p, false);
 	if (data) {
 		struct game_capture *gc = data;
 		obs_data_t *settings = obs_source_get_settings(gc->source);
 		obs_property_set_visible(
 			p, obs_data_get_bool(settings, COMPAT_INFO_VISIBLE));
 		obs_data_release(settings);
+	} else {
+		obs_property_set_visible(p, false);
 	}
-	obs_property_set_modified_callback(p, status_message_changed_callback);
+
+	if (audio_capture_available()) {
+		p = obs_properties_add_bool(ppts, SETTING_CAPTURE_AUDIO,
+					    TEXT_CAPTURE_AUDIO);
+		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
+	}
 
 	obs_properties_add_bool(ppts, SETTING_COMPATIBILITY,
 				TEXT_SLI_COMPATIBILITY);
