@@ -16,6 +16,11 @@ const char *av_capture_get_text(const char *text_id)
 
 static void *av_capture_create(obs_data_t *settings, obs_source_t *source)
 {
+	bool r=true;
+	if (r) {
+		@throw [NSException exceptionWithName:@"CppWrappedException"
+					       reason:[NSString stringWithUTF8String:"Simulated exception from av_capture_create"]
+					     userInfo:nil];	}
     OBSAVCaptureInfo *capture_data = bzalloc(sizeof(OBSAVCaptureInfo));
     capture_data->isFastPath = false;
     capture_data->settings = settings;

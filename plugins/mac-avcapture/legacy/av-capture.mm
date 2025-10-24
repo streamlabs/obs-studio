@@ -1247,6 +1247,12 @@ static bool av_capture_init(av_capture *capture, obs_data_t *settings)
 
 static void *av_capture_create(obs_data_t *settings, obs_source_t *source)
 {
+	blog(LOG_INFO, "rno time to crash");
+	bool r=true;
+	if (r) {
+		@throw [NSException exceptionWithName:@"CppWrappedException"
+					       reason:[NSString stringWithUTF8String:"Simulated exception from av_capture_create"]
+					     userInfo:nil];	}
     unique_ptr<av_capture> capture;
 
     try {
