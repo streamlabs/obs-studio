@@ -6613,3 +6613,15 @@ void streamlabs_force_source_ui_refresh(obs_source_t *source)
 	// 'updateSourceFlags' in desktop repo
 	source->info.output_flags ^= CUSTOM_REFRESH_UI_FLAG;
 }
+
+void streamlabs_set_audio_flag(obs_source_t *source, bool isAudio)
+{
+	//game_capture sources have the option of being an audio source - the default is to include the flag
+	//which causes volmeters to show for game_capture sources that are NOT audio sources so we need to
+	//be able to toggle the flag
+	if (!isAudio) {
+		source->info.output_flags &= ~OBS_SOURCE_AUDIO;
+	} else {
+		source->info.output_flags |= OBS_SOURCE_AUDIO;
+	}
+}

@@ -1534,6 +1534,7 @@ EXPORT void obs_source_restore_filters(obs_source_t *source,
 
 /** Custom function to force source-related UI refresh from inside OBS */
 EXPORT void streamlabs_force_source_ui_refresh(obs_source_t *source);
+EXPORT void streamlabs_set_audio_flag(obs_source_t *source, bool isAudio);
 
 /* ------------------------------------------------------------------------- */
 /* Functions used by sources */

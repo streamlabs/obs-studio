@@ -908,6 +908,15 @@ static void game_capture_update(void *data, obs_data_t *settings)
 		gc->activate_hook = !!window && !!*window;
 	}
 
+	//make sure the source's output flags are set correctly - they default to
+	//game_capture being an audio source, if this box isn't checked we need
+	//to make sure the output flags don't include OBS_SOURCE_AUDIO or else
+	//the FE will create a volmeter for a non-audio game_capture
+	uint32_t flags = obs_source_get_output_flags(gc->source);
+	if ((flags &= OBS_SOURCE_AUDIO) != cfg.capture_audio) {
+		streamlabs_set_audio_flag(gc->source, cfg.capture_audio);
+	}
+
 	free_config(&gc->config);
 	gc->config = cfg;
 	gc->retry_interval = DEFAULT_RETRY_INTERVAL *
