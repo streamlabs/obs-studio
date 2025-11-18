@@ -33,14 +33,13 @@ static inline bool flag_encoded(const struct obs_output *output)
 	return (output->info.flags & OBS_OUTPUT_ENCODED) != 0;
 }
 
-static inline bool log_flag_encoded(const struct obs_output *output,
-				    const char *func_name, bool inverse_log)
+static inline bool log_flag_encoded(const struct obs_output *output, const char *func_name, bool inverse_log)
 {
 	const char *prefix = inverse_log ? "n encoded" : " raw";
 	bool ret = flag_encoded(output);
 	if ((!inverse_log && !ret) || (inverse_log && ret))
-		blog(LOG_WARNING, "Output '%s': Tried to use %s on a%s output",
-		     output->context.name, func_name, prefix);
+		blog(LOG_WARNING, "Output '%s': Tried to use %s on a%s output", output->context.name, func_name,
+		     prefix);
 	return ret;
 }
 
@@ -61,8 +60,7 @@ static inline void push_packet(struct obs_output *output, struct encoder_packet 
 	pthread_mutex_unlock(&output->delay_mutex);
 }
 
-static inline void process_delay_data(struct obs_output *output,
-				      struct delay_data *dd)
+static inline void process_delay_data(struct obs_output *output, struct delay_data *dd)
 {
 	switch (dd->msg) {
 	case DELAY_MSG_PACKET:
@@ -140,17 +138,6 @@ void process_delay(void *data, struct encoder_packet *packet, struct encoder_pac
 		;
 }
 
-void obs_output_signal_delay(obs_output_t *output, const char *signal)
-{
-	struct calldata params;
-	uint8_t stack[128];
-
-	calldata_init_fixed(&params, stack, sizeof(stack));
-	calldata_set_ptr(&params, "output", output);
-	calldata_set_int(&params, "sec", output->active_delay_ns / 1000000000);
-	signal_handler_signal(output->context.signals, signal, &params);
-}
-
 bool obs_output_delay_start(obs_output_t *output)
 {
 	struct delay_data dd = {
@@ -199,8 +186,7 @@ void obs_output_delay_stop(obs_output_t *output)
 	do_output_signal(output, "stopping");
 }
 
-void obs_output_set_delay(obs_output_t *output, uint32_t delay_sec,
-			  uint32_t flags)
+void obs_output_set_delay(obs_output_t *output, uint32_t delay_sec, uint32_t flags)
 {
 	if (!obs_output_valid(output, "obs_output_set_delay"))
 		return;
@@ -213,14 +199,11 @@ void obs_output_set_delay(obs_output_t *output, uint32_t delay_sec,
 
 uint32_t obs_output_get_delay(const obs_output_t *output)
 {
-	return obs_output_valid(output, "obs_output_set_delay")
-		       ? output->delay_sec
-		       : 0;
+	return obs_output_valid(output, "obs_output_set_delay") ? output->delay_sec : 0;
 }
 
 uint32_t obs_output_get_active_delay(const obs_output_t *output)
 {
-	return obs_output_valid(output, "obs_output_set_delay")
-		       ? (uint32_t)(output->active_delay_ns / 1000000000ULL)
-		       : 0;
+	return obs_output_valid(output, "obs_output_set_delay") ? (uint32_t)(output->active_delay_ns / 1000000000ULL)
+								: 0;
 }

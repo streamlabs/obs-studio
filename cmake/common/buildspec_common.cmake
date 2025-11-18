@@ -1,12 +1,5 @@
 # OBS common build dependencies module
 
-# cmake-format: off
-# cmake-lint: disable=E1121
-# cmake-lint: disable=E1126
-# cmake-lint: disable=R0912
-# cmake-lint: disable=R0915
-# cmake-format: on
-
 include_guard(GLOBAL)
 
 function(extract_archive file destination)
@@ -39,17 +32,13 @@ endfunction()
 
 # _check_deps_version: Checks for obs-deps VERSION file in prefix paths
 function(_check_deps_version version)
-  set(found
-      FALSE
-      PARENT_SCOPE)
+  set(found FALSE PARENT_SCOPE)
   message(STATUS "Checking CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}")
   foreach(path IN LISTS CMAKE_PREFIX_PATH)
     if(EXISTS "${path}/share/obs-deps/VERSION")
       message(STATUS "Checking ${path}/share/obs-deps/VERSION")
       if(dependency STREQUAL qt6 AND NOT EXISTS "${path}/lib/cmake/Qt6/Qt6Config.cmake")
-        # cmake-format: off
         set(found FALSE PARENT_SCOPE)
-        # cmake-format: on
         continue()
       endif()
 
@@ -59,29 +48,31 @@ function(_check_deps_version version)
       string(REPLACE "-" "." version "${version}")
 
       if(_check_version VERSION_EQUAL version)
-        set(found
-            TRUE
-            PARENT_SCOPE)
+        set(found TRUE PARENT_SCOPE)
         break()
       elseif(_check_version VERSION_LESS version)
-        message(AUTHOR_WARNING "Older ${label} version detected in ${path}: \n"
-                               "Found ${_check_version}, require ${version}")
+        message(
+          AUTHOR_WARNING
+          "Older ${label} version detected in ${path}: \n"
+          "Found ${_check_version}, require ${version}"
+        )
         list(REMOVE_ITEM CMAKE_PREFIX_PATH "${path}")
         list(APPEND CMAKE_PREFIX_PATH "${path}")
-        set(CMAKE_PREFIX_PATH
-            ${CMAKE_PREFIX_PATH}
-            PARENT_SCOPE)
+
         continue()
       else()
-        message(AUTHOR_WARNING "Newer ${label} version detected in ${path}: \n"
-                               "Found ${_check_version}, require ${version}")
-        set(found
-            TRUE
-            PARENT_SCOPE)
+        message(
+          AUTHOR_WARNING
+          "Newer ${label} version detected in ${path}: \n"
+          "Found ${_check_version}, require ${version}"
+        )
+        set(found TRUE PARENT_SCOPE)
         break()
       endif()
     endif()
   endforeach()
+
+  return(PROPAGATE found CMAKE_PREFIX_PATH)
 endfunction()
 
 # _check_dependencies: Fetch and extract pre-built OBS build dependencies
@@ -91,6 +82,9 @@ function(_check_dependencies)
   string(JSON dependency_data GET ${buildspec} dependencies)
 
   foreach(dependency IN LISTS dependencies_list)
+    if(dependency STREQUAL cef AND NOT ENABLE_BROWSER)
+      continue()
+    endif()
     if(dependency STREQUAL cef AND arch STREQUAL universal)
       if(CMAKE_OSX_ARCHITECTURES MATCHES ".+;.+")
         continue()
@@ -104,9 +98,7 @@ function(_check_dependencies)
     string(JSON hash GET ${data} hashes ${platform})
     string(JSON url GET ${data} baseUrl)
     string(JSON label GET ${data} label)
-    # cmake-format: off
     string(JSON revision ERROR_VARIABLE error GET ${data} revision ${platform})
-    # cmake-format: on
 
     message(STATUS "Setting up ${label} (${arch})")
 
@@ -125,8 +117,11 @@ function(_check_dependencies)
     endif()
 
     if(EXISTS "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256")
-      file(READ "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256"
-           OBS_DEPENDENCY_${dependency}_${arch}_HASH)
+      file(
+        READ
+        "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256"
+        OBS_DEPENDENCY_${dependency}_${arch}_HASH
+      )
     endif()
 
     set(skip FALSE)
@@ -173,10 +168,7 @@ function(_check_dependencies)
 
     if(NOT EXISTS "${dependencies_dir}/${file}")
       message(STATUS "Downloading ${url}")
-      file(
-        DOWNLOAD "${url}" "${dependencies_dir}/${file}"
-        STATUS download_status
-        EXPECTED_HASH SHA256=${hash})
+      file(DOWNLOAD "${url}" "${dependencies_dir}/${file}" STATUS download_status EXPECTED_HASH SHA256=${hash})
 
       list(GET download_status 0 error_code)
       list(GET download_status 1 error_message)
@@ -209,16 +201,12 @@ function(_check_dependencies)
     file(WRITE "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256" "${hash}")
 
     if(dependency STREQUAL prebuilt)
-      set(VLC_PATH
-          "${dependencies_dir}/${destination}"
-          CACHE PATH "VLC source code directory" FORCE)
+      set(VLC_PATH "${dependencies_dir}/${destination}" CACHE PATH "VLC source code directory" FORCE)
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${destination}")
     elseif(dependency STREQUAL qt6)
       list(APPEND CMAKE_PREFIX_PATH "${dependencies_dir}/${destination}")
     elseif(dependency STREQUAL cef)
-      set(CEF_ROOT_DIR
-          "${dependencies_dir}/${destination}"
-          CACHE PATH "CEF root directory" FORCE)
+      set(CEF_ROOT_DIR "${dependencies_dir}/${destination}" CACHE PATH "CEF root directory" FORCE)
     elseif(dependency STREQUAL libmediasoupclient)
       if(WIN32)
         set(libmediasoupclient_subdir "libmediasoupclient_dist")
@@ -343,7 +331,5 @@ function(_check_dependencies)
 
   list(REMOVE_DUPLICATES CMAKE_PREFIX_PATH)
 
-  set(CMAKE_PREFIX_PATH
-      ${CMAKE_PREFIX_PATH}
-      CACHE PATH "CMake prefix search path" FORCE)
+  set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} CACHE PATH "CMake prefix search path" FORCE)
 endfunction()

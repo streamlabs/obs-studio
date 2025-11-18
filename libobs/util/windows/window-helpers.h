@@ -61,24 +61,17 @@ EXPORT void get_captured_window_line(HWND hwnd, struct dstr *window_line);
 typedef bool (*add_window_cb)(const char *title, const char *window_class,
 			      const char *exe);
 
-EXPORT void ms_fill_window_list(obs_property_t *p, enum window_search_mode mode,
-				add_window_cb callback);
+EXPORT void ms_fill_window_list(obs_property_t *p, enum window_search_mode mode, add_window_cb callback);
 
-EXPORT void ms_build_window_strings(const char *str, char **window_class,
-				    char **title, char **exe);
+EXPORT void ms_build_window_strings(const char *str, char **window_class, char **title, char **exe);
 
-EXPORT bool ms_check_window_property_setting(obs_properties_t *ppts,
-					     obs_property_t *p,
-					     obs_data_t *settings,
+EXPORT bool ms_check_window_property_setting(obs_properties_t *ppts, obs_property_t *p, obs_data_t *settings,
 					     const char *val, size_t idx);
 
-EXPORT void ms_build_window_strings(const char *str, char **window_class,
-				    char **title, char **exe);
+EXPORT void ms_build_window_strings(const char *str, char **window_class, char **title, char **exe);
 
-EXPORT HWND ms_find_window(enum window_search_mode mode,
-			   enum window_priority priority,
-			   const char *window_class, const char *title,
-			   const char *exe);
+EXPORT HWND ms_find_window(enum window_search_mode mode, enum window_priority priority, const char *window_class,
+			   const char *title, const char *exe);
 EXPORT HWND
 find_matching_window(enum window_search_mode mode,
 		     game_capture_matching_rule_array_t *matching_rules,

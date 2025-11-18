@@ -146,8 +146,7 @@ static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
 	return true;
 }
 
-static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
-				  HANDLE stdout_handle, HANDLE stderr_handle,
+static inline bool create_process(const char *cmd_line, HANDLE stdin_handle, HANDLE stdout_handle, HANDLE stderr_handle,
 				  HANDLE *process)
 {
 	PROCESS_INFORMATION pi = {0};
@@ -209,8 +208,7 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 		} else {
 			// Not logging the full command line is intentional
 			// as it may contain stream keys etc.
-			blog(LOG_ERROR, "CreateProcessW failed: %lu",
-			     GetLastError());
+			blog(LOG_ERROR, "CreateProcessW failed: %lu", GetLastError());
 		}
 
 		bfree(cmd_line_w);
@@ -221,8 +219,7 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle,
 	return success;
 }
 
-os_process_pipe_t *os_process_pipe_create(const char *cmd_line,
-					  const char *type)
+os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type)
 {
 	os_process_pipe_t *pp = NULL;
 	bool read_pipe;
@@ -270,9 +267,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line,
 		goto error;
 	}
 
-	success = create_process(cmd_line, read_pipe ? NULL : input,
-				 read_pipe ? output : NULL, err_output,
-				 &process);
+	success = create_process(cmd_line, read_pipe ? NULL : input, read_pipe ? output : NULL, err_output, &process);
 	if (!success) {
 		goto error;
 	}
@@ -336,8 +331,7 @@ static inline void add_backslashes(struct dstr *str, size_t count)
 		dstr_cat_ch(str, '\\');
 }
 
-os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args,
-					   const char *type)
+os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const char *type)
 {
 	struct dstr cmd_line = {0};
 
@@ -349,9 +343,7 @@ os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args,
 	while (*argv) {
 		size_t bs_count = 0;
 		const char *arg = *argv;
-		bool needs_quotes = strlen(arg) == 0 ||
-				    strstr(arg, " ") != NULL ||
-				    strstr(arg, "\t") != NULL;
+		bool needs_quotes = strlen(arg) == 0 || strstr(arg, " ") != NULL || strstr(arg, "\t") != NULL;
 
 		if (cmd_line.len)
 			dstr_cat_ch(&cmd_line, ' ');
@@ -438,8 +430,7 @@ size_t os_process_pipe_read(os_process_pipe_t *pp, uint8_t *data, size_t len)
 	return 0;
 }
 
-size_t os_process_pipe_read_err(os_process_pipe_t *pp, uint8_t *data,
-				size_t len)
+size_t os_process_pipe_read_err(os_process_pipe_t *pp, uint8_t *data, size_t len)
 {
 	DWORD bytes_read;
 	bool success;
@@ -448,8 +439,7 @@ size_t os_process_pipe_read_err(os_process_pipe_t *pp, uint8_t *data,
 		return 0;
 	}
 
-	success =
-		!!ReadFile(pp->handle_err, data, (DWORD)len, &bytes_read, NULL);
+	success = !!ReadFile(pp->handle_err, data, (DWORD)len, &bytes_read, NULL);
 	if (success && bytes_read) {
 		return bytes_read;
 	} else
@@ -458,8 +448,7 @@ size_t os_process_pipe_read_err(os_process_pipe_t *pp, uint8_t *data,
 	return 0;
 }
 
-size_t os_process_pipe_write(os_process_pipe_t *pp, const uint8_t *data,
-			     size_t len)
+size_t os_process_pipe_write(os_process_pipe_t *pp, const uint8_t *data, size_t len)
 {
 	DWORD bytes_written;
 	bool success;
@@ -471,8 +460,7 @@ size_t os_process_pipe_write(os_process_pipe_t *pp, const uint8_t *data,
 		return 0;
 	}
 
-	success =
-		!!WriteFile(pp->handle, data, (DWORD)len, &bytes_written, NULL);
+	success = !!WriteFile(pp->handle, data, (DWORD)len, &bytes_written, NULL);
 	if (success && bytes_written) {
 		os_process_pipe_signal_data(pp);
 		return bytes_written;

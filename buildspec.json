@@ -1,41 +1,46 @@
 {
     "dependencies": {
         "prebuilt": {
-            "version": "2024-09-10sl6",
+            "version": "2025-07-11sl4",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built obs-deps",
             "hashes": {
-                "macos-x86_64": "7f80bb3e6210e56814a9ac987dd6395979ae6ced23d35ecdb62ba93d161fe67c",
-                "macos-arm64": "d4eb1ee3d4b66ec89b0527f1c5a1aaa6a8fa11238fd15b2391ccd5122138bd00",
-                "macos-universal": "52ef355b4e38251e13ec97fc7255426c980eb15f3e6a3f2af49df463c3c41d2b",
-                "windows-x64": "2e089dd542724434fafd5f9c7c20482136a68ecd975f32029ccce643b258ec6d"
+                "macos-x86_64": "828e0fdbbc5b09acccd72d3e4765b08eb3627b2be32f9e79797ac1870c457b2a",
+                "macos-arm64": "ad3edb1839c564450bd2624a894041130ea5f35e5d42d964bdf75373531dd823",
+                "macos-universal": "1ad6297a9f8b439657cf5b84063843fb2783c2a323453c5759bef0897731f9e0",
+                "windows-x64": "7e67f5f6cda4752b618832d9aa0c3b1e8fa4b03ca2539961d5bfcd0b2cd7a163",
+                "windows-x86": "b370bf5cc7fe68f9be982261562a9e1275fd771b055be60387ae9b89a3be36c9",
+                "windows-arm64": "10496eb6c4b20c4e899741e55ec0d96c79db7cfed8861f61baad07f71b818745"
             }
         },
         "qt6": {
-            "version": "2024-09-10sl6",
+            "version": "2025-07-11sl4",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built Qt6",
             "hashes": {
-                "macos-x86_64": "7c7215a365d840f8838f432ef2b57b90231436055abb9fcd6d2fa3ce6d2965c5",
-                "macos-arm64": "cf5ad175c1f2b3f5719bd5d169a655796ce1c69f727a43f5d21049df3a380fb8",
-                "macos-universal": "ed5b7baa08ec705536b999a3116b262bc80c66fa82e18a534f7767eee04fae56"
+                "macos-x86_64": "f3ac5bba3999889d8eac478b8587300ba910c68d32d271e6ba41aa11215c6b8f",
+                "macos-arm64": "b7b33526925b8d684ffade0384269ca7fca3e3b19301ab5dc69ced8b01ce3bcc",
+                "macos-universal": "1352299814ad646f8013dbf16f6e584c1560839e90f7100526e41edb3136cc94"
             }
         },
         "cef": {
-            "version": "5060",
-            "baseUrl": "https://streamlabs-cef-dist.s3.us-west-2.amazonaws.com",
+            "version": "6533",
+            "baseUrl": "https://cdn-fastly.obsproject.com/downloads",
             "label": "Chromium Embedded Framework",
             "hashes": {
-                "macos-x86_64": "140bfd517b4b9d12343ac000abba7bb16eecefe80ecbd7225993d03f0b9c0603",
-                "macos-arm64": "3970a781132b033bb9be6a9fe328a07e97fa7737fdf1575b1c5db24a3e130da1",
-                "linux-x86_64": "bf4aa9388bab7e94fa945cc3bba16b6da63b6a30f9c0342d42235468b39d84bf",
-                "linux-aarch64": "68d915c9ba2639cba762a54cd3430fce2527aa6355d831d3cfcb6157664206b0",
-                "windows-x64": "7480e9ed5688e09919db67237d130eef9a4c24df32ba2a7b8a5587de45ff8e69"
+                "macos-x86_64": "94ff9dffd60a83a3cd30851eb5b55c1c8d00e7626bd2b8b22d332fc013643105",
+                "macos-arm64": "7c6c1c3706e08f470fb09c57bcfa49e760ba4a00dc59467e8c2c0d83bc99f0d5",
+                "ubuntu-x86_64": "df38ef6d8078895953d224a58dd811b83110b4f8644c5cd2b6246d04b0023ee6",
+                "ubuntu-aarch64": "b1ebcedbe63657c7f38a4d547398a4759544f75d955777eea386052abc9c9228",
+                "windows-x64": "922efbda1f2f8be9e5b2754d878a14d90afc81f04e94fc9101a7513e2b5cecc1",
+                "windows-arm64": "df9df4bd85826b4c071c6db404fd59cf93efd9c58ec3ab64e204466ae19bb02a"
             },
             "revision": {
                 "macos-x86_64": 4,
                 "macos-arm64": 4,
-                "windows-x64": 3
+                "ubuntu-x86_64": 5,
+                "ubuntu-aarch64": 5,
+                "windows-x64": 2
             }
         },
         "vlc": {
@@ -82,30 +87,6 @@
                 "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C"
             },
             "distPath": "grpc_dist"
-        }
-    },
-    "platformConfig": {
-        "macos-x86_64": {
-            "qtVersion": 6,
-            "deploymentTarget": "11.0",
-            "buildTarget": "11.0"
-        },
-        "macos-arm64": {
-            "qtVersion": 6,
-            "deploymentTarget": "11.0",
-            "buildTarget": "11.0"
-        },
-        "macos-universal": {
-            "qtVersion": 6,
-            "deploymentTarget": "11.0",
-            "buildTarget": "11.0"
-        },
-        "windows-x64": {
-            "qtVersion": 6
-        },
-        "linux-x86_64": {
-            "qtVersion": 6,
-            "generator": "Ninja"
         }
     },
     "name": "obs-studio"
