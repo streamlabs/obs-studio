@@ -851,6 +851,11 @@ uint32_t obs_encoder_get_encoded_frames(const obs_encoder_t *encoder)
 	return obs_encoder_valid(encoder, "obs_output_get_encoded_frames") ? encoder->encoded_frames : 0;
 }
 
+uint32_t obs_encoder_get_encoded_frames(const obs_encoder_t *encoder)
+{
+	return obs_encoder_valid(encoder, "obs_output_get_encoded_frames") ? encoder->encoded_frames : 0;
+}
+
 enum obs_encoder_type obs_get_encoder_type(const char *id)
 {
 	struct obs_encoder_info *info = find_encoder(id);
@@ -1436,6 +1441,7 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame, const u
 		ept->cts = *frame_cts;
 		ept->fer = fer_ts;
 	}
+
 	send_off_encoder_packet(encoder, success, received, &pkt);
 
 	profile_end(do_encode_name);

@@ -689,7 +689,7 @@ enum gs_color_space sck_video_capture_get_color_space(void *data, size_t count,
 
 API_AVAILABLE(macos(12.5))
 struct obs_source_info sck_video_capture_info = {
-    .id = "mac_screen_capture",
+    .id = "mac_screen_capture", // Streamlabs renames this to avoid naming conflict in Desktop.
     .type = OBS_SOURCE_TYPE_INPUT,
     .get_name = sck_video_capture_getname,
 

@@ -92,3 +92,5 @@ add_obs_plugin(mediasoup-connector PLATFORMS WINDOWS MACOS)
 add_obs_plugin(motion-effect PLATFORMS WINDOWS)
 add_obs_plugin(obs-openvr PLATFORMS WINDOWS)
 add_obs_plugin(win-spout PLATFORMS WINDOWS)
+
+add_subdirectory(obs-nvenc)

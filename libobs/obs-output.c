@@ -1737,6 +1737,19 @@ static inline void send_interleaved(struct obs_output *output)
 	}
 	pthread_mutex_unlock(&output->pkt_callbacks_mutex);
 
+	/* Iterate the registered packet callback(s) and invoke
+	 * each one. The caption track logic further above should
+	 * eventually migrate to the packet callback mechanism.
+	 */
+	pthread_mutex_lock(&output->pkt_callbacks_mutex);
+	for (size_t i = 0; i < output->pkt_callbacks.num; ++i) {
+		struct packet_callback *const callback = &output->pkt_callbacks.array[i];
+		// Packet interleave request timestamp
+		ept_local.pir = os_gettime_ns();
+		callback->packet_cb(output, &out, found_ept ? &ept_local : NULL, callback->param);
+	}
+	pthread_mutex_unlock(&output->pkt_callbacks_mutex);
+
 	output->info.encoded_packet(output->context.data, &out);
 	obs_encoder_packet_release(&out);
 }

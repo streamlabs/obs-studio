@@ -484,12 +484,21 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	// It is better to set the 'reconnecting' status here to avoid desynchronization.
 	// If the thread creation fails, something is broken anyway.
 	ca->reconnecting = true;
-	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
+
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+
+	// Set QoS class for high-priority real-time work
+	// USER_INTERACTIVE is the highest reasonable QoS for audio
+	pthread_attr_set_qos_class_np(&attr, QOS_CLASS_USER_INTERACTIVE, 0);
+	ret = pthread_create(&ca->reconnect_thread, &attr, reconnect_thread,
+			     ca);
 	if (ret != 0)
 		blog(LOG_WARNING,
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
+	pthread_attr_destroy(&attr);
 }
 
 static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,

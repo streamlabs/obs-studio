@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28...3.30)
 
-# Note: the content of this file was modified, changing how this library is built and used. Originally, bpm was a
+# Note: the contents of this file were modified, changing how this library is built and used. Originally, bpm was a
 # front-end library, meaning that it was linked in the OBS UI. As we need to reuse it in our obs-studio-node component,
 # now it is linked into OBS and its public API is exported in obs.h.
 
