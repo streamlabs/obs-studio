@@ -59,6 +59,11 @@ extern struct obs_core *obs = NULL;
 #define SETTING_PLACEHOLDER_WND_IMG      "window_placeholder_image"
 #define SETTING_PLACEHOLDER_WND_MSG_WAIT "window_placeholder_waiting_message"
 #define SETTING_PLACEHOLDER_WND_MSG_ERR  "window_placeholder_missing_message"
+#define SETTING_ADD_TO_AUTO_CAPTURE "add_to_auto_capture"
+
+#define DEFAULT_DISPLAY_MSG "Attempting to hook process..."
+#define GENERIC_ERROR_MSG "Failed to hook process; unable to capture window."
+#define FAIL_BUT_TRY_AGAIN "Failed to hook process; retrying."
 
 /* custom props */
 # define COMPAT_INFO_VISIBLE "compat_info_visible"
@@ -99,6 +104,7 @@ extern struct obs_core *obs = NULL;
 #define TEXT_RGBA10A2_SPACE        obs_module_text("GameCapture.Rgb10a2Space")
 #define TEXT_RGBA10A2_SPACE_SRGB   obs_module_text("GameCapture.Rgb10a2Space.Srgb")
 #define TEXT_RGBA10A2_SPACE_2100PQ obs_module_text("GameCapture.Rgb10a2Space.2100PQ")
+#define TEXT_ADD_TO_AUTO_CAPTURE obs_module_text("GameCapture.AddToAutoCapture")
 
 #define TEXT_MODE_AUTO           obs_module_text("GameCapture.AutoCapture")
 #define TEXT_MODE_ANY            TEXT_ANY_FULLSCREEN
@@ -113,6 +119,7 @@ extern struct obs_core *obs = NULL;
 
 #define DEFAULT_RETRY_INTERVAL 2.0f
 #define ERROR_RETRY_INTERVAL 4.0f
+#define NUM_RETRIES 5
 
 enum capture_mode {
 	CAPTURE_MODE_ANY = 0,
@@ -150,6 +157,8 @@ struct game_capture_config {
 	bool capture_audio;
 	int base_width;
 	int base_height;
+	bool add_to_auto_capture;
+	const char *auto_capture_file;
 };
 
 struct auto_game_capture {
@@ -252,7 +261,11 @@ struct graphics_offsets offsets64 = {0};
 
 static void unload_placeholder_image(struct game_capture *gc);
 static void load_placeholder_image(struct game_capture *gc);
+static bool is_compat_info_visible(struct game_capture *gc);
 static void set_compat_info_visible(struct game_capture *gc, bool visible);
+static void handle_error_on_hook(struct game_capture *gc, const char *errMsg);
+static void update_window_status(struct game_capture *gc, const char *status);
+static void process_retries(struct game_capture *gc);
 
 static inline bool use_anticheat(struct game_capture *gc)
 {
@@ -449,6 +462,107 @@ static void free_whitelist(struct auto_game_capture *ac)
 	ReleaseMutex(ac->mutex);
 }
 
+static void update_auto_capture_list(struct game_capture_config gCfg)
+{
+	const char *filename = "add_to_game_capture_list.json";
+	char update_auto_capture_file[MAX_PATH];
+	char *backslash = NULL;
+	json_t *newGameEntry = NULL;
+	json_error_t error;
+	json_t *jArray = NULL;
+	bool add = true;
+	const char *key = NULL;
+	json_t *value = NULL;
+	const char *exe = NULL;
+	const char *rule_class = NULL;
+	const char *title = NULL;
+
+	//replace "game_capture_list.json" with "add_to_game_capture_list.json"
+	backslash = strrchr(gCfg.auto_capture_file, '\\');
+	if (backslash != NULL) {
+		size_t dir_len = backslash - gCfg.auto_capture_file + 1;
+		if (dir_len >= MAX_PATH)
+			return;
+		memcpy(update_auto_capture_file, gCfg.auto_capture_file, dir_len);
+		update_auto_capture_file[dir_len] = 0;
+		strcat(update_auto_capture_file, filename);
+	}
+
+	//try to read the file
+	jArray = json_load_file(update_auto_capture_file, 0, &error);
+	if (!jArray) { //file doesn't exist so create the json entry for the game to be added
+		jArray = json_array();
+	} else { //make sure game isn't already in list
+		size_t array_size = json_array_size(jArray);
+		for (size_t idx = 0; idx < array_size; idx++) {
+			json_t *next_rule_json = json_array_get(jArray, idx);
+			if (json_typeof(next_rule_json) != JSON_OBJECT)
+				continue;
+
+			json_object_foreach (next_rule_json, key, value) {
+				if (json_typeof(value) != JSON_STRING)
+					continue;
+
+				const char *string_value =
+					json_string_value(value);
+				if (strcmp(key, "exe") == 0) {
+					exe = string_value;
+				} else if (strcmp(key, "class") == 0) {
+					rule_class = string_value;
+				} else if (strcmp(key, "title") == 0) {
+					title = string_value;
+				}
+
+			} //end foreach object in array entry
+
+			if (((exe != 0) &&
+			     (strcmp(exe, gCfg.executable) == 0)) &&
+			    ((rule_class != 0) &&
+			     (strcmp(rule_class, gCfg.class) == 0)) &&
+			    ((title != 0) &&
+			     (strcmp(title, gCfg.title) == 0))) {
+				//found a match - don't add it to the file and don't keep looking
+				add = false;
+				break;
+			}
+			exe = NULL;
+			rule_class = NULL;
+			title = NULL;
+		} //end for each array entry
+
+	} //end else file exists
+
+	//add the new game entry to the array and write it back to file
+	if (add) {
+
+		//create new game entry
+		newGameEntry = json_object();
+		json_object_set_new(newGameEntry, "exe",
+				    json_string(gCfg.executable));
+		json_object_set_new(newGameEntry, "class",
+				    json_string(gCfg.class));
+		json_object_set_new(newGameEntry, "title",
+				    json_string(gCfg.title));
+		json_object_set_new(newGameEntry, "type",
+				    json_string("capture"));
+		json_array_append(jArray, newGameEntry);
+		if (json_dump_file(jArray, update_auto_capture_file,
+				   JSON_INDENT(1)) != 0) {
+			blog(LOG_ERROR,
+			     "Error adding %s:%s:%s to game capture update file %s.", gCfg
+				     .executable,
+			     gCfg.class, gCfg.title, update_auto_capture_file);
+		}
+		blog(LOG_INFO,
+		     " %s:%s:%s written to game capture update file %s successfully.",
+		     gCfg.executable, gCfg.class, gCfg.title,
+		     update_auto_capture_file);
+
+		json_decref(newGameEntry);
+	} //end if add
+	json_decref(jArray);
+}
+
 static void stop_capture(struct game_capture *gc)
 {
 	ipc_pipe_server_free(&gc->pipe);
@@ -481,7 +595,7 @@ static void stop_capture(struct game_capture *gc)
 	close_handle(&gc->target_process);
 	close_handle(&gc->texture_mutexes[0]);
 	close_handle(&gc->texture_mutexes[1]);
-
+	
 	obs_enter_graphics();
 	gs_texrender_destroy(gc->extra_texrender);
 	gc->extra_texrender = NULL;
@@ -513,8 +627,14 @@ static void stop_capture(struct game_capture *gc)
 	gc->active = false;
 	gc->capturing = false;
 
-	if (gc->retrying)
+	if (gc->retrying) {
 		gc->retrying--;
+		info("Retry failed, %d remaining.", gc->retrying);
+		if (!gc->retrying) {
+			info("Retries exhausted, hook failed.");
+			handle_error_on_hook(gc, GENERIC_ERROR_MSG);
+		}
+	}
 }
 
 static inline void free_config(struct game_capture_config *config)
@@ -587,6 +707,10 @@ static inline void get_config(struct game_capture_config *cfg,
 		cfg->mode = CAPTURE_MODE_ANY;
 	else
 		cfg->mode = CAPTURE_MODE_AUTO;
+
+	cfg->add_to_auto_capture =
+		obs_data_get_bool(settings, SETTING_ADD_TO_AUTO_CAPTURE);
+	cfg->auto_capture_file = obs_data_get_string(settings, SETTING_AUTO_LIST_FILE);
 
 	cfg->priority = (enum window_priority)obs_data_get_int(
 		settings, SETTING_WINDOW_PRIORITY);
@@ -899,7 +1023,13 @@ static void game_capture_update(void *data, obs_data_t *settings)
 
 	reset_capture = capture_needs_reset(&cfg, &gc->config);
 
-	gc->error_acquiring = false;
+	//only reset error status etc if resetting the capture so we don't interrupt retries
+	if (reset_capture) {
+		gc->error_acquiring = false;
+		obs_data_set_string(settings, SETTINGS_COMPAT_INFO, "");
+		set_compat_info_visible(gc, false);
+		gc->retrying = 0;
+	}
 
 	if (cfg.mode == CAPTURE_MODE_HOTKEY &&
 	    gc->config.mode != CAPTURE_MODE_HOTKEY) {
@@ -924,8 +1054,25 @@ static void game_capture_update(void *data, obs_data_t *settings)
 		dstr_copy(&gc->class, gc->config.class);
 		dstr_copy(&gc->executable, gc->config.executable);
 		gc->priority = gc->config.priority;
+
+		//do compatibility check if first config or window changed
+		if (reset_capture || gc->initial_config) {
+			//check if valid window based on compatibility.json and set error, don't try to hook
+			update_window_status(gc, DEFAULT_DISPLAY_MSG);
+			struct compat_result *incompatible =
+				check_compatibility(gc->config.title,
+						    gc->config.class,
+						    gc->config.executable,
+						    GAME_CAPTURE);
+			if (incompatible) {
+				handle_error_on_hook(gc, incompatible->message);
+				warn("Incompatible window (%s): %s", window,
+				     incompatible->message);
+				compat_result_free(incompatible);
+			} 
+		}
 	} else {
-		if (obs_data_get_bool(settings, COMPAT_INFO_VISIBLE))
+		if (is_compat_info_visible(gc))
 			set_compat_info_visible(gc, false);
 	}
 
@@ -1132,12 +1279,10 @@ static inline bool init_texture_mutexes(struct game_capture *gc)
 	if (!gc->texture_mutexes[0] || !gc->texture_mutexes[1]) {
 		DWORD error = GetLastError();
 		if (error == 2) {
-			if (!gc->retrying) {
-				gc->retrying = 2;
-				info("hook not loaded yet, retrying..");
-			}
+			warn("Failed to open texture mutexes, begin retry process to allow initialization time.");
+			process_retries(gc);
 		} else {
-			warn("failed to open texture mutexes: %lu",
+			warn("Failed to open texture mutexes, error code: %lu",
 			     GetLastError());
 		}
 		return false;
@@ -1450,6 +1595,7 @@ static bool init_hook(struct game_capture *gc)
 		return false;
 	}
 	if (target_suspended(gc)) {
+		warn("Target suspended.");
 		return false;
 	}
 	if (!open_target_process(gc)) {
@@ -1481,7 +1627,6 @@ static bool init_hook(struct game_capture *gc)
 	gc->window = gc->next_window;
 	gc->next_window = NULL;
 	gc->active = true;
-	gc->retrying = 0;
 	return true;
 }
 
@@ -1618,6 +1763,9 @@ static void get_selected_window(struct game_capture *gc)
 
 static void try_hook(struct game_capture *gc)
 {
+	//show default hooking message 
+	update_window_status(gc, DEFAULT_DISPLAY_MSG);
+
 	if (gc->config.mode == CAPTURE_MODE_ANY) {
 		get_fullscreen_window(gc);
 	} else if (gc->config.mode == CAPTURE_MODE_AUTO) {
@@ -1640,12 +1788,19 @@ static void try_hook(struct game_capture *gc)
 			warn("error acquiring, failed to get window "
 			     "thread/process ids: %lu",
 			     GetLastError());
-			gc->error_acquiring = true;
+			handle_error_on_hook(gc, GENERIC_ERROR_MSG);
 			return;
 		}
 
 		if (!init_hook(gc)) {
-			stop_capture(gc);
+			//call stop if not already retrying
+			if (!gc->retrying) {
+				warn("Hook initialization failed.");
+				stop_capture(gc);
+				//do we want to STOP stop or let it keep trying infinitely? just show the error while it keeps trying?
+				update_window_status(gc, FAIL_BUT_TRY_AGAIN);
+				//handle_error_on_hook(gc, GENERIC_ERROR_MSG);
+			}
 		}
 	} else {
 		gc->active = false;
@@ -1654,6 +1809,7 @@ static void try_hook(struct game_capture *gc)
 
 static inline bool init_events(struct game_capture *gc)
 {
+	//for all events - if opening them, make sure the events are not already signaled - if exe hasn't been restarted the old event status persists
 	if (!gc->hook_restart) {
 		gc->hook_restart = open_event_gc(gc, EVENT_CAPTURE_RESTART);
 		if (!gc->hook_restart) {
@@ -1662,6 +1818,7 @@ static inline bool init_events(struct game_capture *gc)
 			     GetLastError());
 			return false;
 		}
+		ResetEvent(gc->hook_restart);
 	}
 
 	if (!gc->hook_stop) {
@@ -1671,6 +1828,7 @@ static inline bool init_events(struct game_capture *gc)
 			     GetLastError());
 			return false;
 		}
+		ResetEvent(gc->hook_stop);
 	}
 
 	if (!gc->hook_init) {
@@ -1680,6 +1838,7 @@ static inline bool init_events(struct game_capture *gc)
 			     GetLastError());
 			return false;
 		}
+		ResetEvent(gc->hook_init);
 	}
 
 	if (!gc->hook_ready) {
@@ -1689,6 +1848,7 @@ static inline bool init_events(struct game_capture *gc)
 			     GetLastError());
 			return false;
 		}
+		ResetEvent(gc->hook_ready);
 	}
 
 	if (!gc->hook_exit) {
@@ -1698,6 +1858,7 @@ static inline bool init_events(struct game_capture *gc)
 			     GetLastError());
 			return false;
 		}
+		ResetEvent(gc->hook_exit);
 	}
 
 	return true;
@@ -2196,6 +2357,9 @@ static bool start_capture(struct game_capture *gc)
 		info("shared texture capture successful");
 	}
 
+	//hide status message when successfully start capture
+	update_window_status(gc, "");
+
 	return true;
 }
 
@@ -2240,6 +2404,40 @@ static void set_compat_info_visible(struct game_capture *gc, bool visible)
 	streamlabs_force_source_ui_refresh(gc->source);
 
 	obs_data_release(settings);
+}
+
+static void handle_error_on_hook(struct game_capture* gc, const char *errMsg)
+{
+	update_window_status(gc, errMsg);
+	gc->error_acquiring = true;
+}
+
+static void update_window_status(struct game_capture* gc, const char* status)
+{
+	obs_data_t *ss = obs_source_get_settings(gc->source);
+	if (!ss) {
+		warn("Failed to get settings to update window status.");
+	}
+	else if (status) {
+		obs_data_set_string(ss, SETTINGS_COMPAT_INFO, status);
+		obs_data_release(ss);
+	}
+	set_compat_info_visible(gc, true);
+}
+
+static void process_retries(struct game_capture *gc)
+{
+	if (!gc->retrying) {
+		gc->retrying = NUM_RETRIES;
+	}
+
+	if (gc->retry_time > gc->retry_interval) {
+		//call stop and reset time to try again
+		stop_capture(gc);
+		gc->retry_time = 0.0f;
+		gc->retry_interval = ERROR_RETRY_INTERVAL *
+				     hook_rate_to_float(gc->config.hook_rate);
+	}
 }
 
 static void game_capture_tick(void *data, float seconds)
@@ -2297,20 +2495,41 @@ static void game_capture_tick(void *data, float seconds)
 	}
 
 	if (gc->injector_process && object_signalled(gc->injector_process)) {
-		DWORD exit_code = 0;
+		long exit_code = 0;
+		long lastError = 0;
 
 		GetExitCodeProcess(gc->injector_process, &exit_code);
+		lastError = GetLastError();
 		close_handle(&gc->injector_process);
 
-		if (exit_code != 0) {
-			warn("inject process failed: %ld", (long)exit_code);
-			gc->error_acquiring = true;
-
-		} else if (!gc->capturing) {
-			gc->retry_interval =
-				ERROR_RETRY_INTERVAL *
-				hook_rate_to_float(gc->config.hook_rate);
-			stop_capture(gc);
+		//exit_code == 0 means there was an error with GetExitCodeProcess
+		//exit_code == STILL_ACTIVE means GetExitCodeProcess succeeded and the process is still running
+		//any other exit_code means GetExitCodeProcess succeeded and the process has terminated - exit_code is the return code from the process or an exception value
+		//injector returns 0 on success and -1 on failure...therefore 0 can be failed GetExitCodeProcess, or success with process returning success
+		if (exit_code != STILL_ACTIVE) {
+			//in theory should never be STILL_ACTIVE since we only get here when the process is signaled
+			if (exit_code != 0) {
+				//GetExitCodeProcess succeeded but the process returned an error code - fail
+				warn("Inject process failed with exit code %d",
+				     exit_code);
+				handle_error_on_hook(gc, GENERIC_ERROR_MSG);
+			} else {
+				//exit code = 0 means either GetExitCodeProcess failed. or succeeded and the process returned 0...which is success - check GetLastError and gc->capturing
+				if (lastError != 0) {
+					warn("Inject process failed with GetLastError code %d, cancel any retries.",
+					     lastError);
+					handle_error_on_hook(gc,
+							     GENERIC_ERROR_MSG);
+					//don't want to keep retrying after this
+					gc->retrying = 0;
+					stop_capture(gc);
+				}
+				else if (!gc->capturing) {
+					//no errors but not capturing...give it time to finish initializing?
+					warn("Potential inject failure, retry.");
+					process_retries(gc);
+				}
+			}
 		}
 	}
 
@@ -2318,10 +2537,12 @@ static void game_capture_tick(void *data, float seconds)
 		debug("capture initializing!");
 		enum capture_result result = init_capture_data(gc);
 
-		if (result == CAPTURE_SUCCESS)
+		if (result == CAPTURE_SUCCESS) {
+			info("Capture successfully initialized.");
 			gc->capturing = start_capture(gc);
-		else
+		} else {
 			debug("init_capture_data failed");
+		}
 
 		// If capture was successful, send a hooked signal
 		if (gc->capturing) {
@@ -2347,17 +2568,25 @@ static void game_capture_tick(void *data, float seconds)
 				reconfigure_audio_source(gc->audio_source,
 							 gc->window);
 			}
+
+			//if successfully capturing, check if should add to auto capture list
+			if ((gc->config.mode == CAPTURE_MODE_WINDOW) &&
+			    gc->config.add_to_auto_capture) {
+				update_auto_capture_list(gc->config);
+			}
 		}
 		if (result != CAPTURE_RETRY && !gc->capturing) {
 			gc->retry_interval =
 				ERROR_RETRY_INTERVAL *
 				hook_rate_to_float(gc->config.hook_rate);
+			info("Capture initialization failed.");
 			stop_capture(gc);
 		}
 	}
 
 	gc->retry_time += seconds;
 
+	//!active = init_hook (called from try_hook) either hasn't been called or has failed OR because the window doesn't exist
 	if (!gc->active) {
 		if (!gc->error_acquiring &&
 		    gc->retry_time > gc->retry_interval) {
@@ -2382,12 +2611,9 @@ static void game_capture_tick(void *data, float seconds)
 		}
 	} else {
 		if (gc->capturing) {
-			obs_data_t *settings =
-				obs_source_get_settings(gc->source);
-			if (obs_data_get_bool(settings, COMPAT_INFO_VISIBLE)) {
+			if (is_compat_info_visible(gc)) {
 				set_compat_info_visible(gc, false);
 			}
-			obs_data_release(settings);
 		}
 
 		if (!capture_valid(gc)) {
@@ -2395,40 +2621,53 @@ static void game_capture_tick(void *data, float seconds)
 			     "terminating capture");
 			stop_capture(gc);
 		} else {
-			if (gc->copy_texture) {
-				obs_enter_graphics();
-				gc->copy_texture(gc);
-				obs_leave_graphics();
-			}
+			//update some graphics things if we are capturing
+			if (gc->capturing) {
+				if (gc->copy_texture) {
+					obs_enter_graphics();
+					gc->copy_texture(gc);
+					obs_leave_graphics();
+				}
 
-			if (gc->config.cursor) {
-				DPI_AWARENESS_CONTEXT previous = NULL;
-				if (gc->get_window_dpi_awareness_context !=
-				    NULL) {
-					const DPI_AWARENESS_CONTEXT context =
-						gc->get_window_dpi_awareness_context(
-							gc->window);
-					previous =
+				if (gc->config.cursor) {
+					DPI_AWARENESS_CONTEXT previous = NULL;
+					if (gc->get_window_dpi_awareness_context !=
+					    NULL) {
+						const DPI_AWARENESS_CONTEXT context =
+							gc->get_window_dpi_awareness_context(
+								gc->window);
+						previous =
+							gc->set_thread_dpi_awareness_context(
+								context);
+					}
+
+					check_foreground_window(gc, seconds);
+					obs_enter_graphics();
+					cursor_capture(&gc->cursor_data);
+					obs_leave_graphics();
+
+					if (previous) {
 						gc->set_thread_dpi_awareness_context(
-							context);
+							previous);
+					}
 				}
-
-				check_foreground_window(gc, seconds);
-				obs_enter_graphics();
-				cursor_capture(&gc->cursor_data);
-				obs_leave_graphics();
-
-				if (previous) {
-					gc->set_thread_dpi_awareness_context(
-						previous);
+				gc->fps_reset_time += seconds;
+				if (gc->fps_reset_time >= gc->retry_interval) {
+					reset_frame_interval(gc);
+					gc->fps_reset_time = 0.0f;
 				}
-			}
+			} 
+		}
+	}
 
-			gc->fps_reset_time += seconds;
-			if (gc->fps_reset_time >= gc->retry_interval) {
-				reset_frame_interval(gc);
-				gc->fps_reset_time = 0.0f;
-			}
+	//need to handle when active but not capturing - means the window is open but the hook is never signaled (happens with notepad for example)
+	//for now just use retries, that way if it's a game that's just taking longer than expected it still has time, but something like
+	//notepad will just time out...unless we want it to keep trying forever
+	if (gc->active && !gc->capturing &&
+	    (gc->hook_ready && !object_signalled(gc->hook_ready))) {
+		if (gc->retry_time > gc->retry_interval) {
+			warn("Hook has not succeeded yet, process retry attempt.");
+		process_retries(gc);
 		}
 	}
 
@@ -2856,8 +3095,9 @@ static void game_capture_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, SETTING_WINDOW_INTERNAL_MODE,
 				  false);
 
-	obs_data_set_default_bool(settings, COMPAT_INFO_VISIBLE, false);
+	obs_data_set_default_bool(settings, COMPAT_INFO_VISIBLE, true);
 	obs_data_set_default_string(settings, SETTINGS_COMPAT_INFO, "");
+	obs_data_set_default_bool(settings, SETTING_ADD_TO_AUTO_CAPTURE, false);
 }
 
 static bool mode_callback(obs_properties_t *ppts, obs_property_t *p,
@@ -2925,10 +3165,18 @@ static bool status_message_changed_callback(obs_properties_t *ppts,
 					    obs_property_t *p,
 					    obs_data_t *settings)
 {
-	UNUSED_PARAMETER(ppts);
-
-	obs_property_set_visible(p, obs_data_get_bool(settings,
-						      COMPAT_INFO_VISIBLE));
+	bool toShow = true;
+	const char *errMsg =
+		obs_data_get_string(settings, SETTINGS_COMPAT_INFO);
+	if (!errMsg) {
+		toShow = false;
+		errMsg = "";
+	} else if (strlen(errMsg) == 0) {
+		toShow = false;
+	}
+	blog(LOG_INFO, "status_message_changed_callback message %s", errMsg);
+	obs_property_set_description(p, errMsg);
+	obs_property_set_visible(p, toShow);
 
 	return true;
 }
@@ -2951,33 +3199,6 @@ static bool window_changed_callback(obs_properties_t *ppts, obs_property_t *p,
 
 	if (capture_any)
 		return modified;
-
-	const char *window =
-		obs_data_get_string(settings, SETTING_CAPTURE_WINDOW);
-
-	char *class;
-	char *exe;
-	char *title;
-	ms_build_window_strings(window, &class, &title, &exe);
-	struct compat_result *compat =
-		check_compatibility(title, class, exe, GAME_CAPTURE);
-	bfree(title);
-	bfree(exe);
-	bfree(class);
-
-	obs_property_t *p_warn = obs_properties_get(ppts, SETTINGS_COMPAT_INFO);
-
-	if (!compat) {
-		modified = obs_property_visible(p_warn) || modified;
-		obs_property_set_visible(p_warn, false);
-		return modified;
-	}
-
-	obs_property_set_long_description(p_warn, compat->message);
-	obs_property_text_set_info_type(p_warn, compat->severity);
-	obs_property_set_visible(p_warn, true);
-
-	compat_result_free(compat);
 
 	return true;
 }
@@ -3065,16 +3286,6 @@ static obs_properties_t *game_capture_properties(void *data)
 	obs_property_list_add_int(p, TEXT_MATCH_CLASS, WINDOW_PRIORITY_CLASS);
 	obs_property_list_add_int(p, TEXT_MATCH_EXE, WINDOW_PRIORITY_EXE);
 
-	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO, NULL,
-				    OBS_TEXT_INFO);
-	obs_property_set_enabled(p, false);
-
-	if (audio_capture_available()) {
-		p = obs_properties_add_bool(ppts, SETTING_CAPTURE_AUDIO,
-					    TEXT_CAPTURE_AUDIO);
-		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
-	}
-
 	p = obs_properties_add_text(ppts, SETTINGS_COMPAT_INFO,
 				    "Specified window is not a game",
 				    OBS_TEXT_INFO);
@@ -3086,8 +3297,18 @@ static obs_properties_t *game_capture_properties(void *data)
 		obs_property_set_visible(
 			p, obs_data_get_bool(settings, COMPAT_INFO_VISIBLE));
 		obs_data_release(settings);
+	} else {
+		obs_property_set_visible(p, false);
 	}
 	obs_property_set_modified_callback(p, status_message_changed_callback);
+
+	if (audio_capture_available()) {
+		p = obs_properties_add_bool(ppts, SETTING_CAPTURE_AUDIO,
+					    TEXT_CAPTURE_AUDIO);
+		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
+	}
+
+
 
 	obs_properties_add_bool(ppts, SETTING_COMPATIBILITY,
 				TEXT_SLI_COMPATIBILITY);
@@ -3125,6 +3346,9 @@ static obs_properties_t *game_capture_properties(void *data)
 				TEXT_PLACEHOLDER_USER, OBS_PATH_FILE,
 				"PNG (*.png);;JPEG (*.jpg *.jpeg);;BMP (*.bmp)",
 				"");
+
+	obs_properties_add_bool(ppts, SETTING_ADD_TO_AUTO_CAPTURE,
+				TEXT_ADD_TO_AUTO_CAPTURE);
 
 	obs_properties_add_int(ppts, SETTING_WINDOW_DEFAULT_WIDTH,
 			       SETTING_WINDOW_DEFAULT_WIDTH, 0, 10000, 1);
