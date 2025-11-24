@@ -497,7 +497,6 @@ EXPORT void obs_set_video_levels(float sdr_white_level, float hdr_nominal_peak_l
 
 /** Gets the current audio settings, returns false if no audio */
 EXPORT bool obs_get_audio_info(struct obs_audio_info *oai);
-EXPORT bool obs_get_audio_info2(struct obs_audio_info2 *oai2);
 
 /**
  * Gets the v2 audio settings that includes buffering information.

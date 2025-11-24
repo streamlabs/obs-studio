@@ -19,10 +19,11 @@ set_target_properties_obs(
              XCODE_ATTRIBUTE_CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION YES
              XCODE_ATTRIBUTE_GCC_WARN_SHADOW YES
              XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES YES
-             XCODE_ATTRIBUTE_CLANG_MODULES_AUTOLINK YES)
+             XCODE_ATTRIBUTE_CLANG_MODULES_AUTOLINK YES
+)
 
-             set_target_xcode_properties(
+set_target_xcode_properties(
               mac-virtualcam
               PROPERTIES PRODUCT_NAME mac-virtualcam
-              PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-virtualcam)
-
+              PRODUCT_BUNDLE_IDENTIFIER com.streamlabs.slobs.mac-virtualcam
+)

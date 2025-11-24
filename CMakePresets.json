@@ -169,6 +169,13 @@
       "displayName": "Windows on ARM 64-bit",
       "description": "Windows build for ARM 64-bit (aka ARM64)",
       "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "macos",
+      "configurePreset": "macos",
+      "displayName": "MacOS",
+      "description": "Default macOS build (single architecture only)",
+      "configuration": "RelWithDebInfo"
     }
   ]
 }

@@ -2,9 +2,13 @@ cmake_minimum_required(VERSION 3.28...3.30)
 
 option(ENABLE_SERVICE_UPDATES "Checks for service updates" ON)
 
-set(RTMP_SERVICES_URL
-    "https://slobs-cdn.streamlabs.com/rtmp-services"
-    CACHE STRING "Default services package URL" FORCE)
+set(
+  RTMP_SERVICES_URL
+  "https://slobs-cdn.streamlabs.com/rtmp-services"
+  CACHE STRING
+  "Default services package URL"
+  FORCE
+)
 mark_as_advanced(RTMP_SERVICES_URL)
 
 if(NOT TARGET OBS::file-updater)

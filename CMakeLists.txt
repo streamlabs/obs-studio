@@ -15,7 +15,7 @@ include(compilerconfig)
 include(defaults)
 include(helpers)
 
-  option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
+option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
 option(ENABLE_SCRIPTING "Enable scripting support" ON)
 option(ENABLE_HEVC "Enable HEVC encoders" ON)
 
@@ -31,22 +31,25 @@ add_subdirectory(test/test-input)
 
 add_subdirectory(frontend)
 
-  if(WIN32)
-    include(FetchContent)
+if(WIN32)
+  include(FetchContent)
 
-    # Compare current linked libs with prev
-    FetchContent_Declare(
-      deps_checker
-      URL "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
-      DOWNLOAD_NO_EXTRACT true)
-    FetchContent_MakeAvailable(deps_checker)
+  # Compare current linked libs with prev
+  FetchContent_Declare(
+    deps_checker
+    URL
+      "https://raw.githubusercontent.com/stream-labs/obs-studio-node/staging/dependency_checker/check_dependencies.cmd"
+    DOWNLOAD_NO_EXTRACT true
+  )
+  FetchContent_MakeAvailable(deps_checker)
 
-    add_custom_target(
-      check_dependencies
-      COMMAND
-        ${CMAKE_COMMAND} "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}" "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
-        "-Ddeps_CONFIG=$<CONFIG>" "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}" -P
-        "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake")
-  endif()
+  add_custom_target(
+    check_dependencies
+    COMMAND
+      ${CMAKE_COMMAND} "-Ddeps_checker_SOURCE_DIR=${deps_checker_SOURCE_DIR}" "-Ddeps_CONFIGURATION=$<CONFIGURATION>"
+      "-Ddeps_CONFIG=$<CONFIG>" "-Ddeps_CMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}" -P
+      "${CMAKE_SOURCE_DIR}/slobs_CI/check_libraries.cmake"
+  )
+endif()
 
 message_configuration()

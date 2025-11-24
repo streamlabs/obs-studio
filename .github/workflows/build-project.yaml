@@ -383,7 +383,7 @@ jobs:
     name: Windows 🪟
     strategy:
       matrix:
-        architecture: [x64, arm64]
+        architecture: [x64] # TODO: it was [x64, arm64]
     runs-on: windows-2022
     needs: check-event
     env:

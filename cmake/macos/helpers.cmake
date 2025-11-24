@@ -392,10 +392,12 @@ function(target_install_ffmpeg_and_ffprobe target)
       message(STATUS "Found ffmpeg at ${ffmpeg_path}.")
       # Run the fix_deps_paths.sh script at install time with the full absolute path
       install(
-        CODE "
+        CODE
+          "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFMPEG_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffmpeg_path}\" \"${destination}\")
-      ")
+      "
+      )
     else()
       message(WARNING "ffmpeg not found at ${ffmpeg_path}")
     endif()
@@ -405,10 +407,12 @@ function(target_install_ffmpeg_and_ffprobe target)
       message(STATUS "Found ffprobe at ${ffprobe_path}")
       # Run the fix_deps_paths.sh script for ffprobe with the full absolute path
       install(
-        CODE "
+        CODE
+          "
         message(\"Running fix_deps_paths.sh on ${FINAL_FFPROBE_PATH}\")
         execute_process(COMMAND bash \"${CMAKE_SOURCE_DIR}/CI/macos/fix_deps_paths.sh\" \"${ffprobe_path}\" \"${destination}\")
-      ")
+      "
+      )
     else()
       message(WARNING "ffprobe not found at ${ffprobe_path}")
     endif()

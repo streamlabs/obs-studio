@@ -14,13 +14,11 @@
             }
         },
         "qt6": {
-            "version": "2025-07-11sl4",
+            "version": "2025-08-23",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built Qt6",
             "hashes": {
-                "macos-x86_64": "f3ac5bba3999889d8eac478b8587300ba910c68d32d271e6ba41aa11215c6b8f",
-                "macos-arm64": "b7b33526925b8d684ffade0384269ca7fca3e3b19301ab5dc69ced8b01ce3bcc",
-                "macos-universal": "1352299814ad646f8013dbf16f6e584c1560839e90f7100526e41edb3136cc94"
+                "macos-universal": "990f11638b80a4509e14e8c315f6e4caa0861e37fcd3113a256fbff835ffca29"
             }
         },
         "cef": {
