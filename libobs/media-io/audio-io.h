@@ -29,7 +29,13 @@ extern "C" {
 #define MAX_AUDIO_MIXES 6
 #define MAX_AUDIO_CHANNELS 8
 #define MAX_DEVICE_INPUT_CHANNELS 64
+#ifdef __APPLE__
+// Increase audio buffer to eliminate error: Source X is lagging (over by X ms) at max audio buffering. Restarting source audio.
+// Users have submitted logs where their audio restarts. Increasing buffer size resolved the issue locally
+#define AUDIO_OUTPUT_FRAMES 4096
+#else
 #define AUDIO_OUTPUT_FRAMES 1024
+#endif
 
 #define TOTAL_AUDIO_SIZE                                              \
 	(MAX_AUDIO_MIXES * MAX_AUDIO_CHANNELS * AUDIO_OUTPUT_FRAMES * \
