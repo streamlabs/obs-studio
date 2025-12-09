@@ -797,35 +797,12 @@ static int obs_init_video()
 	return OBS_VIDEO_SUCCESS;
 }
 
-// TODO: remove this
-/*
-static void stop_video(void)
-{
-	//if (obs->data.main_canvas->mix) {
-	//	video_output_stop(obs->data.main_canvas->mix->video);
-	//}
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++)
-		video_output_stop(obs->video.mixes.array[i]->video);
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-}
-*/
-
 static void stop_video(void)
 {
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++)
 		video_output_stop(obs->video.mixes.array[i]->video);
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	struct obs_core_video *video = &obs->video;
-	void *thread_retval;
-
-	if (video->thread_initialized) {
-		pthread_join(video->video_thread, &thread_retval);
-		video->thread_initialized = false;
-	}
 }
 
 static void obs_free_render_textures(struct obs_core_video_mix *video)
