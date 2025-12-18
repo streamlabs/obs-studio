@@ -144,7 +144,13 @@ void OBSReplayBufferSaved(void *data, calldata_t * /* params */)
 static void OBSStartVirtualCam(void *data, calldata_t * /* params */)
 {
 	BasicOutputHandler *output = static_cast<BasicOutputHandler *>(data);
-
+#ifdef __APPLE__
+	// Streamlabs - Suppress first "start" signal from mac-virtualcam which is spun up automatically by OBS. SLD doesnt work this way
+	if (!output->hasReceivedStartSignal) {
+		output->hasReceivedStartSignal = true;
+		return;
+	}
+#endif
 	output->virtualCamActive = true;
 	os_atomic_set_bool(&virtualcam_active, true);
 	QMetaObject::invokeMethod(output->main, "OnVirtualCamStart");
