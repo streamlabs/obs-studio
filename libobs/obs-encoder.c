@@ -1932,6 +1932,38 @@ obs_encoder_get_preferred_video_format(const obs_encoder_t *encoder)
 	return encoder->preferred_format;
 }
 
+void obs_encoder_set_preferred_color_space(obs_encoder_t *encoder, enum video_colorspace colorspace)
+{
+	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
+		return;
+
+	encoder->preferred_space = colorspace;
+}
+
+enum video_colorspace obs_encoder_get_preferred_color_space(const obs_encoder_t *encoder)
+{
+	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
+		return VIDEO_CS_DEFAULT;
+
+	return encoder->preferred_space;
+}
+
+void obs_encoder_set_preferred_range(obs_encoder_t *encoder, enum video_range_type range)
+{
+	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
+		return;
+
+	encoder->preferred_range = range;
+}
+
+enum video_range_type obs_encoder_get_preferred_range(const obs_encoder_t *encoder)
+{
+	if (!encoder || encoder->info.type != OBS_ENCODER_VIDEO)
+		return VIDEO_RANGE_DEFAULT;
+
+	return encoder->preferred_range;
+}
+
 void obs_encoder_addref(obs_encoder_t *encoder)
 {
 	if (!encoder)
