@@ -211,17 +211,26 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	struct obs_core_video_mix *mix, *current_mix;
 	bool create_mix = true;
 	const struct video_output_info *info;
+	uint32_t width;
+	uint32_t height;
+	enum video_format format;
+	enum video_colorspace space;
+	enum video_range_type range;
 
 	if (!encoder->media)
 		return;
-
-	info = video_output_get_info(encoder->media);
-
 	if (encoder->gpu_scale_type == OBS_SCALE_DISABLE)
 		return;
-
-	if (!encoder->scaled_height && !encoder->scaled_width)
+	if (!encoder->scaled_height && !encoder->scaled_width && encoder->preferred_format == VIDEO_FORMAT_NONE &&
+	    encoder->preferred_space == VIDEO_CS_DEFAULT && encoder->preferred_range == VIDEO_RANGE_DEFAULT)
 		return;
+
+	info = video_output_get_info(encoder->media);
+	width = encoder->scaled_width ? encoder->scaled_width : info->width;
+	height = encoder->scaled_height ? encoder->scaled_height : info->height;
+	format = encoder->preferred_format != VIDEO_FORMAT_NONE ? encoder->preferred_format : info->format;
+	space = encoder->preferred_space != VIDEO_CS_DEFAULT ? encoder->preferred_space : info->colorspace;
+	range = encoder->preferred_range != VIDEO_RANGE_DEFAULT ? encoder->preferred_range : info->range;
 
 	current_mix = get_mix_for_video(encoder->media);
 	if (!current_mix)
@@ -230,18 +239,17 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *current = obs->video.mixes.array[i];
-		const struct video_output_info *voi =
-			video_output_get_info(current->video);
+		const struct video_output_info *voi = video_output_get_info(current->video);
 		if (current_mix->view != current->view)
 			continue;
 
-		if (voi->width != encoder->scaled_width ||
-		    voi->height != encoder->scaled_height)
+		if (current->ovi->scale_type != encoder->gpu_scale_type)
 			continue;
 
-		if (voi->format != info->format ||
-		    voi->colorspace != info->colorspace ||
-		    voi->range != info->range)
+		if (voi->width != width || voi->height != height)
+			continue;
+
+		if (voi->format != format || voi->colorspace != space || voi->range != range)
 			continue;
 
 		current->encoder_refs += 1;
@@ -255,21 +263,15 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	if (!create_mix)
 		return;
 
-	if (!current_mix->ovi) {
-		blog(LOG_ERROR,
-		     "maybe_set_up_gpu_rescale - no obs_video_info for current mix");
-		return;
-	}
-
 	struct obs_video_info *ovi = bzalloc(sizeof(struct obs_video_info));
 	*ovi = *current_mix->ovi;
 
-	ovi->output_format = info->format;
-	ovi->colorspace = info->colorspace;
-	ovi->range = info->range;
+	ovi->output_format = format;
+	ovi->colorspace = space;
+	ovi->range = range;
 
-	ovi->output_height = encoder->scaled_height;
-	ovi->output_width = encoder->scaled_width;
+	ovi->output_height = height;
+	ovi->output_width = width;
 	ovi->scale_type = encoder->gpu_scale_type;
 
 	ovi->gpu_conversion = true;
@@ -287,19 +289,17 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	// double check that nobody else added a matching mix while we've created our mix
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *current = obs->video.mixes.array[i];
-		const struct video_output_info *voi =
-			video_output_get_info(current->video);
-
+		const struct video_output_info *voi = video_output_get_info(current->video);
 		if (current->view != current_mix->view)
 			continue;
 
-		if (voi->width != encoder->scaled_width ||
-		    voi->height != encoder->scaled_height)
+		if (current->ovi->scale_type != encoder->gpu_scale_type)
 			continue;
 
-		if (voi->format != info->format ||
-		    voi->colorspace != info->colorspace ||
-		    voi->range != info->range)
+		if (voi->width != width || voi->height != height)
+			continue;
+
+		if (voi->format != format || voi->colorspace != space || voi->range != range)
 			continue;
 
 		obs_encoder_set_video(encoder, current->video);
@@ -630,7 +630,7 @@ static void intitialize_audio_encoder(struct obs_encoder *encoder)
 
 static THREAD_LOCAL bool can_reroute = false;
 
-static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
+static bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 {
 	if (!encoder->media) {
 		blog(LOG_ERROR,
@@ -657,10 +657,12 @@ static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 	if (encoder->orig_info.create) {
 		can_reroute = true;
 		encoder->info = encoder->orig_info;
+
 		if (!encoder->video)
 			encoder->video = obs->video.main_mix;
-		encoder->context.data = encoder->orig_info.create(
-			encoder->context.settings, encoder);
+
+		encoder->context.data = encoder->orig_info.create(encoder->context.settings, encoder);
+
 		can_reroute = false;
 	}
 	if (!encoder->context.data)
