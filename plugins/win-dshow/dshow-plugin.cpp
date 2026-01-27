@@ -42,6 +42,7 @@ static bool vcam_installed(bool b64)
 bool obs_module_load(void)
 {
 	RegisterDShowSource();
+	RegisterDShowEncoders();
 #ifdef VIRTUALCAM_AVAILABLE
 	if (vcam_installed(false))
 		obs_register_output(&virtualcam_info);
