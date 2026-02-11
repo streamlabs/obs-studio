@@ -268,6 +268,20 @@ void render_display(struct obs_display *display)
 
 	/* -------------------------------------------- */
 
+	if (cx == 0 || cy == 0) {
+		if (!display->logged_zero_size) {
+			blog(LOG_WARNING,
+			     "render_display - skip present for zero-size "
+			     "display: %p, next: %ux%u, cur: %ux%u, swap: %p)",
+			     display, cx, cy, display->cx, display->cy,
+			     display->swap);
+			display->logged_zero_size = true;
+		}
+		return;
+	}
+
+	display->logged_zero_size = false;
+
 	if (render_display_begin(display, cx, cy, update_color_space)) {
 		GS_DEBUG_MARKER_BEGIN(GS_DEBUG_COLOR_DISPLAY, "obs_display");
 
