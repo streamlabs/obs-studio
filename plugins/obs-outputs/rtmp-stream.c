@@ -792,10 +792,30 @@ static bool send_meta_data(struct rtmp_stream *stream)
 	size_t meta_data_size;
 	bool success = true;
 
+	// Obtaining temporary refs here to ensure that the code below will not crash during shutdown
+	// due to a possible data race on encoders
+	obs_encoder_t *vencoder = obs_encoder_get_ref(
+		obs_output_get_video_encoder(stream->output));
+	if (!vencoder) {
+		blog(LOG_WARNING, "send_meta_data - no video encoder");
+		return false;
+	}
+
+	obs_encoder_t *aencoder = obs_encoder_get_ref(
+		obs_output_get_audio_encoder(stream->output, 0));
+	if (!aencoder) {
+		blog(LOG_WARNING, "send_meta_data - no audio encoder");
+		obs_encoder_release(vencoder);
+		return false;
+	}
+
 	flv_meta_data(stream->output, &meta_data, &meta_data_size, false);
 	success = RTMP_Write(&stream->rtmp, (char *)meta_data,
 			     (int)meta_data_size, 0) >= 0;
 	bfree(meta_data);
+
+	obs_encoder_release(vencoder);
+	obs_encoder_release(aencoder);
 
 	return success;
 }
