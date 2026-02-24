@@ -15,9 +15,8 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
-// Can't use start because it will bug out OBS frontend thinking vcam is already activated.
-static const char *VIRTUAL_CAM_CONNECTED = "start";
-static const char *VIRTUAL_CAM_FAILED = "stop";
+static const char *VIRTUAL_CAM_CONNECTED = "activate"; // Indicates this plugin is now active.
+static const char *VIRTUAL_CAM_FAILED = "deactivate";
 
 static bool cmio_extension_supported()
 {

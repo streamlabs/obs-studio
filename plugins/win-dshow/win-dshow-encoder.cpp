@@ -53,7 +53,7 @@ static const char *GetC353EncoderName(void *)
 	return obs_module_text("Encoder.C353");
 }
 
-static inline void FindDevice(DeviceId &id, const wchar_t *name)
+static bool FindDevice(DeviceId &id, const wchar_t *name)
 {
 	vector<DeviceId> devices;
 	DShow::VideoEncoder::EnumEncoders(devices);
@@ -61,9 +61,10 @@ static inline void FindDevice(DeviceId &id, const wchar_t *name)
 	for (const DeviceId &device : devices) {
 		if (device.name.find(name) != string::npos) {
 			id = device;
-			break;
+			return true;
 		}
 	}
+	return false;
 }
 
 /*
@@ -81,7 +82,10 @@ inline bool DShowEncoder::Update(obs_data_t *settings)
 	DStr deviceName;
 	DeviceId id;
 
-	FindDevice(id, device);
+	if (!FindDevice(id, device) || id.name.empty()) {
+		blog(LOG_WARNING, "win-dshow-encoder: device '%ls' not found", device);
+		return false;
+	}
 
 	video_t *video = obs_encoder_video(context);
 	const struct video_output_info *voi = video_output_get_info(video);
@@ -102,13 +106,24 @@ inline bool DShowEncoder::Update(obs_data_t *settings)
 		width = 1280;
 		height = 720;
 	}
+	uint32_t fps_num;
+	uint32_t fps_den;
 
-	int keyint = keyint_sec * voi->fps_num / voi->fps_den;
+	if (voi) {
+		fps_num = voi->fps_num;
+		fps_den = voi->fps_den;
+	} else {
+		blog(LOG_ERROR, "win-dshow-encoder: video output info is null, using default 30 fps");
+		fps_num = 30;
+		fps_den = 1;
+	}
 
-	frameInterval = voi->fps_den * 10000000 / voi->fps_num;
+	int keyint = keyint_sec * fps_num / fps_den;
 
-	config.fpsNumerator = voi->fps_num;
-	config.fpsDenominator = voi->fps_den;
+	frameInterval = fps_den * 10000000LL / fps_num;
+
+	config.fpsNumerator = fps_num;
+	config.fpsDenominator = fps_den;
 	config.bitrate = bitrate;
 	config.keyframeInterval = keyint;
 	config.cx = width;

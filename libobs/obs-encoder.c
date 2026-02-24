@@ -262,12 +262,6 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	if (!create_mix)
 		return;
 
-	if (!current_mix->ovi) {
-		blog(LOG_ERROR,
-		     "maybe_set_up_gpu_rescale - no obs_video_info for current mix");
-		return;
-	}
-
 	struct obs_video_info *ovi = bzalloc(sizeof(struct obs_video_info));
 	*ovi = *current_mix->ovi;
 
@@ -275,8 +269,8 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	ovi->colorspace = space;
 	ovi->range = range;
 
-	ovi->output_height = encoder->scaled_height;
-	ovi->output_width = encoder->scaled_width;
+	ovi->output_height = height;
+	ovi->output_width = width;
 	ovi->scale_type = encoder->gpu_scale_type;
 
 	ovi->gpu_conversion = true;
@@ -595,7 +589,7 @@ static void intitialize_audio_encoder(struct obs_encoder *encoder)
 
 static THREAD_LOCAL bool can_reroute = false;
 
-static inline bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
+static bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 {
 	blog(LOG_INFO, "obs_encoder_initialize_internal - %s", obs_encoder_get_name(encoder));
 	if (!encoder->media) {
