@@ -45,7 +45,8 @@ struct obs_fader {
 	pthread_mutex_t mutex;
 	obs_fader_conversion_t def_to_db;
 	obs_fader_conversion_t db_to_def;
-	obs_source_t *source;
+	obs_weak_source_t *source;
+	signal_handler_t *handler;
 	enum obs_fader_type type;
 	float max_db;
 	float min_db;
@@ -63,7 +64,8 @@ struct meter_cb {
 
 struct obs_volmeter {
 	pthread_mutex_t mutex;
-	obs_source_t *source;
+	obs_weak_source_t *source;
+	signal_handler_t *handler;
 	enum obs_fader_type type;
 	float cur_db;
 
@@ -577,6 +579,8 @@ void obs_fader_destroy(obs_fader_t *fader)
 
 bool obs_fader_set_db(obs_fader_t *fader, const float db)
 {
+	obs_weak_source_t *weak_source = NULL;
+
 	if (!fader)
 		return false;
 
@@ -595,13 +599,21 @@ bool obs_fader_set_db(obs_fader_t *fader, const float db)
 	}
 
 	fader->ignore_next_signal = true;
-	obs_source_t *src = fader->source;
+	weak_source = fader->source;
+	if (weak_source)
+		obs_weak_source_addref(weak_source);
 	const float mul = db_to_mul(fader->cur_db);
 
 	pthread_mutex_unlock(&fader->mutex);
 
-	if (src)
-		obs_source_set_volume(src, mul);
+	if (weak_source) {
+		obs_source_t *src = obs_weak_source_get_source(weak_source);
+		if (src) {
+			obs_source_set_volume(src, mul);
+			obs_source_release(src);
+		}
+		obs_weak_source_release(weak_source);
+	}
 
 	return !clamped;
 }
@@ -660,6 +672,7 @@ float obs_fader_get_mul(obs_fader_t *fader)
 
 bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 {
+	obs_weak_source_t *weak_source;
 	signal_handler_t *sh;
 	float vol;
 
@@ -668,14 +681,24 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 
 	obs_fader_detach_source(fader);
 
+	weak_source = obs_source_get_weak_source(source);
+	if (!weak_source)
+		return false;
+
 	sh = obs_source_get_signal_handler(source);
-	signal_handler_connect(sh, "volume", fader_source_volume_changed, fader);
-	signal_handler_connect(sh, "destroy", fader_source_destroyed, fader);
+	if (!sh) {
+		obs_weak_source_release(weak_source);
+		return false;
+	}
+
+	signal_handler_connect_ref(sh, "volume", fader_source_volume_changed, fader);
+	signal_handler_connect_ref(sh, "destroy", fader_source_destroyed, fader);
 	vol = obs_source_get_volume(source);
 
 	pthread_mutex_lock(&fader->mutex);
 
-	fader->source = source;
+	fader->source = weak_source;
+	fader->handler = sh;
 	fader->cur_db = mul_to_db(vol);
 
 	pthread_mutex_unlock(&fader->mutex);
@@ -686,25 +709,29 @@ bool obs_fader_attach_source(obs_fader_t *fader, obs_source_t *source)
 void obs_fader_detach_source(obs_fader_t *fader)
 {
 	signal_handler_t *sh;
-	obs_source_t *source;
+	obs_weak_source_t *source;
 
 	if (!fader)
 		return;
 
 	pthread_mutex_lock(&fader->mutex);
 	source = fader->source;
+	sh = fader->handler;
 	fader->source = NULL;
+	fader->handler = NULL;
 	pthread_mutex_unlock(&fader->mutex);
 
-	if (!source)
-		return;
+	if (sh) {
+		signal_handler_disconnect(sh, "volume", fader_source_volume_changed, fader);
+		signal_handler_disconnect(sh, "destroy", fader_source_destroyed, fader);
+	}
 
-	sh = obs_source_get_signal_handler(source);
-	signal_handler_disconnect(sh, "volume", fader_source_volume_changed, fader);
-	signal_handler_disconnect(sh, "destroy", fader_source_destroyed, fader);
+	if (source)
+		obs_weak_source_release(source);
 }
 
-void obs_fader_add_callback(obs_fader_t *fader, obs_fader_changed_t callback, void *param)
+void obs_fader_add_callback(obs_fader_t *fader, obs_fader_changed_t callback,
+			    void *param)
 {
 	struct fader_cb cb = {callback, param};
 
@@ -764,6 +791,7 @@ void obs_volmeter_destroy(obs_volmeter_t *volmeter)
 
 bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 {
+	obs_weak_source_t *weak_source;
 	signal_handler_t *sh;
 	float vol;
 
@@ -772,17 +800,26 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 
 	obs_volmeter_detach_source(volmeter);
 
+	weak_source = obs_source_get_weak_source(source);
+	if (!weak_source)
+		return false;
+
 	sh = obs_source_get_signal_handler(source);
-	signal_handler_connect(sh, "volume", volmeter_source_volume_changed, volmeter);
-	signal_handler_connect(sh, "destroy", volmeter_source_destroyed, volmeter);
+	if (!sh) {
+		obs_weak_source_release(weak_source);
+		return false;
+	}
+
+	signal_handler_connect_ref(sh, "volume", volmeter_source_volume_changed, volmeter);
+	signal_handler_connect_ref(sh, "destroy", volmeter_source_destroyed, volmeter);
+	signal_handler_connect_ref(sh, "remove", volmeter_source_destroyed, volmeter);
 	obs_source_add_audio_capture_callback(source, volmeter_source_data_received, volmeter);
-	signal_handler_connect(sh, "remove", volmeter_source_destroyed,
-			       volmeter);
 	vol = obs_source_get_volume(source);
 
 	pthread_mutex_lock(&volmeter->mutex);
 
-	volmeter->source = source;
+	volmeter->source = weak_source;
+	volmeter->handler = sh;
 	volmeter->cur_db = mul_to_db(vol);
 
 	pthread_mutex_unlock(&volmeter->mutex);
@@ -793,24 +830,35 @@ bool obs_volmeter_attach_source(obs_volmeter_t *volmeter, obs_source_t *source)
 void obs_volmeter_detach_source(obs_volmeter_t *volmeter)
 {
 	signal_handler_t *sh;
-	obs_source_t *source;
+	obs_weak_source_t *source;
+	obs_source_t *src = NULL;
 
 	if (!volmeter)
 		return;
 
 	pthread_mutex_lock(&volmeter->mutex);
 	source = volmeter->source;
+	sh = volmeter->handler;
 	volmeter->source = NULL;
+	volmeter->handler = NULL;
 	pthread_mutex_unlock(&volmeter->mutex);
 
-	if (!source)
-		return;
+	if (source)
+		src = obs_weak_source_get_source(source);
 
-	sh = obs_source_get_signal_handler(source);
-	signal_handler_disconnect(sh, "volume", volmeter_source_volume_changed, volmeter);
-	signal_handler_disconnect(sh, "destroy", volmeter_source_destroyed, volmeter);
-	obs_source_remove_audio_capture_callback(source, volmeter_source_data_received, volmeter);
-	signal_handler_disconnect(sh, "remove", volmeter_source_destroyed, volmeter);
+	if (sh) {
+		signal_handler_disconnect(sh, "volume", volmeter_source_volume_changed, volmeter);
+		signal_handler_disconnect(sh, "destroy", volmeter_source_destroyed, volmeter);
+		signal_handler_disconnect(sh, "remove", volmeter_source_destroyed, volmeter);
+	}
+
+	if (src) {
+		obs_source_remove_audio_capture_callback(src, volmeter_source_data_received, volmeter);
+		obs_source_release(src);
+	}
+
+	if (source)
+		obs_weak_source_release(source);
 }
 
 void obs_volmeter_set_peak_meter_type(obs_volmeter_t *volmeter, enum obs_peak_meter_type peak_meter_type)
@@ -822,14 +870,32 @@ void obs_volmeter_set_peak_meter_type(obs_volmeter_t *volmeter, enum obs_peak_me
 
 int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 {
+	obs_weak_source_t *weak_source = NULL;
+	obs_source_t *source = NULL;
 	int source_nr_audio_channels;
 	int obs_nr_audio_channels;
 
-	if (volmeter->source) {
-		source_nr_audio_channels = get_audio_channels(volmeter->source->sample_info.speakers);
-	} else {
+	if (!volmeter)
+		return 0;
+
+	pthread_mutex_lock(&volmeter->mutex);
+	weak_source = volmeter->source;
+	if (weak_source)
+		obs_weak_source_addref(weak_source);
+	pthread_mutex_unlock(&volmeter->mutex);
+
+	if (weak_source)
+		source = obs_weak_source_get_source(weak_source);
+
+	if (source)
+		source_nr_audio_channels = get_audio_channels(source->sample_info.speakers);
+	else
 		source_nr_audio_channels = 0;
-	}
+
+	if (source)
+		obs_source_release(source);
+	if (weak_source)
+		obs_weak_source_release(weak_source);
 
 	struct obs_audio_info audio_info;
 	if (obs_get_audio_info(&audio_info)) {
