@@ -960,18 +960,12 @@ static void nvenc_destroy(void *data)
 {
 	struct nvenc_data *enc = data;
 
-	if (enc->encode_started) {
+	if (enc->session && enc->encode_started) {
 		NV_ENC_PIC_PARAMS params = {NV_ENC_PIC_PARAMS_VER};
 		params.encodePicFlags = NV_ENC_PIC_FLAG_EOS;
 		nv.nvEncEncodePicture(enc->session, &params);
 		get_encoded_packet(enc, true);
 	}
-
-	for (size_t i = 0; i < enc->bitstreams.num; i++) {
-		nv_bitstream_free(enc, &enc->bitstreams.array[i]);
-	}
-	if (enc->session)
-		nv.nvEncDestroyEncoder(enc->session);
 
 #ifdef _WIN32
 	d3d11_free_textures(enc);
@@ -980,6 +974,16 @@ static void nvenc_destroy(void *data)
 	cuda_opengl_free(enc);
 #endif
 	cuda_free_surfaces(enc);
+
+	for (size_t i = 0; i < enc->bitstreams.num; i++) {
+		nv_bitstream_free(enc, &enc->bitstreams.array[i]);
+	}
+
+	if (enc->session) {
+		nv.nvEncDestroyEncoder(enc->session);
+		enc->session = NULL;
+	}
+
 	cuda_ctx_free(enc);
 
 	bfree(enc->header);
@@ -1228,6 +1232,11 @@ bool nvenc_encode_base(struct nvenc_data *enc, struct nv_bitstream *bs, void *pi
 	/* Add ROI map if enabled */
 	if (obs_encoder_has_roi(enc->encoder))
 		add_roi(enc, &params);
+
+	if (!enc->session) {
+		NV_FAIL("nvenc session is not available");
+		return false;
+	}
 
 	NVENCSTATUS err = nv.nvEncEncodePicture(enc->session, &params);
 	if (err != NV_ENC_SUCCESS && err != NV_ENC_ERR_NEED_MORE_INPUT) {

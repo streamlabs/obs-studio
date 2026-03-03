@@ -187,11 +187,15 @@ bool cuda_init_surfaces(struct nvenc_data *enc)
 static void cuda_surface_free(struct nvenc_data *enc, struct nv_cuda_surface *nvsurf)
 {
 	if (nvsurf->res) {
-		if (nvsurf->mapped_res) {
+		if (enc->session && nvsurf->mapped_res) {
 			nv.nvEncUnmapInputResource(enc->session, nvsurf->mapped_res);
+			nvsurf->mapped_res = NULL;
 		}
-		nv.nvEncUnregisterResource(enc->session, nvsurf->res);
+		if (enc->session)
+			nv.nvEncUnregisterResource(enc->session, nvsurf->res);
+		nvsurf->res = NULL;
 		cu->cuArrayDestroy(nvsurf->tex);
+		nvsurf->tex = NULL;
 	}
 }
 
