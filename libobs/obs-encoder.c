@@ -693,6 +693,10 @@ void obs_encoder_shutdown(obs_encoder_t *encoder)
 	if (encoder->context.data) {
 		encoder->info.destroy(encoder->context.data);
 		encoder->context.data = NULL;
+		for (size_t i = 0; i < encoder->paired_encoders.num; i++) {
+			obs_weak_encoder_release(
+				encoder->paired_encoders.array[i]);
+		}
 		encoder->first_received = false;
 		encoder->offset_usec = 0;
 		encoder->start_ts = 0;
