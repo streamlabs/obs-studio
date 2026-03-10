@@ -44,15 +44,12 @@ static void GetWASAPIAudioDevices_(vector<AudioDeviceInfo> &devices, bool input,
 	UINT count;
 	HRESULT res;
 
-	res = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL,
-			       __uuidof(IMMDeviceEnumerator),
+	res = CoCreateInstance(__uuidof(MMDeviceEnumerator), NULL, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
 			       (void **)enumerator.Assign());
 	if (FAILED(res))
 		throw HRError("Failed to create enumerator", res);
 
-	res = enumerator->EnumAudioEndpoints(input ? eCapture : eRender,
-					     DEVICE_STATE_ACTIVE,
-					     collection.Assign());
+	res = enumerator->EnumAudioEndpoints(input ? eCapture : eRender, DEVICE_STATE_ACTIVE, collection.Assign());
 	if (FAILED(res))
 		throw HRError("Failed to enumerate devices", res);
 
@@ -101,7 +98,6 @@ void GetWASAPIAudioDevices(vector<AudioDeviceInfo> &devices, bool input,
 		GetWASAPIAudioDevices_(devices, input, searchbyName);
 
 	} catch (HRError &error) {
-		blog(LOG_WARNING, "[GetWASAPIAudioDevices] %s: %lX", error.str,
-		     error.hr);
+		blog(LOG_WARNING, "[GetWASAPIAudioDevices] %s: %lX", error.str, error.hr);
 	}
 }

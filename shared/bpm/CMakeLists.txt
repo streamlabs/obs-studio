@@ -7,16 +7,20 @@ cmake_minimum_required(VERSION 3.28...3.30)
 add_library(bpm OBJECT)
 add_library(OBS::bpm ALIAS bpm)
 
-target_sources(
+target_sources(bpm PRIVATE bpm.c bpm-internal.h PUBLIC bpm.h)
+
+target_include_directories(
   bpm
-  PRIVATE bpm.c bpm-internal.h
-  PUBLIC bpm.h)
-
-target_include_directories(bpm PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/libobs"
-                                      "${PROJECT_SOURCE_DIR}/deps/libcaption")
-
+  PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${PROJECT_SOURCE_DIR}/libobs"
+    "${PROJECT_SOURCE_DIR}/deps/libcaption"
+    "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/config>"
+)
 if(OS_WINDOWS)
   target_include_directories(bpm PUBLIC "${PROJECT_SOURCE_DIR}/deps/w32-pthreads")
 endif()
+
+target_link_libraries(bpm PUBLIC OBS::caption)
 
 set_target_properties(bpm PROPERTIES FOLDER deps POSITION_INDEPENDENT_CODE TRUE)

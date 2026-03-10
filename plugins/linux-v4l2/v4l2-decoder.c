@@ -17,11 +17,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <obs-module.h>
 #include <linux/videodev2.h>
+#include <libavutil/error.h>
 
 #include "v4l2-decoder.h"
 
-#define blog(level, msg, ...) \
-	blog(level, "v4l2-input: decoder: " msg, ##__VA_ARGS__)
+#define blog(level, msg, ...) blog(level, "v4l2-input: decoder: " msg, ##__VA_ARGS__)
 
 int v4l2_init_decoder(struct v4l2_decoder *decoder, int pixfmt)
 {
@@ -85,17 +85,20 @@ void v4l2_destroy_decoder(struct v4l2_decoder *decoder)
 	}
 }
 
-int v4l2_decode_frame(struct obs_source_frame *out, uint8_t *data,
-		      size_t length, struct v4l2_decoder *decoder)
+int v4l2_decode_frame(struct obs_source_frame *out, uint8_t *data, size_t length, struct v4l2_decoder *decoder)
 {
+	int r;
 	decoder->packet->data = data;
 	decoder->packet->size = length;
 	if (avcodec_send_packet(decoder->context, decoder->packet) < 0) {
 		blog(LOG_ERROR, "failed to send frame to codec");
 		return -1;
 	}
-
-	if (avcodec_receive_frame(decoder->context, decoder->frame) < 0) {
+	r = avcodec_receive_frame(decoder->context, decoder->frame);
+	if (r == AVERROR(EAGAIN)) {
+		blog(LOG_DEBUG, "failed to receive frame in this state, try to send new frame to codec");
+		return 0;
+	} else if (r < 0) {
 		blog(LOG_ERROR, "failed to receive frame from codec");
 		return -1;
 	}
