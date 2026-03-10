@@ -89,8 +89,8 @@ static int compute_hevc_keyframe_priority(const uint8_t *nal_start, bool *is_key
 	return priority > new_priority ? priority : new_priority;
 }
 
-static void serialize_hevc_data(struct serializer *s, const uint8_t *data,
-				size_t size, bool *is_keyframe, int *priority)
+static void serialize_hevc_data(struct serializer *s, const uint8_t *data, size_t size, bool *is_keyframe,
+				int *priority)
 {
 	const uint8_t *const end = data + size;
 	const uint8_t *nal_start = obs_nal_find_startcode(data, end);
@@ -101,11 +101,9 @@ static void serialize_hevc_data(struct serializer *s, const uint8_t *data,
 		if (nal_start == end)
 			break;
 
-		*priority = compute_hevc_keyframe_priority(
-			nal_start, is_keyframe, *priority);
+		*priority = compute_hevc_keyframe_priority(nal_start, is_keyframe, *priority);
 
-		const uint8_t *const nal_end =
-			obs_nal_find_startcode(nal_start, end);
+		const uint8_t *const nal_end = obs_nal_find_startcode(nal_start, end);
 		const size_t nal_size = nal_end - nal_start;
 		s_wb32(s, (uint32_t)nal_size);
 		s_write(s, nal_start, nal_size);
@@ -113,8 +111,7 @@ static void serialize_hevc_data(struct serializer *s, const uint8_t *data,
 	}
 }
 
-void obs_parse_hevc_packet(struct encoder_packet *hevc_packet,
-			   const struct encoder_packet *src)
+void obs_parse_hevc_packet(struct encoder_packet *hevc_packet, const struct encoder_packet *src)
 {
 	struct array_output_data output;
 	struct serializer s;
@@ -124,8 +121,7 @@ void obs_parse_hevc_packet(struct encoder_packet *hevc_packet,
 	*hevc_packet = *src;
 
 	serialize(&s, &ref, sizeof(ref));
-	serialize_hevc_data(&s, src->data, src->size, &hevc_packet->keyframe,
-			    &hevc_packet->priority);
+	serialize_hevc_data(&s, src->data, src->size, &hevc_packet->keyframe, &hevc_packet->priority);
 
 	hevc_packet->data = output.bytes.array + sizeof(ref);
 	hevc_packet->size = output.bytes.num - sizeof(ref);
@@ -147,8 +143,7 @@ int obs_parse_hevc_packet_priority(const struct encoder_packet *packet)
 			break;
 
 		bool unused;
-		priority = compute_hevc_keyframe_priority(nal_start, &unused,
-							  priority);
+		priority = compute_hevc_keyframe_priority(nal_start, &unused, priority);
 
 		nal_start = obs_nal_find_startcode(nal_start, end);
 	}
@@ -156,11 +151,8 @@ int obs_parse_hevc_packet_priority(const struct encoder_packet *packet)
 	return priority;
 }
 
-void obs_extract_hevc_headers(const uint8_t *packet, size_t size,
-			      uint8_t **new_packet_data,
-			      size_t *new_packet_size, uint8_t **header_data,
-			      size_t *header_size, uint8_t **sei_data,
-			      size_t *sei_size)
+void obs_extract_hevc_headers(const uint8_t *packet, size_t size, uint8_t **new_packet_data, size_t *new_packet_size,
+			      uint8_t **header_data, size_t *header_size, uint8_t **sei_data, size_t *sei_size)
 {
 	DARRAY(uint8_t) new_packet;
 	DARRAY(uint8_t) header;
@@ -189,18 +181,13 @@ void obs_extract_hevc_headers(const uint8_t *packet, size_t size,
 		if (!nal_end)
 			nal_end = end;
 
-		if (type == OBS_HEVC_NAL_VPS || type == OBS_HEVC_NAL_SPS ||
-		    type == OBS_HEVC_NAL_PPS) {
-			da_push_back_array(header, nal_codestart,
-					   nal_end - nal_codestart);
-		} else if (type == OBS_HEVC_NAL_SEI_PREFIX ||
-			   type == OBS_HEVC_NAL_SEI_SUFFIX) {
-			da_push_back_array(sei, nal_codestart,
-					   nal_end - nal_codestart);
+		if (type == OBS_HEVC_NAL_VPS || type == OBS_HEVC_NAL_SPS || type == OBS_HEVC_NAL_PPS) {
+			da_push_back_array(header, nal_codestart, nal_end - nal_codestart);
+		} else if (type == OBS_HEVC_NAL_SEI_PREFIX || type == OBS_HEVC_NAL_SEI_SUFFIX) {
+			da_push_back_array(sei, nal_codestart, nal_end - nal_codestart);
 
 		} else {
-			da_push_back_array(new_packet, nal_codestart,
-					   nal_end - nal_codestart);
+			da_push_back_array(new_packet, nal_codestart, nal_end - nal_codestart);
 		}
 
 		nal_start = nal_end;

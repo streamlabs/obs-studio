@@ -15,8 +15,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
-// Can't use start because it will bug out OBS frontend thinking vcam is already activated.
-static const char *VIRTUAL_CAM_CONNECTED = "reconnect_success";
+static const char *VIRTUAL_CAM_CONNECTED = "activate"; // Indicates this plugin is now active.
 static const char *VIRTUAL_CAM_FAILED = "deactivate";
 
 static bool cmio_extension_supported()
@@ -405,8 +404,10 @@ static bool virtualcam_output_start(void *data)
         CMIOObjectGetPropertyData(kCMIOObjectSystemObject, &address, 0, NULL, size, &used, device_data);
 
         vcam->deviceID = 0;
-        NSString *OBSVirtualCamUUID = [[NSBundle bundleWithIdentifier:@"com.streamlabs.slobs.mac-virtualcam"]
+        NSString *OBSVirtualCamUUIDString = [[NSBundle bundleWithIdentifier:@"com.streamlabs.slobs.mac-virtualcam"]
             objectForInfoDictionaryKey:@"OBSCameraDeviceUUID"];
+        CFUUIDRef OBSVirtualCamUUID =
+            CFUUIDCreateFromString(kCFAllocatorDefault, (CFStringRef) OBSVirtualCamUUIDString);
 
         size_t num_elements = size / sizeof(CMIOObjectID);
         for (size_t i = 0; i < num_elements; i++) {
@@ -418,15 +419,19 @@ static bool virtualcam_output_start(void *data)
             CMIOObjectGetPropertyDataSize(cmioDevice, &address, 0, NULL, &device_name_size);
             CFStringRef uid;
             CMIOObjectGetPropertyData(cmioDevice, &address, 0, NULL, device_name_size, &used, &uid);
-            const char *uid_string = CFStringGetCStringPtr(uid, kCFStringEncodingUTF8);
-            if (uid_string && strcmp(uid_string, OBSVirtualCamUUID.UTF8String) == 0) {
+            CFUUIDRef deviceUUID = CFUUIDCreateFromString(kCFAllocatorDefault, uid);
+
+            if (CFEqual(OBSVirtualCamUUID, deviceUUID)) {
                 vcam->deviceID = cmioDevice;
                 CFRelease(uid);
+                CFRelease(deviceUUID);
                 break;
             } else {
                 CFRelease(uid);
+                CFRelease(deviceUUID);
             }
         }
+        CFRelease(OBSVirtualCamUUID);
 
         if (!vcam->deviceID) {
             obs_output_set_last_error(vcam->output, obs_module_text("Error.SystemExtension.CameraUnavailable"));

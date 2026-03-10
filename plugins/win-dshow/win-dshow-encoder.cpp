@@ -2,7 +2,11 @@
 #include <obs-avc.h>
 #include <util/darray.h>
 #include <util/dstr.hpp>
+#ifdef OBS_LEGACY
 #include "libdshowcapture/dshowcapture.hpp"
+#else
+#include <dshowcapture.hpp>
+#endif
 
 using namespace DShow;
 using namespace std;
@@ -21,9 +25,7 @@ struct DShowEncoder {
 	DARRAY(uint8_t) firstPacket;
 	DARRAY(uint8_t) header;
 
-	inline DShowEncoder(obs_encoder_t *context_, const wchar_t *device_)
-		: context(context_),
-		  device(device_)
+	inline DShowEncoder(obs_encoder_t *context_, const wchar_t *device_) : context(context_), device(device_)
 	{
 		da_init(firstPacket);
 		da_init(header);
@@ -38,9 +40,7 @@ struct DShowEncoder {
 	inline void ParseFirstPacket(const uint8_t *data, size_t size);
 
 	inline bool Update(obs_data_t *settings);
-	inline bool Encode(struct encoder_frame *frame,
-			   struct encoder_packet *packet,
-			   bool *received_packet);
+	inline bool Encode(struct encoder_frame *frame, struct encoder_packet *packet, bool *received_packet);
 };
 
 static const char *GetC985EncoderName(void *)
@@ -53,7 +53,7 @@ static const char *GetC353EncoderName(void *)
 	return obs_module_text("Encoder.C353");
 }
 
-static inline void FindDevice(DeviceId &id, const wchar_t *name)
+static bool FindDevice(DeviceId &id, const wchar_t *name)
 {
 	vector<DeviceId> devices;
 	DShow::VideoEncoder::EnumEncoders(devices);
@@ -61,9 +61,10 @@ static inline void FindDevice(DeviceId &id, const wchar_t *name)
 	for (const DeviceId &device : devices) {
 		if (device.name.find(name) != string::npos) {
 			id = device;
-			break;
+			return true;
 		}
 	}
+	return false;
 }
 
 /*
@@ -81,7 +82,10 @@ inline bool DShowEncoder::Update(obs_data_t *settings)
 	DStr deviceName;
 	DeviceId id;
 
-	FindDevice(id, device);
+	if (!FindDevice(id, device) || id.name.empty()) {
+		blog(LOG_WARNING, "win-dshow-encoder: device '%ls' not found", device);
+		return false;
+	}
 
 	video_t *video = obs_encoder_video(context);
 	const struct video_output_info *voi = video_output_get_info(video);
@@ -102,13 +106,24 @@ inline bool DShowEncoder::Update(obs_data_t *settings)
 		width = 1280;
 		height = 720;
 	}
+	uint32_t fps_num;
+	uint32_t fps_den;
 
-	int keyint = keyint_sec * voi->fps_num / voi->fps_den;
+	if (voi) {
+		fps_num = voi->fps_num;
+		fps_den = voi->fps_den;
+	} else {
+		blog(LOG_ERROR, "win-dshow-encoder: video output info is null, using default 30 fps");
+		fps_num = 30;
+		fps_den = 1;
+	}
 
-	frameInterval = voi->fps_den * 10000000 / voi->fps_num;
+	int keyint = keyint_sec * fps_num / fps_den;
 
-	config.fpsNumerator = voi->fps_num;
-	config.fpsDenominator = voi->fps_den;
+	frameInterval = fps_den * 10000000LL / fps_num;
+
+	config.fpsNumerator = fps_num;
+	config.fpsDenominator = fps_den;
 	config.bitrate = bitrate;
 	config.keyframeInterval = keyint;
 	config.cx = width;
@@ -131,8 +146,7 @@ inline bool DShowEncoder::Update(obs_data_t *settings)
 	     "\theight:  %d\n"
 	     "\tfps_num: %d\n"
 	     "\tfps_den: %d",
-	     deviceName->array, (int)width, (int)height, (int)voi->fps_num,
-	     (int)voi->fps_den);
+	     deviceName->array, (int)width, (int)height, (int)voi->fps_num, (int)voi->fps_den);
 
 	return encoder.SetConfig(config);
 }
@@ -147,9 +161,7 @@ static bool UpdateDShowEncoder(void *data, obs_data_t *settings)
 	return true;
 }
 
-static inline void *CreateDShowEncoder(obs_data_t *settings,
-				       obs_encoder_t *context,
-				       const wchar_t *device)
+static inline void *CreateDShowEncoder(obs_data_t *settings, obs_encoder_t *context, const wchar_t *device)
 {
 	DShowEncoder *encoder = nullptr;
 
@@ -158,8 +170,7 @@ static inline void *CreateDShowEncoder(obs_data_t *settings,
 		UpdateDShowEncoder(encoder, settings);
 
 	} catch (const char *error) {
-		blog(LOG_ERROR, "Could not create DirectShow encoder '%s': %s",
-		     obs_encoder_get_name(context), error);
+		blog(LOG_ERROR, "Could not create DirectShow encoder '%s': %s", obs_encoder_get_name(context), error);
 	}
 
 	return encoder;
@@ -206,21 +217,17 @@ inline void DShowEncoder::ParseFirstPacket(const uint8_t *data, size_t size)
 			nal_end = end;
 
 		if (type == OBS_NAL_SPS || type == OBS_NAL_PPS) {
-			da_push_back_array(header, nal_codestart,
-					   nal_end - nal_codestart);
+			da_push_back_array(header, nal_codestart, nal_end - nal_codestart);
 
 		} else {
-			da_push_back_array(firstPacket, nal_codestart,
-					   nal_end - nal_codestart);
+			da_push_back_array(firstPacket, nal_codestart, nal_end - nal_codestart);
 		}
 
 		nal_start = nal_end;
 	}
 }
 
-inline bool DShowEncoder::Encode(struct encoder_frame *frame,
-				 struct encoder_packet *packet,
-				 bool *received_packet)
+inline bool DShowEncoder::Encode(struct encoder_frame *frame, struct encoder_packet *packet, bool *received_packet)
 {
 	unsigned char *frame_data[DSHOW_MAX_PLANES] = {};
 	size_t frame_sizes[DSHOW_MAX_PLANES] = {};
@@ -239,9 +246,8 @@ inline bool DShowEncoder::Encode(struct encoder_frame *frame,
 
 	long long actualPTS = frame->pts * frameInterval;
 
-	bool success = encoder.Encode(frame_data, frame_sizes, actualPTS,
-				      actualPTS + frameInterval, dshowPacket,
-				      new_packet);
+	bool success =
+		encoder.Encode(frame_data, frame_sizes, actualPTS, actualPTS + frameInterval, dshowPacket, new_packet);
 	if (!success)
 		return false;
 
@@ -267,11 +273,9 @@ inline bool DShowEncoder::Encode(struct encoder_frame *frame,
 	return true;
 }
 
-static bool DShowEncode(void *data, struct encoder_frame *frame,
-			struct encoder_packet *packet, bool *received_packet)
+static bool DShowEncode(void *data, struct encoder_frame *frame, struct encoder_packet *packet, bool *received_packet)
 {
-	return reinterpret_cast<DShowEncoder *>(data)->Encode(frame, packet,
-							      received_packet);
+	return reinterpret_cast<DShowEncoder *>(data)->Encode(frame, packet, received_packet);
 }
 
 static bool GetDShowExtraData(void *data, uint8_t **extra_data, size_t *size)
@@ -286,8 +290,7 @@ static bool GetDShowExtraData(void *data, uint8_t **extra_data, size_t *size)
 
 static inline bool ValidResolution(uint32_t width, uint32_t height)
 {
-	return (width == 1280 && height == 720) ||
-	       (width == 1024 && height == 768);
+	return (width == 1280 && height == 720) || (width == 1024 && height == 768);
 }
 
 static void GetDShowVideoInfo(void *data, struct video_scale_info *info)
@@ -295,8 +298,7 @@ static void GetDShowVideoInfo(void *data, struct video_scale_info *info)
 	DShowEncoder *encoder = reinterpret_cast<DShowEncoder *>(data);
 	encoder->format = VIDEO_FORMAT_I420;
 
-	if (info->format == VIDEO_FORMAT_I420 &&
-	    ValidResolution(info->width, info->height))
+	if (info->format == VIDEO_FORMAT_I420 && ValidResolution(info->width, info->height))
 		return;
 
 	info->format = VIDEO_FORMAT_I420;
@@ -325,8 +327,7 @@ static obs_properties_t *GetDShowEncoderProperties(void *data)
 {
 	obs_properties_t *ppts = obs_properties_create();
 
-	obs_properties_add_int(ppts, "bitrate", obs_module_text("Bitrate"),
-			       1000, 60000, 1);
+	obs_properties_add_int(ppts, "bitrate", obs_module_text("Bitrate"), 1000, 60000, 1);
 
 	UNUSED_PARAMETER(data);
 	return ppts;

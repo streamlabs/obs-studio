@@ -24,12 +24,22 @@ function(_check_dependencies_macos)
   set(webrtc_filename "webrtc-VERSION-osx-ARCH.zip")
   set(webrtc_destination "webrtc-VERSION-osx-ARCH")
 
-  set(dependencies_list prebuilt qt6 cef libmediasoupclient webrtc)
+  set(
+    dependencies_list
+    prebuilt
+    qt6
+    cef
+    libmediasoupclient
+    webrtc
+  )
 
   _check_dependencies()
 
-  execute_process(COMMAND "xattr" -r -d com.apple.quarantine "${dependencies_dir}/${destination}"
-                  RESULT_VARIABLE result COMMAND_ERROR_IS_FATAL ANY)
+  execute_process(
+    COMMAND "xattr" -r -d com.apple.quarantine "${dependencies_dir}/${destination}"
+    RESULT_VARIABLE result
+    COMMAND_ERROR_IS_FATAL ANY
+  )
 endfunction()
 
 _check_dependencies_macos()

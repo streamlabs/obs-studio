@@ -16,9 +16,9 @@
     "sources": [
         {
             "type": "git",
-            "url": "https://github.com/ARMmbed/mbedtls.git",
-            "commit": "1873d3bfc2da771672bd8e7e8f41f57e0af77f33",
-            "tag": "v3.4.0"
+            "url": "https://github.com/Mbed-TLS/mbedtls.git",
+            "commit": "c765c831e5c2a0971410692f92f7a81d6ec65ec2",
+            "tag": "v3.6.4"
         }
     ]
 }

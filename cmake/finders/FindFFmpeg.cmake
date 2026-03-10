@@ -93,23 +93,20 @@ The following cache variables may also be set:
 
 #]=======================================================================]
 
-# cmake-format: off
-# cmake-lint: disable=C0103
-# cmake-lint: disable=C0307
-# cmake-format: on
-
 include(FindPackageHandleStandardArgs)
 
-set(_DEFAULT_COMPONENTS
-    avcodec
-    avdevice
-    avformat
-    avfilter
-    avresample
-    avutil
-    postproc
-    swscale
-    swresample)
+set(
+  _DEFAULT_COMPONENTS
+  avcodec
+  avdevice
+  avformat
+  avfilter
+  avresample
+  avutil
+  postproc
+  swscale
+  swresample
+)
 
 set(component_avcodec libavcodec avcodec avcodec.h)
 set(component_avdevice libavdevice avdevice avdevice.h)
@@ -143,7 +140,8 @@ macro(FFmpeg_find_component component)
     NAMES ${component_libname}/${component_header} ${component_libname}/version.h
     HINTS ${PC_FFmpeg_${component}_INCLUDE_DIRS}
     PATHS /usr/include /usr/local/include
-    DOC "FFmpeg component ${component_name} include directory")
+    DOC "FFmpeg component ${component_name} include directory"
+  )
 
   ffmpeg_check_version()
 
@@ -151,7 +149,8 @@ macro(FFmpeg_find_component component)
     find_library(
       FFmpeg_${component}_IMPLIB
       NAMES ${component_libname} ${component_name}
-      DOC "FFmpeg component ${component_name} import library location")
+      DOC "FFmpeg component ${component_name} import library location"
+    )
 
     ffmpeg_find_dll()
   else()
@@ -160,7 +159,8 @@ macro(FFmpeg_find_component component)
       NAMES ${component_libname} ${component_name}
       HINTS ${PC_FFmpeg_${component}_LIBRARY_DIRS}
       PATHS /usr/lib /usr/local/lib
-      DOC "FFmpeg component ${component_name} location")
+      DOC "FFmpeg component ${component_name} location"
+    )
   endif()
 
   if(FFmpeg_${component}_LIBRARY AND FFmpeg_${component}_INCLUDE_DIR)
@@ -183,19 +183,15 @@ macro(FFmpeg_find_dll)
     FFmpeg_${component}_LIBRARY
     NAMES ${component_name}-${_dll_version}.dll
     HINTS ${_implib_path} ${_bin_path}
-    DOC "FFmpeg component ${component_name} DLL location")
+    DOC "FFmpeg component ${component_name} DLL location"
+  )
 
   if(NOT FFmpeg_${component}_LIBRARY)
     set(FFmpeg_${component}_LIBRARY "${FFmpeg_${component}_IMPLIB}")
   endif()
 
   if(NOT FFmpeg_FFMPEG_EXECUTABLE)
-    find_program(
-      FFmpeg_FFMPEG_EXECUTABLE
-      NAMES ffmpeg.exe
-      HINTS ${_implib_path} ${_bin_path}
-      DOC "Path to ffmpeg.exe"
-    )
+    find_program(FFmpeg_FFMPEG_EXECUTABLE NAMES ffmpeg.exe HINTS ${_implib_path} ${_bin_path} DOC "Path to ffmpeg.exe")
   endif()
 
   if(NOT FFmpeg_FFPROBE_EXECUTABLE)
@@ -218,17 +214,29 @@ macro(FFmpeg_check_version)
     set(FFmpeg_${component}_VERSION ${PC_FFmpeg_${component}_VERSION})
   elseif(EXISTS "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version.h")
     if(EXISTS "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version_major.h")
-      file(STRINGS "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version_major.h" _version_string
-           REGEX "^.*VERSION_MAJOR[ \t]+[0-9]+[ \t]*$")
+      file(
+        STRINGS
+        "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version_major.h"
+        _version_string
+        REGEX "^.*VERSION_MAJOR[ \t]+[0-9]+[ \t]*$"
+      )
       string(REGEX REPLACE ".*VERSION_MAJOR[ \t]+([0-9]+).*" "\\1" _version_major "${_version_string}")
 
-      file(STRINGS "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version.h" _version_string
-           REGEX "^.*VERSION_(MINOR|MICRO)[ \t]+[0-9]+[ \t]*$")
+      file(
+        STRINGS
+        "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version.h"
+        _version_string
+        REGEX "^.*VERSION_(MINOR|MICRO)[ \t]+[0-9]+[ \t]*$"
+      )
       string(REGEX REPLACE ".*VERSION_MINOR[ \t]+([0-9]+).*" "\\1" _version_minor "${_version_string}")
       string(REGEX REPLACE ".*VERSION_MICRO[ \t]+([0-9]+).*" "\\1" _version_patch "${_version_string}")
     else()
-      file(STRINGS "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version.h" _version_string
-           REGEX "^.*VERSION_(MAJOR|MINOR|MICRO)[ \t]+[0-9]+[ \t]*$")
+      file(
+        STRINGS
+        "${FFmpeg_${component}_INCLUDE_DIR}/${component_libname}/version.h"
+        _version_string
+        REGEX "^.*VERSION_(MAJOR|MINOR|MICRO)[ \t]+[0-9]+[ \t]*$"
+      )
       string(REGEX REPLACE ".*VERSION_MAJOR[ \t]+([0-9]+).*" "\\1" _version_major "${_version_string}")
       string(REGEX REPLACE ".*VERSION_MINOR[ \t]+([0-9]+).*" "\\1" _version_minor "${_version_string}")
       string(REGEX REPLACE ".*VERSION_MICRO[ \t]+([0-9]+).*" "\\1" _version_patch "${_version_string}")
@@ -252,7 +260,8 @@ macro(FFmpeg_set_soname)
     execute_process(
       COMMAND sh -c "otool -D '${FFmpeg_${component}_LIBRARY}' | grep -v '${FFmpeg_${component}_LIBRARY}'"
       OUTPUT_VARIABLE _output
-      RESULT_VARIABLE _result)
+      RESULT_VARIABLE _result
+    )
 
     if(_result EQUAL 0 AND _output MATCHES "^@rpath/")
       set_property(TARGET FFmpeg::${component} PROPERTY IMPORTED_SONAME "${_output}")
@@ -261,7 +270,8 @@ macro(FFmpeg_set_soname)
     execute_process(
       COMMAND sh -c "objdump -p '${FFmpeg_${component}_LIBRARY}' | grep SONAME"
       OUTPUT_VARIABLE _output
-      RESULT_VARIABLE _result)
+      RESULT_VARIABLE _result
+    )
 
     if(_result EQUAL 0)
       string(REGEX REPLACE "[ \t]+SONAME[ \t]+([^ \t]+)" "\\1" _soname "${_output}")
@@ -295,43 +305,33 @@ endif()
 
 if(NOT WIN32)
   if(NOT FFmpeg_FFMPEG_EXECUTABLE)
-    find_program(
-      FFmpeg_FFMPEG_EXECUTABLE
-      NAMES ffmpeg
-      DOC "Path to ffmpeg (non-Windows fallback)"
-    )
+    find_program(FFmpeg_FFMPEG_EXECUTABLE NAMES ffmpeg DOC "Path to ffmpeg (non-Windows fallback)")
   endif()
 
   if(NOT FFmpeg_FFPROBE_EXECUTABLE)
-    find_program(
-      FFmpeg_FFPROBE_EXECUTABLE
-      NAMES ffprobe
-      DOC "Path to ffprobe (non-Windows fallback)"
-    )
+    find_program(FFmpeg_FFPROBE_EXECUTABLE NAMES ffprobe DOC "Path to ffprobe (non-Windows fallback)")
   endif()
 endif()
 
 if(FFmpeg_FFMPEG_EXECUTABLE AND NOT TARGET FFmpeg::ffmpegexe)
   add_executable(FFmpeg::ffmpegexe IMPORTED)
-  set_target_properties(FFmpeg::ffmpegexe
-    PROPERTIES
-      IMPORTED_LOCATION "${FFmpeg_FFMPEG_EXECUTABLE}"
-  )
+  set_target_properties(FFmpeg::ffmpegexe PROPERTIES IMPORTED_LOCATION "${FFmpeg_FFMPEG_EXECUTABLE}")
 endif()
 
 if(FFmpeg_FFPROBE_EXECUTABLE AND NOT TARGET FFmpeg::ffprobeexe)
   add_executable(FFmpeg::ffprobeexe IMPORTED)
-  set_target_properties(FFmpeg::ffprobeexe
-    PROPERTIES
-      IMPORTED_LOCATION "${FFmpeg_FFPROBE_EXECUTABLE}"
-  )
+  set_target_properties(FFmpeg::ffprobeexe PROPERTIES IMPORTED_LOCATION "${FFmpeg_FFPROBE_EXECUTABLE}")
 endif()
 
 mark_as_advanced(FFmpeg_FFMPEG_EXECUTABLE FFmpeg_FFPROBE_EXECUTABLE)
 
 if(EXISTS "${FFmpeg_avutil_INCLUDE_DIR}/libavutil/ffversion.h")
-  file(STRINGS "${FFmpeg_avutil_INCLUDE_DIR}/libavutil/ffversion.h" _version_string
-       REGEX "^.*FFMPEG_VERSION[ \t]+\"n?[0-9a-z\\~.-]+\"[ \t]*$")
+  file(
+    STRINGS
+    "${FFmpeg_avutil_INCLUDE_DIR}/libavutil/ffversion.h"
+    _version_string
+    REGEX "^.*FFMPEG_VERSION[ \t]+\"n?[0-9a-z\\~+.-]+\"[ \t]*$"
+  )
   string(REGEX REPLACE ".*FFMPEG_VERSION[ \t]+\"n?([0-9]+\\.[0-9]).*\".*" "\\1" FFmpeg_VERSION "${_version_string}")
 endif()
 
@@ -349,7 +349,9 @@ find_package_handle_standard_args(
   FFmpeg
   REQUIRED_VARS FFmpeg_LIBRARIES FFmpeg_INCLUDE_DIRS
   VERSION_VAR FFmpeg_VERSION
-  HANDLE_COMPONENTS REASON_FAILURE_MESSAGE "${FFmpeg_ERROR_REASON}")
+  HANDLE_COMPONENTS
+  REASON_FAILURE_MESSAGE "${FFmpeg_ERROR_REASON}"
+)
 
 if(FFmpeg_FOUND AND NOT TARGET FFmpeg::FFmpeg)
   add_library(FFmpeg::FFmpeg INTERFACE IMPORTED)
@@ -371,29 +373,29 @@ foreach(component IN LISTS FFmpeg_FIND_COMPONENTS)
       endif()
 
       set_property(TARGET FFmpeg::${component} PROPERTY IMPORTED_LOCATION "${FFmpeg_${component}_LIBRARY}")
-
     else()
       add_library(FFmpeg::${component} INTERFACE IMPORTED)
       set_property(TARGET FFmpeg::${component} PROPERTY IMPORTED_LIBNAME "${FFmpeg_${component}_LIBRARY}")
     endif()
     set_target_properties(
       FFmpeg::${component}
-      PROPERTIES INTERFACE_COMPILE_OPTIONS "${PC_FFmpeg_${component}_CFLAGS_OTHER}"
-                 INTERFACE_INCLUDE_DIRECTORIES "${FFmpeg_${component}_INCLUDE_DIR}"
-                 VERSION ${FFmpeg_${component}_VERSION})
+      PROPERTIES
+        INTERFACE_COMPILE_OPTIONS "${PC_FFmpeg_${component}_CFLAGS_OTHER}"
+        INTERFACE_INCLUDE_DIRECTORIES "${FFmpeg_${component}_INCLUDE_DIR}"
+        VERSION ${FFmpeg_${component}_VERSION}
+    )
 
     get_target_property(_ffmpeg_interface_libraries FFmpeg::FFmpeg INTERFACE_LINK_LIBRARIES)
     if(NOT FFmpeg::${component} IN_LIST _ffmpeg_interface_libraries)
-      set_property(
-        TARGET FFmpeg::FFmpeg
-        APPEND
-        PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::${component})
+      set_property(TARGET FFmpeg::FFmpeg APPEND PROPERTY INTERFACE_LINK_LIBRARIES FFmpeg::${component})
     endif()
   endif()
 endforeach()
 
 include(FeatureSummary)
 set_package_properties(
-  FFmpeg PROPERTIES
-  URL "https://www.ffmpeg.org"
-  DESCRIPTION "A complete, cross-platform solution to record, convert, and stream audio/video.")
+  FFmpeg
+  PROPERTIES
+    URL "https://www.ffmpeg.org"
+    DESCRIPTION "A complete, cross-platform solution to record, convert and stream audio and video."
+)
