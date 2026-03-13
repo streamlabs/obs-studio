@@ -28,7 +28,7 @@ string GetDeviceName(IMMDevice *device)
 			size = os_wcs_to_utf8(nameVar.pwszVal, len, nullptr, 0);
 			device_name.resize(size);
 			os_wcs_to_utf8(nameVar.pwszVal, len, &device_name[0],
-				       size);
+				       size + 1);
 			PropVariantClear(&nameVar);
 		}
 	}
@@ -75,7 +75,7 @@ static void GetWASAPIAudioDevices_(vector<AudioDeviceInfo> &devices, bool input,
 		len = wcslen(w_id);
 		size = os_wcs_to_utf8(w_id, len, nullptr, 0);
 		info.id.resize(size);
-		os_wcs_to_utf8(w_id, len, &info.id[0], size);
+		os_wcs_to_utf8(w_id, len, &info.id[0], size + 1);
 
 		if (!searchbyName.empty()) {
 			if (info.name == searchbyName) {
