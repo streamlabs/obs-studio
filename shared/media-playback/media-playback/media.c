@@ -521,9 +521,13 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 		enum video_range_type new_range;
 
 		if (!f || !f->width || !f->height) {
-			blog(LOG_ERROR,
-			     "MP: media frame is invalid ('%s': %" PRIu32 "x%" PRIu32 ")",
-			     m->path, f ? f->width : 0, f ? f->height : 0);
+			if (!m->bad_frame_logged) {
+				blog(LOG_WARNING,
+				     "MP: skipping invalid video frame ('%s': %dx%d)",
+				     m->path, f ? f->width : 0,
+				     f ? f->height : 0);
+				m->bad_frame_logged = true;
+			}
 			return;
 		}
 
