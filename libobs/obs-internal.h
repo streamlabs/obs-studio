@@ -237,6 +237,7 @@ extern void obs_view_free(struct obs_view *view);
 struct obs_display {
 	bool update_color_space;
 	bool enabled;
+	bool logged_zero_size;
 	uint32_t cx, cy;
 	uint32_t next_cx, next_cy;
 	uint32_t background_color;
