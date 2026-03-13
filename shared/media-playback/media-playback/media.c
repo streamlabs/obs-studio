@@ -522,7 +522,7 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 
 		if (!f || !f->width || !f->height) {
 			blog(LOG_ERROR,
-			     "MP: media frame is invalid ('%s': %" PRIu32 "x%" PRIu32 ")",
+			     "MP: media frame is invalid ('%s': %dx%d)",
 			     m->path, f ? f->width : 0, f ? f->height : 0);
 			return;
 		}
