@@ -498,18 +498,8 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 	}
 
 	struct mp_decode *d = &m->v;
-	enum video_format new_format;
-	enum video_colorspace new_space;
-	enum video_range_type new_range;
-	AVFrame *f = d->frame;
 	struct obs_source_frame *frame;
 
-	if (!f->width || !f->height) {
-		blog(LOG_ERROR, "MP: media frame width or height are zero ('%s': %" PRIu32 "x%" PRIu32 ")", m->path,
-		     f->width, f->height);
-		return;
-	}
-	
 	if (m->video.index_eof < 0 || !m->enable_caching) {
 		if (!preload) {
 			if (!mp_media_can_play_frame(m, d)) {
@@ -522,6 +512,22 @@ void mp_media_next_video(mp_media_t *m, bool preload)
 				return;
 			}
 		} else if (!d->frame_ready) {
+			return;
+		}
+
+		AVFrame *f = d->frame;
+		enum video_format new_format;
+		enum video_colorspace new_space;
+		enum video_range_type new_range;
+
+		if (!f || !f->width || !f->height) {
+			if (!m->bad_frame_logged) {
+				blog(LOG_WARNING,
+				     "MP: skipping invalid video frame ('%s': %dx%d)",
+				     m->path, f ? f->width : 0,
+				     f ? f->height : 0);
+				m->bad_frame_logged = true;
+			}
 			return;
 		}
 
