@@ -152,11 +152,15 @@ static void d3d11_texture_free(struct nvenc_data *enc, struct nv_texture *nvtex)
 {
 
 	if (nvtex->res) {
-		if (nvtex->mapped_res) {
+		if (enc->session && nvtex->mapped_res) {
 			nv.nvEncUnmapInputResource(enc->session, nvtex->mapped_res);
+			nvtex->mapped_res = NULL;
 		}
-		nv.nvEncUnregisterResource(enc->session, nvtex->res);
+		if (enc->session)
+			nv.nvEncUnregisterResource(enc->session, nvtex->res);
+		nvtex->res = NULL;
 		nvtex->tex->lpVtbl->Release(nvtex->tex);
+		nvtex->tex = NULL;
 	}
 }
 
