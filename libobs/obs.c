@@ -3833,13 +3833,15 @@ void stop_gpu_encode(obs_encoder_t *encoder)
 		video->gpu_want_destroy_thread = true;
 	pthread_mutex_unlock(&video->gpu_encoder_mutex);
 
+	// Ensure that all texture encode work has completed before teardown.
+	os_event_wait(video->gpu_encode_inactive);
+
 	obs_enter_graphics();
 	if (video->gpu_want_destroy_thread) {
 		blog(LOG_INFO,
 		     "stop_gpu_encode - gpu_want_destroy_thread: 1 '%s' (%s) (%p)",
 		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 		     encoder);
-		os_event_wait(video->gpu_encode_inactive);
 		stop_gpu_encoding_thread(video);
 		free_gpu_encoding(video);
 	}
