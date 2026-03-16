@@ -198,12 +198,16 @@ static struct winrt_capture *capture_list;
 static void winrt_capture_device_loss_release(void *data)
 {
 	winrt_capture *capture = static_cast<winrt_capture *>(data);
+	if (!capture)
+		return;
+
 	capture->active = FALSE;
 
 	capture->frame_arrived.revoke();
 
 	try {
-		capture->frame_pool.Close();
+		if (capture->frame_pool)
+			capture->frame_pool.Close();
 	} catch (winrt::hresult_error &err) {
 		blog(LOG_ERROR, "Direct3D11CaptureFramePool::Close (0x%08X): %s", err.code().value,
 		     winrt::to_string(err.message()).c_str());
@@ -212,7 +216,8 @@ static void winrt_capture_device_loss_release(void *data)
 	}
 
 	try {
-		capture->session.Close();
+		if (capture->session)
+			capture->session.Close();
 	} catch (winrt::hresult_error &err) {
 		blog(LOG_ERROR, "GraphicsCaptureSession::Close (0x%08X): %s", err.code().value,
 		     winrt::to_string(err.message()).c_str());
@@ -280,6 +285,12 @@ winrt_capture_create_item(IGraphicsCaptureItemInterop *const interop_factory, HW
 static void winrt_capture_device_loss_rebuild(void *device_void, void *data)
 {
 	winrt_capture *capture = static_cast<winrt_capture *>(data);
+	capture->active = FALSE;
+
+	if (capture->window && !IsWindow(capture->window)) {
+		blog(LOG_WARNING, "Skipping WinRT capture rebuild for invalid window %p", capture->window);
+		return;
+	}
 
 	auto activation_factory =
 		winrt::get_activation_factory<winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();

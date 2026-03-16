@@ -728,9 +728,6 @@ static int obs_init_video()
 			return OBS_VIDEO_FAIL;
 	}
 
-	blog(LOG_INFO, "[VIDEO_CANVAS] wait obs_graphics_thread to stop");
-	pthread_join(video->video_thread, NULL);
-
 	// OBS canvases
 	/* Reset main canvas mix first so it remains first in the rendering order. */
 	if (!obs_canvas_reset_video_internal(obs->data.main_canvas, obs->video.canvases.array[0]))
@@ -803,6 +800,15 @@ static void stop_video(void)
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++)
 		video_output_stop(obs->video.mixes.array[i]->video);
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	struct obs_core_video *video = &obs->video;
+	void *thread_retval;
+
+	if (video->thread_initialized) {
+		blog(LOG_INFO, "[VIDEO_CANVAS] wait obs_graphics_thread to stop");
+		pthread_join(video->video_thread, &thread_retval);
+		video->thread_initialized = false;
+	}
 }
 
 static void obs_free_render_textures(struct obs_core_video_mix *video)
@@ -1633,6 +1639,7 @@ int obs_deactivate_video_info()
 	}
 
 	blog(LOG_DEBUG, "[VIDEO_CANVAS] About to stop and reset video");
+	obs_wait_for_destroy_queue();
 	stop_video();
 	obs_free_video(false);
 	blog(LOG_DEBUG, "[VIDEO_CANVAS] Video stopped and ready too init");
@@ -3896,6 +3903,24 @@ static void task_wait_callback(void *param)
 	os_event_signal(info->event);
 }
 
+static bool wait_for_task_queue(enum obs_task_type type)
+{
+	struct task_wait_info info = {0};
+
+	if (!obs)
+		return false;
+
+	if ((type == OBS_TASK_GRAPHICS && !obs->video.thread_initialized) ||
+	    (type == OBS_TASK_AUDIO && !obs->audio.audio))
+		return false;
+
+	os_event_init(&info.event, OS_EVENT_TYPE_AUTO);
+	obs_queue_task(type, task_wait_callback, &info, false);
+	os_event_wait(info.event);
+	os_event_destroy(info.event);
+	return true;
+}
+
 THREAD_LOCAL bool is_graphics_thread = false;
 THREAD_LOCAL bool is_audio_thread = false;
 
@@ -3969,21 +3994,29 @@ void obs_queue_task(enum obs_task_type type, obs_task_t task, void *param, bool 
 
 bool obs_wait_for_destroy_queue(void)
 {
-	struct task_wait_info info = {0};
-
-	if (!obs->video.thread_initialized || !obs->audio.audio)
+	if (!obs)
 		return false;
 
-	/* allow video and audio threads time to release objects */
-	os_event_init(&info.event, OS_EVENT_TYPE_AUTO);
-	obs_queue_task(OBS_TASK_GRAPHICS, task_wait_callback, &info, false);
-	os_event_wait(info.event);
-	obs_queue_task(OBS_TASK_AUDIO, task_wait_callback, &info, false);
-	os_event_wait(info.event);
-	os_event_destroy(info.event);
+	bool tasks_processed = false;
+	bool destroy_tasks_processed;
 
-	/* wait for destroy task queue */
-	return os_task_queue_wait(obs->destruction_task_thread);
+	wait_for_task_queue(OBS_TASK_GRAPHICS);
+	wait_for_task_queue(OBS_TASK_AUDIO);
+
+	do {
+		destroy_tasks_processed = os_task_queue_wait(obs->destruction_task_thread);
+		tasks_processed |= destroy_tasks_processed;
+
+		/*
+		 * Some destroy callbacks defer their actual graphics teardown to the
+		 * graphics thread. Flush that queue after each destroy batch so reset
+		 * does not drop stale cleanup tasks.
+		 */
+		wait_for_task_queue(OBS_TASK_GRAPHICS);
+		wait_for_task_queue(OBS_TASK_AUDIO);
+	} while (destroy_tasks_processed);
+
+	return tasks_processed;
 }
 
 static void set_ui_thread(void *unused)
