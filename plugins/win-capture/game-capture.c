@@ -913,6 +913,13 @@ static void game_capture_update(void *data, obs_data_t *settings)
 		gc->initial_config = false;
 	}
 
+
+	//make sure the source's output flags are set correctly - they default to
+	//game_capture being an audio source, if this box isn't checked we need
+	//to make sure the output flags don't include OBS_SOURCE_AUDIO or else
+	//the FE will create a volmeter for a non-audio game_capture
+	streamlabs_set_audio_flag(gc->source, gc->config.capture_audio);
+
 	/* Linked audio capture source stuff */
 	setup_audio_source(gc->source, &gc->audio_source, cfg.mode == CAPTURE_MODE_WINDOW ? window : NULL,
 			   cfg.capture_audio, cfg.priority);
