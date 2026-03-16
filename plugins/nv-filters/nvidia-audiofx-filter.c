@@ -122,6 +122,8 @@ static const char *nvidia_audio_name(void *unused)
 static void nvidia_audio_destroy(void *data)
 {
 	struct nvidia_audio_data *ng = data;
+	if (!ng)
+		return;
 
 	if (ng->nvidia_sdk_dir_found)
 		pthread_mutex_lock(&ng->nvafx_mutex);
@@ -392,6 +394,14 @@ failure:
 	return false;
 }
 
+static void *nvidia_audio_disable(void *data)
+{
+	struct nvidia_audio_data *ng = data;
+	obs_source_set_enabled(ng->context, false);
+	info("NVIDIA Audio FX disabled due to an internal error.");
+	return NULL;
+}
+
 static void *nvidia_audio_initialize(void *data)
 {
 	struct nvidia_audio_data *ng = data;
@@ -436,9 +446,10 @@ static void *nvidia_audio_initialize(void *data)
 
 failure:
 	ng->use_nvafx = false;
+	ng->nvafx_loading = false;
 	pthread_mutex_unlock(&nvidia_afx_initializer_mutex);
 	pthread_mutex_unlock(&ng->nvafx_mutex);
-	nvidia_audio_destroy(ng);
+	nvidia_audio_disable(ng);
 	return NULL;
 }
 
@@ -520,7 +531,8 @@ static void nvidia_audio_update(void *data, obs_data_t *s)
 				if (err != NVAFX_STATUS_SUCCESS) {
 					do_log(LOG_ERROR, "NvAFX_SetFloat(Intensity Ratio: %f) failed, error %i",
 					       ng->intensity_ratio, err);
-					nvidia_audio_destroy(ng);
+					nvidia_audio_disable(ng);
+					break;
 				}
 			}
 			pthread_mutex_unlock(&ng->nvafx_mutex);
@@ -537,13 +549,14 @@ static void nvidia_audio_update(void *data, obs_data_t *s)
 				/* Destroy previous FX */
 				if (NvAFX_DestroyEffect(ng->handle[i]) != NVAFX_STATUS_SUCCESS) {
 					do_log(LOG_ERROR, "FX failed to be destroyed.");
-					nvidia_audio_destroy(ng);
+					nvidia_audio_disable(ng);
+					break;
 				} else {
 					ng->handle[i] = NULL;
 				}
 			}
 			if (!nvidia_audio_initialize_internal(data))
-				nvidia_audio_destroy(ng);
+				nvidia_audio_disable(ng);
 
 			pthread_mutex_unlock(&ng->nvafx_mutex);
 		}
