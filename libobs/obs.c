@@ -4007,11 +4007,8 @@ bool obs_wait_for_destroy_queue(void)
 		destroy_tasks_processed = os_task_queue_wait(obs->destruction_task_thread);
 		tasks_processed |= destroy_tasks_processed;
 
-		/*
-		 * Some destroy callbacks defer their actual graphics teardown to the
-		 * graphics thread. Flush that queue after each destroy batch so reset
-		 * does not drop stale cleanup tasks.
-		 */
+		// Some destroy callbacks defer their actual cleanup, so we need to wait
+		// while deinitialization completes to not get zombie objects.
 		wait_for_task_queue(OBS_TASK_GRAPHICS);
 		wait_for_task_queue(OBS_TASK_AUDIO);
 	} while (destroy_tasks_processed);
