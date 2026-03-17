@@ -71,8 +71,12 @@ invoke_formatter() {
         local -a command=(${formatter} ${format_args})
 
         for file (${source_files}) {
-          if ! ${command} "${file}" | diff -q "${file}" - &> /dev/null; then
-            log_error "${file} requires formatting changes."
+          local file_diff
+          if file_diff=$(${command} "${file}" | diff -u "${file}" - 2>/dev/null) ; then
+            :
+          else
+            log_error "${file} requires formatting changes:"
+            print -r -- "${file_diff}"
             if (( fail_on_error == 2 )) return 2;
             num_failures=$(( num_failures + 1 ))
           fi
