@@ -2654,6 +2654,7 @@ static void game_capture_defaults(obs_data_t *settings)
 
 	obs_data_set_default_bool(settings, COMPAT_INFO_VISIBLE, false);
 	obs_data_set_default_string(settings, SETTINGS_COMPAT_INFO, "");
+	obs_data_set_default_bool(settings, SETTING_CAPTURE_AUDIO, true);
 }
 
 static bool mode_callback(obs_properties_t *ppts, obs_property_t *p, obs_data_t *settings)
@@ -2867,13 +2868,6 @@ static obs_properties_t *game_capture_properties(void *data)
 	} else {
 		obs_property_set_visible(p, false);
 	}
-
-	if (audio_capture_available()) {
-		p = obs_properties_add_bool(ppts, SETTING_CAPTURE_AUDIO,
-					    TEXT_CAPTURE_AUDIO);
-		obs_property_set_long_description(p, TEXT_CAPTURE_AUDIO_TT);
-	}
-
 
 	obs_properties_add_bool(ppts, SETTING_TRANSPARENCY, TEXT_ALLOW_TRANSPARENCY);
 
