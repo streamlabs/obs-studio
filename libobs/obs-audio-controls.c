@@ -888,7 +888,7 @@ int obs_volmeter_get_nr_channels(obs_volmeter_t *volmeter)
 		source = obs_weak_source_get_source(weak_source);
 
 	if (source)
-		source_nr_audio_channels = get_audio_channels(source->sample_info.speakers);
+		source_nr_audio_channels = get_audio_channels(source->input_sample_info.speakers);
 	else
 		source_nr_audio_channels = 0;
 
