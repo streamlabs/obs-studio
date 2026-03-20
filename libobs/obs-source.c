@@ -1509,23 +1509,61 @@ static inline uint64_t uint64_diff(uint64_t ts1, uint64_t ts2)
 	return (ts1 < ts2) ? (ts2 - ts1) : (ts1 - ts2);
 }
 
-static inline size_t get_buf_placement(audio_t *audio, uint64_t offset)
+struct audio_output_config {
+	struct resample_info info;
+	size_t planes;
+	size_t blocksize;
+	size_t channels;
+};
+
+static bool get_audio_output_config(struct audio_output_config *config)
 {
-	uint32_t sample_rate = audio_output_get_sample_rate(audio);
+	const struct audio_output_info *obs_info;
+
+	memset(config, 0, sizeof(*config));
+
+	if (!obs)
+		return false;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+
+	if (!obs->audio.audio) {
+		pthread_mutex_unlock(&obs->video.mixes_mutex);
+		return false;
+	}
+
+	obs_info = audio_output_get_info(obs->audio.audio);
+	config->planes = audio_output_get_planes(obs->audio.audio);
+	config->blocksize = audio_output_get_block_size(obs->audio.audio);
+	config->channels = audio_output_get_channels(obs->audio.audio);
+	config->info.format = obs_info->format;
+	config->info.samples_per_sec = obs_info->samples_per_sec;
+	config->info.speakers = obs_info->speakers;
+
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+	return true;
+}
+
+static inline size_t get_buf_placement(uint32_t sample_rate, uint64_t offset)
+{
 	return (size_t)util_mul_div64(offset, sample_rate, 1000000000ULL);
 }
 
-static void source_output_audio_place(obs_source_t *source, const struct audio_data *in)
+static void source_output_audio_place(obs_source_t *source,
+				      const struct audio_data *in,
+				      const struct audio_output_config *config)
 {
-	audio_t *audio = obs->audio.audio;
 	size_t buf_placement;
-	size_t channels = audio_output_get_channels(audio);
+	size_t channels = config->channels;
 	size_t size = in->frames * sizeof(float);
 
 	if (!source->audio_ts || in->timestamp < source->audio_ts)
 		reset_audio_data(source, in->timestamp);
 
-	buf_placement = get_buf_placement(audio, in->timestamp - source->audio_ts) * sizeof(float);
+	buf_placement =
+		get_buf_placement(config->info.samples_per_sec,
+				  in->timestamp - source->audio_ts) *
+		sizeof(float);
 
 #if DEBUG_AUDIO == 1
 	blog(LOG_DEBUG, "frames: %lu, size: %lu, placement: %lu, base_ts: %llu, ts: %llu", (unsigned long)in->frames,
@@ -1546,10 +1584,11 @@ static void source_output_audio_place(obs_source_t *source, const struct audio_d
 	source->last_audio_input_buf_size = 0;
 }
 
-static inline void source_output_audio_push_back(obs_source_t *source, const struct audio_data *in)
+static inline void source_output_audio_push_back(obs_source_t *source,
+						 const struct audio_data *in,
+						 const struct audio_output_config *config)
 {
-	audio_t *audio = obs->audio.audio;
-	size_t channels = audio_output_get_channels(audio);
+	size_t channels = config->channels;
 	size_t size = in->frames * sizeof(float);
 
 	/* do not allow the circular buffers to become too big */
@@ -1580,9 +1619,11 @@ static inline bool source_muted(obs_source_t *source, uint64_t os_time)
 	       (source->push_to_talk_enabled && !push_to_talk_active);
 }
 
-static void source_output_audio_data(obs_source_t *source, const struct audio_data *data)
+static void source_output_audio_data(obs_source_t *source,
+				     const struct audio_data *data,
+				     const struct audio_output_config *config)
 {
-	size_t sample_rate = audio_output_get_sample_rate(obs->audio.audio);
+	size_t sample_rate = config->info.samples_per_sec;
 	struct audio_data in = *data;
 	uint64_t diff;
 	uint64_t os_time = os_gettime_ns();
@@ -1655,9 +1696,9 @@ static void source_output_audio_data(obs_source_t *source, const struct audio_da
 
 	if (source->monitoring_type != OBS_MONITORING_TYPE_MONITOR_ONLY) {
 		if (push_back && source->audio_ts)
-			source_output_audio_push_back(source, &in);
+			source_output_audio_push_back(source, &in, config);
 		else
-			source_output_audio_place(source, &in);
+			source_output_audio_place(source, &in, config);
 	}
 
 	pthread_mutex_unlock(&source->audio_buf_mutex);
@@ -3920,54 +3961,45 @@ static inline struct obs_audio_data *filter_async_audio(obs_source_t *source, st
 	return in;
 }
 
-static inline void reset_resampler(obs_source_t *source, const struct obs_source_audio *audio)
+static inline void reset_resampler(obs_source_t *source,
+				   const struct obs_source_audio *audio,
+				   const struct audio_output_config *config)
 {
-	const struct audio_output_info *obs_info;
-	struct resample_info output_info;
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	obs_info = audio_output_get_info(obs->audio.audio);
-
-	output_info.format = obs_info->format;
-	output_info.samples_per_sec = obs_info->samples_per_sec;
-	output_info.speakers = obs_info->speakers;
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	source->sample_info.format = audio->format;
-	source->sample_info.samples_per_sec = audio->samples_per_sec;
-	source->sample_info.speakers = audio->speakers;
+	source->input_sample_info.format = audio->format;
+	source->input_sample_info.samples_per_sec = audio->samples_per_sec;
+	source->input_sample_info.speakers = audio->speakers;
+	source->output_sample_info = config->info;
 
 	audio_resampler_destroy(source->resampler);
 	source->resampler = NULL;
 	source->resample_offset = 0;
 
-	if (source->sample_info.samples_per_sec == output_info.samples_per_sec &&
-	    source->sample_info.format == output_info.format && source->sample_info.speakers == output_info.speakers) {
+	if (source->input_sample_info.samples_per_sec == source->output_sample_info.samples_per_sec &&
+	    source->input_sample_info.format == source->output_sample_info.format &&
+	    source->input_sample_info.speakers == source->output_sample_info.speakers) {
 		source->audio_failed = false;
 		return;
 	}
 
-	source->resampler = audio_resampler_create(&output_info, &source->sample_info);
+	source->resampler = audio_resampler_create(&source->output_sample_info,
+						   &source->input_sample_info);
 
 	source->audio_failed = source->resampler == NULL;
 	if (source->resampler == NULL)
 		blog(LOG_ERROR, "creation of resampler failed");
 }
 
-static void copy_audio_data(obs_source_t *source, const uint8_t *const data[], uint32_t frames, uint64_t ts)
+static void copy_audio_data(obs_source_t *source, const uint8_t *const data[],
+			    uint32_t frames, uint64_t ts,
+			    const struct audio_output_config *config)
 {
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	size_t planes = audio_output_get_planes(obs->audio.audio);
-	size_t blocksize = audio_output_get_block_size(obs->audio.audio);
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	size_t size = (size_t)frames * blocksize;
+	size_t size = (size_t)frames * config->blocksize;
 	bool resize = source->audio_storage_size < size;
 
 	source->audio_data.frames = frames;
 	source->audio_data.timestamp = ts;
 
-	for (size_t i = 0; i < planes; i++) {
+	for (size_t i = 0; i < config->planes; i++) {
 		/* ensure audio storage capacity */
 		if (resize) {
 			bfree(source->audio_data.data[i]);
@@ -3983,11 +4015,10 @@ static void copy_audio_data(obs_source_t *source, const uint8_t *const data[], u
 }
 
 /* TODO: SSE optimization */
-static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames)
+static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames,
+				   const struct audio_output_config *config)
 {
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	size_t channels = audio_output_get_channels(obs->audio.audio);
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
+	size_t channels = config->channels;
 	const float channels_i = 1.0f / (float)channels;
 	float **data = (float **)source->audio_data.data;
 
@@ -4035,14 +4066,20 @@ static void process_audio_balancing(struct obs_source *source, uint32_t frames, 
 }
 
 /* resamples/remixes new audio to the designated main audio output format */
-static void process_audio(obs_source_t *source, const struct obs_source_audio *audio)
+static void process_audio(obs_source_t *source,
+			  const struct obs_source_audio *audio,
+			  const struct audio_output_config *config)
 {
 	uint32_t frames = audio->frames;
-	bool mono_output;
+	bool mono_output = config->channels == 1;
 
-	if (source->sample_info.samples_per_sec != audio->samples_per_sec ||
-	    source->sample_info.format != audio->format || source->sample_info.speakers != audio->speakers)
-		reset_resampler(source, audio);
+	if (source->input_sample_info.samples_per_sec != audio->samples_per_sec ||
+	    source->input_sample_info.format != audio->format ||
+	    source->input_sample_info.speakers != audio->speakers ||
+	    source->output_sample_info.samples_per_sec != config->info.samples_per_sec ||
+	    source->output_sample_info.format != config->info.format ||
+	    source->output_sample_info.speakers != config->info.speakers)
+		reset_resampler(source, audio, config);
 
 	if (source->audio_failed)
 		return;
@@ -4058,27 +4095,27 @@ static void process_audio(obs_source_t *source, const struct obs_source_audio *a
 			return;
 		}
 
-		copy_audio_data(source, (const uint8_t *const *)output, frames, audio->timestamp);
+		copy_audio_data(source, (const uint8_t *const *)output, frames,
+				audio->timestamp, config);
 	} else {
-		copy_audio_data(source, audio->data, audio->frames, audio->timestamp);
+		copy_audio_data(source, audio->data, audio->frames,
+				audio->timestamp, config);
 	}
 
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	mono_output = audio_output_get_channels(obs->audio.audio) == 1;
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	if (!mono_output && source->sample_info.speakers == SPEAKERS_STEREO &&
+	if (!mono_output &&
+	    source->input_sample_info.speakers == SPEAKERS_STEREO &&
 	    (source->balance > 0.51f || source->balance < 0.49f)) {
 		process_audio_balancing(source, frames, source->balance, OBS_BALANCE_TYPE_SINE_LAW);
 	}
 
 	if (!mono_output && (source->flags & OBS_SOURCE_FLAG_FORCE_MONO) != 0)
-		downmix_to_mono_planar(source, frames);
+		downmix_to_mono_planar(source, frames, config);
 }
 
 void obs_source_output_audio(obs_source_t *source, const struct obs_source_audio *audio_in)
 {
 	struct obs_audio_data *output;
+	struct audio_output_config config;
 
 	if (!obs_source_valid(source, "obs_source_output_audio"))
 		return;
@@ -4095,7 +4132,10 @@ void obs_source_output_audio(obs_source_t *source, const struct obs_source_audio
 	for (size_t i = channels; i < MAX_AUDIO_CHANNELS; i++)
 		audio.data[i] = NULL;
 
-	process_audio(source, &audio);
+	if (!get_audio_output_config(&config))
+		return;
+
+	process_audio(source, &audio, &config);
 
 	pthread_mutex_lock(&source->filter_mutex);
 	output = filter_async_audio(source, &source->audio_data);
@@ -4110,7 +4150,7 @@ void obs_source_output_audio(obs_source_t *source, const struct obs_source_audio
 		data.timestamp = output->timestamp;
 
 		pthread_mutex_lock(&source->audio_mutex);
-		source_output_audio_data(source, &data);
+		source_output_audio_data(source, &data, &config);
 		pthread_mutex_unlock(&source->audio_mutex);
 	}
 
@@ -5785,7 +5825,7 @@ enum speaker_layout obs_source_get_speaker_layout(obs_source_t *source)
 	if (!obs_source_valid(source, "obs_source_get_audio_channels"))
 		return SPEAKERS_UNKNOWN;
 
-	return source->sample_info.speakers;
+	return source->input_sample_info.speakers;
 }
 
 void obs_source_set_balance_value(obs_source_t *source, float balance)
