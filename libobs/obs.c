@@ -1771,13 +1771,13 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 	int max_buffering_ms;
 	bool active = false;
 
-	/* don't allow changing of audio settings if active. */
 	if (!obs)
 		return false;
 
 	if (!oai)
 		return true;
 
+	/* don't allow changing of audio settings if active. */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	if (audio->audio)
 		active = audio_output_active(audio->audio);
