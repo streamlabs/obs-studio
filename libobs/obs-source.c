@@ -1549,8 +1549,7 @@ static inline size_t get_buf_placement(uint32_t sample_rate, uint64_t offset)
 	return (size_t)util_mul_div64(offset, sample_rate, 1000000000ULL);
 }
 
-static void source_output_audio_place(obs_source_t *source,
-				      const struct audio_data *in,
+static void source_output_audio_place(obs_source_t *source, const struct audio_data *in,
 				      const struct audio_output_config *config)
 {
 	size_t buf_placement;
@@ -1561,9 +1560,7 @@ static void source_output_audio_place(obs_source_t *source,
 		reset_audio_data(source, in->timestamp);
 
 	buf_placement =
-		get_buf_placement(config->info.samples_per_sec,
-				  in->timestamp - source->audio_ts) *
-		sizeof(float);
+		get_buf_placement(config->info.samples_per_sec, in->timestamp - source->audio_ts) * sizeof(float);
 
 #if DEBUG_AUDIO == 1
 	blog(LOG_DEBUG, "frames: %lu, size: %lu, placement: %lu, base_ts: %llu, ts: %llu", (unsigned long)in->frames,
@@ -1584,8 +1581,7 @@ static void source_output_audio_place(obs_source_t *source,
 	source->last_audio_input_buf_size = 0;
 }
 
-static inline void source_output_audio_push_back(obs_source_t *source,
-						 const struct audio_data *in,
+static inline void source_output_audio_push_back(obs_source_t *source, const struct audio_data *in,
 						 const struct audio_output_config *config)
 {
 	size_t channels = config->channels;
@@ -1619,8 +1615,7 @@ static inline bool source_muted(obs_source_t *source, uint64_t os_time)
 	       (source->push_to_talk_enabled && !push_to_talk_active);
 }
 
-static void source_output_audio_data(obs_source_t *source,
-				     const struct audio_data *data,
+static void source_output_audio_data(obs_source_t *source, const struct audio_data *data,
 				     const struct audio_output_config *config)
 {
 	size_t sample_rate = config->info.samples_per_sec;
@@ -3961,8 +3956,7 @@ static inline struct obs_audio_data *filter_async_audio(obs_source_t *source, st
 	return in;
 }
 
-static inline void reset_resampler(obs_source_t *source,
-				   const struct obs_source_audio *audio,
+static inline void reset_resampler(obs_source_t *source, const struct obs_source_audio *audio,
 				   const struct audio_output_config *config)
 {
 	source->input_sample_info.format = audio->format;
@@ -3981,16 +3975,14 @@ static inline void reset_resampler(obs_source_t *source,
 		return;
 	}
 
-	source->resampler = audio_resampler_create(&source->output_sample_info,
-						   &source->input_sample_info);
+	source->resampler = audio_resampler_create(&source->output_sample_info, &source->input_sample_info);
 
 	source->audio_failed = source->resampler == NULL;
 	if (source->resampler == NULL)
 		blog(LOG_ERROR, "creation of resampler failed");
 }
 
-static void copy_audio_data(obs_source_t *source, const uint8_t *const data[],
-			    uint32_t frames, uint64_t ts,
+static void copy_audio_data(obs_source_t *source, const uint8_t *const data[], uint32_t frames, uint64_t ts,
 			    const struct audio_output_config *config)
 {
 	size_t size = (size_t)frames * config->blocksize;
@@ -4015,8 +4007,7 @@ static void copy_audio_data(obs_source_t *source, const uint8_t *const data[],
 }
 
 /* TODO: SSE optimization */
-static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames,
-				   const struct audio_output_config *config)
+static void downmix_to_mono_planar(struct obs_source *source, uint32_t frames, const struct audio_output_config *config)
 {
 	size_t channels = config->channels;
 	const float channels_i = 1.0f / (float)channels;
@@ -4066,8 +4057,7 @@ static void process_audio_balancing(struct obs_source *source, uint32_t frames, 
 }
 
 /* resamples/remixes new audio to the designated main audio output format */
-static void process_audio(obs_source_t *source,
-			  const struct obs_source_audio *audio,
+static void process_audio(obs_source_t *source, const struct obs_source_audio *audio,
 			  const struct audio_output_config *config)
 {
 	uint32_t frames = audio->frames;
@@ -4095,15 +4085,12 @@ static void process_audio(obs_source_t *source,
 			return;
 		}
 
-		copy_audio_data(source, (const uint8_t *const *)output, frames,
-				audio->timestamp, config);
+		copy_audio_data(source, (const uint8_t *const *)output, frames, audio->timestamp, config);
 	} else {
-		copy_audio_data(source, audio->data, audio->frames,
-				audio->timestamp, config);
+		copy_audio_data(source, audio->data, audio->frames, audio->timestamp, config);
 	}
 
-	if (!mono_output &&
-	    source->input_sample_info.speakers == SPEAKERS_STEREO &&
+	if (!mono_output && source->input_sample_info.speakers == SPEAKERS_STEREO &&
 	    (source->balance > 0.51f || source->balance < 0.49f)) {
 		process_audio_balancing(source, frames, source->balance, OBS_BALANCE_TYPE_SINE_LAW);
 	}
