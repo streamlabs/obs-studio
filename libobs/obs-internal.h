@@ -394,8 +394,8 @@ struct audio_monitor;
 
 struct obs_core_audio {
 	audio_t *audio;
-	// These 3 values are not present in the original OBS code. They serve as a main audio parameters cache, 
-	// allowing audio processing to finish the current iteration even if the global audio object has been destroyed.
+	/* These 3 values are not present in the original OBS code. They serve as a main audio parameters cache, 
+	 * allowing audio processing to finish the current iteration even if the global audio object has been destroyed. */
 	uint32_t samples_per_sec;
 	enum speaker_layout speakers;
 	size_t channels;
