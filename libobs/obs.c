@@ -1723,6 +1723,7 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 	if (!obs || (audio->audio && audio_output_active(audio->audio)))
 		return false;
 
+	obs_free_audio();
 	if (!oai)
 		return true;
 
@@ -1757,8 +1758,6 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 	     oai->fixed_buffering ? "fixed" : "dynamically increasing");
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	obs_free_audio();
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	bool init_complited = obs_init_audio(&ai);
