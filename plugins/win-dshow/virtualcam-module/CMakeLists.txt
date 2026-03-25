@@ -137,29 +137,13 @@ endif()
 target_sources(obs-virtualcam-module PRIVATE cmake/windows/${_OUTPUT_NAME}.def)
 
 configure_file(virtualcam-install.bat.in virtualcam-install.bat)
+target_add_resource(obs-virtualcam-module "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-install.bat"
+                    "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow"
+)
+
 configure_file(virtualcam-uninstall.bat.in virtualcam-uninstall.bat)
-
-set(_virtualcam_resource_dest "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow")
-
-install(
-  FILES "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-install.bat" "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-uninstall.bat"
-  DESTINATION "${_virtualcam_resource_dest}"
-  COMPONENT Runtime
-)
-
-add_custom_command(
-  TARGET obs-virtualcam-module
-  POST_BUILD
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${OBS_OUTPUT_DIR}/$<CONFIG>/${_virtualcam_resource_dest}/"
-  COMMAND
-    "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-install.bat"
-    "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-uninstall.bat" "${OBS_OUTPUT_DIR}/$<CONFIG>/${_virtualcam_resource_dest}/"
-  COMMENT ""
-  VERBATIM
-)
-
-source_group("Resources" FILES "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-install.bat"
-                               "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-uninstall.bat"
+target_add_resource(obs-virtualcam-module "${CMAKE_CURRENT_BINARY_DIR}/virtualcam-uninstall.bat"
+                    "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow"
 )
 
 set_target_properties_obs(
