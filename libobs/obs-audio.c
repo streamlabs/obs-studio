@@ -497,10 +497,10 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 		    struct audio_data_mixes_outputs *mixes)
 {
 	struct obs_core_data *data = &obs->data;
-	struct obs_core_audio *audio = &obs->audio;
+	struct obs_core_audio *audio = param;
 	struct obs_source *source;
-	size_t sample_rate = audio_output_get_sample_rate(audio->audio);
-	size_t channels = audio_output_get_channels(audio->audio);
+	size_t sample_rate = audio->samples_per_sec;
+	size_t channels = audio->channels;
 	struct ts_info ts = {start_ts_in, end_ts_in};
 	size_t audio_size;
 	uint64_t min_ts;

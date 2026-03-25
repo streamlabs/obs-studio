@@ -982,50 +982,99 @@ static void obs_free_graphics(void)
 
 static void set_audio_thread(void *unused);
 
+// The old audio object is returned to allow the caller to finalize it properly.
+static audio_t *obs_clear_audio_output(void)
+{
+	audio_t *old_audio;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	old_audio = obs->audio.audio;
+	obs->audio.audio = NULL;
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	return old_audio;
+}
+
+static void obs_set_audio_output(audio_t *audio_output)
+{
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	obs->audio.audio = audio_output;
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+}
+
 static bool obs_init_audio(struct audio_output_info *ai)
 {
 	struct obs_core_audio *audio = &obs->audio;
+	audio_t *audio_output = NULL;
+	bool monitoring_mutex_initialized = false;
+	bool task_mutex_initialized = false;
 	int errorcode;
 
 	pthread_mutex_init_value(&audio->monitoring_mutex);
+	pthread_mutex_init_value(&audio->task_mutex);
 
 	if (pthread_mutex_init_recursive(&audio->monitoring_mutex) != 0)
-		return false;
+		goto fail;
+	monitoring_mutex_initialized = true;
 	if (pthread_mutex_init(&audio->task_mutex, NULL) != 0)
-		return false;
+		goto fail;
+	task_mutex_initialized = true;
 
 	struct obs_task_info audio_init = {.task = set_audio_thread};
 	deque_push_back(&audio->tasks, &audio_init, sizeof(audio_init));
 
 	audio->monitoring_device_name = bstrdup("Default");
 	audio->monitoring_device_id = bstrdup("default");
+	audio->samples_per_sec = ai->samples_per_sec;
+	audio->speakers = ai->speakers;
+	audio->channels = get_audio_channels(ai->speakers);
+	ai->input_param = audio;
 
-	errorcode = audio_output_open(&audio->audio, ai);
-	if (errorcode == AUDIO_OUTPUT_SUCCESS)
+	errorcode = audio_output_open(&audio_output, ai);
+	if (errorcode == AUDIO_OUTPUT_SUCCESS) {
+		obs_set_audio_output(audio_output);
 		return true;
-	else if (errorcode == AUDIO_OUTPUT_INVALIDPARAM)
+	} else if (errorcode == AUDIO_OUTPUT_INVALIDPARAM)
 		blog(LOG_ERROR, "Invalid audio parameters specified");
 	else
 		blog(LOG_ERROR, "Could not open audio output");
+
+fail:
+	bfree(audio->monitoring_device_name);
+	bfree(audio->monitoring_device_id);
+	audio->monitoring_device_name = NULL;
+	audio->monitoring_device_id = NULL;
+	deque_free(&audio->tasks);
+	audio->samples_per_sec = 0;
+	audio->speakers = SPEAKERS_UNKNOWN;
+	audio->channels = 0;
+
+	if (task_mutex_initialized) {
+		pthread_mutex_destroy(&audio->task_mutex);
+		pthread_mutex_init_value(&audio->task_mutex);
+	}
+	if (monitoring_mutex_initialized) {
+		pthread_mutex_destroy(&audio->monitoring_mutex);
+		pthread_mutex_init_value(&audio->monitoring_mutex);
+	}
 
 	return false;
 }
 
 static void stop_audio(void)
 {
-	struct obs_core_audio *audio = &obs->audio;
-
-	if (audio->audio) {
-		audio_output_close(audio->audio);
-		audio->audio = NULL;
-	}
+	audio_t *old_audio = obs_clear_audio_output();
+	if (old_audio)
+		audio_output_close(old_audio);
 }
 
 static void obs_free_audio(void)
 {
 	struct obs_core_audio *audio = &obs->audio;
-	if (audio->audio)
-		audio_output_close(audio->audio);
+	audio_t *old_audio = obs_clear_audio_output();
+
+	if (old_audio)
+		audio_output_close(old_audio);
 
 	deque_free(&audio->buffered_timestamps);
 	da_free(audio->render_order);
@@ -1718,27 +1767,35 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 {
 	struct obs_core_audio *audio = &obs->audio;
 	struct audio_output_info ai;
+	int max_buffering_ticks;
+	int max_buffering_ms;
+	bool active = false;
 
-	/* don't allow changing of audio settings if active. */
-	if (!obs || (audio->audio && audio_output_active(audio->audio)))
+	if (!obs)
 		return false;
 
 	if (!oai)
 		return true;
 
+	/* don't allow changing of audio settings if active. */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
+	if (audio->audio)
+		active = audio_output_active(audio->audio);
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (active)
+		return false;
 
 	if (oai->max_buffering_ms) {
 		uint32_t max_frames = oai->max_buffering_ms * oai->samples_per_sec / SEC_TO_MSEC;
 		max_frames += (AUDIO_OUTPUT_FRAMES - 1);
-		audio->max_buffering_ticks = max_frames / AUDIO_OUTPUT_FRAMES;
+		max_buffering_ticks = (int)(max_frames / AUDIO_OUTPUT_FRAMES);
 	} else {
-		audio->max_buffering_ticks = 45;
+		max_buffering_ticks = 45;
 	}
-	audio->fixed_buffer = oai->fixed_buffering;
 
-	int max_buffering_ms =
-		audio->max_buffering_ticks * AUDIO_OUTPUT_FRAMES * SEC_TO_MSEC / (int)oai->samples_per_sec;
+	max_buffering_ms = max_buffering_ticks * AUDIO_OUTPUT_FRAMES *
+			   SEC_TO_MSEC / (int)oai->samples_per_sec;
 
 	ai.name = "Audio";
 	ai.samples_per_sec = oai->samples_per_sec;
@@ -1756,15 +1813,12 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 	     (int)ai.samples_per_sec, (int)ai.speakers, max_buffering_ms,
 	     oai->fixed_buffering ? "fixed" : "dynamically increasing");
 
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
 	obs_free_audio();
 
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	bool init_complited = obs_init_audio(&ai);
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
+	audio->max_buffering_ticks = max_buffering_ticks;
+	audio->fixed_buffer = oai->fixed_buffering;
 
-	return init_complited;
+	return obs_init_audio(&ai);
 }
 
 bool obs_reset_audio(const struct obs_audio_info *oai)

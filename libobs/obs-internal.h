@@ -394,6 +394,11 @@ struct audio_monitor;
 
 struct obs_core_audio {
 	audio_t *audio;
+	/* These 3 values are not present in the original OBS code. They serve as a main audio parameters cache, 
+	 * allowing audio processing to finish the current iteration even if the global audio object has been destroyed. */
+	uint32_t samples_per_sec;
+	enum speaker_layout speakers;
+	size_t channels;
 
 	DARRAY(struct obs_source *) render_order;
 	DARRAY(struct obs_source *) root_nodes;
@@ -841,7 +846,9 @@ struct obs_source {
 	DARRAY(struct audio_action) audio_actions;
 	DARRAY(struct source_audio_buf) audio_output_bufs;
 	float *audio_mix_buf[MAX_AUDIO_CHANNELS];
-	struct resample_info sample_info;
+	/* Source audio format on input, and main audio output format on resample. */
+	struct resample_info input_sample_info;
+	struct resample_info output_sample_info;
 	audio_resampler_t *resampler;
 	pthread_mutex_t audio_actions_mutex;
 	pthread_mutex_t audio_buf_mutex;
