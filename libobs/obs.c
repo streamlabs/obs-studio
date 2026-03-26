@@ -1167,12 +1167,24 @@ static void obs_main_view_free(struct obs_view *view)
 			blog(LOG_INFO, "\t%d " #type "(s) were remaining", unfreed); \
 	} while (false)
 
-static void obs_free_data(void)
+static void obs_free_runtime_objects(void)
 {
 	blog(LOG_INFO, "Freeing OBS context data");
 
 	struct obs_core_data *data = &obs->data;
 	data->valid = false;
+
+	FREE_OBS_LINKED_LIST(output);
+	FREE_OBS_LINKED_LIST(encoder);
+	FREE_OBS_LINKED_LIST(display);
+	FREE_OBS_LINKED_LIST(service);
+
+	os_task_queue_wait(obs->destruction_task_thread);
+}
+
+static void obs_free_data(void)
+{
+	struct obs_core_data *data = &obs->data;
 
 	/* Free main canvas */
 	obs_canvas_release(data->main_canvas);
@@ -1182,11 +1194,6 @@ static void obs_free_data(void)
 	obs_main_view_free(&data->stream_view);
 	obs_view_remove(&data->record_view);
 	obs_main_view_free(&data->record_view);
-
-	FREE_OBS_LINKED_LIST(output);
-	FREE_OBS_LINKED_LIST(encoder);
-	FREE_OBS_LINKED_LIST(display);
-	FREE_OBS_LINKED_LIST(service);
 
 	FREE_OBS_HASH_TABLE(hh, &data->public_sources, source);
 	FREE_OBS_HASH_TABLE(hh_uuid, &data->sources, source);
@@ -1540,14 +1547,17 @@ void obs_shutdown(void)
 
 	obs_wait_for_destroy_queue();
 
-	// Destroy remaining runtime objects (outputs, encoders, displays, ...) while shared subsystems are still alive.
-	obs_free_data();
+	// Free outputs, encoders, displays, services while audio/video subsystems are still alive (they may need the pipeline during destruction).
+	obs_free_runtime_objects();
 
-	// Destroy shared subsystems after deferred destroy tasks have completed.
-	// `obs_free_data()` waits for the destroy queue before returning.
+	// Stop audio/video/hotkey threads after runtime objects are freed
+	// but before sources and mutexes they access are destroyed.
 	stop_video();
 	stop_audio();
 	stop_hotkeys();
+
+	// Free sources, canvases, views, and mutexes now that the audio/video threads are no longer running.
+	obs_free_data();
 
 	for (size_t i = 0; i < obs->source_types.num; i++) {
 		struct obs_source_info *item = &obs->source_types.array[i];
