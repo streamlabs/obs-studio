@@ -2808,25 +2808,25 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 	}
 
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-		obs_encoder_t *audio = output->audio_encoders[i];
+		obs_encoder_t *audio_encoder = output->audio_encoders[i];
 		uint32_t sample_rate;
 		size_t frame_size;
 		uint64_t encoder_interval;
 
-		if (!audio)
+		if (!audio_encoder)
 			continue;
 
-		sample_rate = obs_encoder_get_sample_rate(audio);
-		frame_size = obs_encoder_get_frame_size(audio);
+		sample_rate = obs_encoder_get_sample_rate(audio_encoder);
+		frame_size = obs_encoder_get_frame_size(audio_encoder);
 		if (!sample_rate) {
 			da_free(intervals);
-			log_invalid_audio_encoder_params(output, audio, "audio sample rate is zero", sample_rate,
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio sample rate is zero", sample_rate,
 											 frame_size);
 			return false;
 		}
 		if (!frame_size) {
 			da_free(intervals);
-			log_invalid_audio_encoder_params(output, audio, "audio frame size is zero", sample_rate,
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio frame size is zero", sample_rate,
 											 frame_size);
 			return false;
 		}
@@ -2834,7 +2834,7 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 		encoder_interval = util_mul_div64(1000000000ULL, frame_size, sample_rate);
 		if (!encoder_interval) {
 			da_free(intervals);
-			log_invalid_audio_encoder_params(output, audio, "audio encoder interval is zero",
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio encoder interval is zero",
 											 sample_rate, frame_size);
 			return false;
 		}
