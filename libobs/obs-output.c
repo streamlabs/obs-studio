@@ -2554,22 +2554,9 @@ bool obs_output_can_begin_data_capture(const obs_output_t *output, uint32_t flag
 	return can_begin_data_capture(output);
 }
 
-static inline void ensure_force_initialize_encoder(obs_encoder_t *encoder)
-{
-	pthread_mutex_lock(&encoder->init_mutex);
-	encoder->initialized = false;
-	pthread_mutex_unlock(&encoder->init_mutex);
-}
-
-static inline bool initialize_audio_encoders(obs_output_t *output,
-					     bool force_encoder)
+static inline bool initialize_audio_encoders(obs_output_t *output)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-
-		if (output->audio_encoders[i] && force_encoder)
-			ensure_force_initialize_encoder(
-				output->video_encoders[i]);
-
 		obs_encoder_t *audio = output->audio_encoders[i];
 
 		if (audio && !obs_encoder_initialize(audio)) {
@@ -2624,38 +2611,7 @@ static inline void pair_encoders(obs_output_t *output)
 	}
 	pthread_mutex_unlock(&video->init_mutex);
 }
-/*
-static inline void unpair_encoders(obs_output_t *output)
-{
-	struct obs_encoder *video = output->video_encoder;
-	if (video) {
-		pthread_mutex_lock(&video->init_mutex);
-		blog(LOG_INFO, "unpair_encoders - video: '%s' (%s) (%p)",
-		     obs_encoder_get_name(video), obs_encoder_get_id(video),
-		     video);
 
-		struct obs_encoder *audio = video->paired_encoder;
-
-		if (audio) {
-			pthread_mutex_lock(&audio->init_mutex);
-			const char *audio_name = obs_encoder_get_name(audio);
-			const char *audio_id = obs_encoder_get_id(audio);
-
-			blog(LOG_INFO,
-			     "unpair_encoders - audio: '%s' (%s) (%p)",
-			     audio_name ? audio_name : "NULL",
-			     audio_id ? audio_id : "NULL", audio);
-
-			audio->paired_encoder = NULL;
-			pthread_mutex_unlock(&audio->init_mutex);
-		}
-
-		video->paired_encoder = NULL;
-
-		pthread_mutex_unlock(&video->init_mutex);
-	}
-}
-*/
 bool obs_output_initialize_encoders(obs_output_t *output, uint32_t flags)
 {
 	UNUSED_PARAMETER(flags);
@@ -2669,9 +2625,7 @@ bool obs_output_initialize_encoders(obs_output_t *output, uint32_t flags)
 
 	if (flag_video(output) && !initialize_video_encoders(output))
 		return false;
-	if (flag_audio(output) &&
-	    !initialize_audio_encoders(output,
-				       false)) // TODO: remove boolean parameter
+	if (flag_audio(output) && !initialize_audio_encoders(output))
 		return false;
 
 	return true;
