@@ -2731,7 +2731,7 @@ static void reset_raw_output(obs_output_t *output)
 	pause_reset(&output->pause);
 }
 
-static void set_fail_to_start_encoder_state(struct obs_output *output, obs_encoder_t *encoder) {
+static void set_fail_to_start_output_state(struct obs_output *output, obs_encoder_t *encoder) {
 	const char *last_error = obs_encoder_get_last_error(encoder);
 	obs_output_set_last_error(output,
 				  last_error && *last_error ? last_error : "Output encoder is not ready to start");
@@ -2748,7 +2748,7 @@ static void log_invalid_video_encoder_params(struct obs_output *output, obs_enco
 	     obs_output_get_name(output), obs_encoder_get_name(video_encoder), reason, fps_num, fps_den,
 	     frame_rate_divisor);
 
-	set_fail_to_start_encoder_state(output, video_encoder);
+	set_fail_to_start_output_state(output, video_encoder);
 }
 
 static void log_invalid_audio_encoder_params(struct obs_output *output, obs_encoder_t *audio_encoder,
@@ -2759,7 +2759,7 @@ static void log_invalid_audio_encoder_params(struct obs_output *output, obs_enco
 	     "interleaver batch size calculation (%s: sample_rate=%" PRIu32 ", frame_size=%zu)",
 	     obs_output_get_name(output), obs_encoder_get_name(audio_encoder), reason, sample_rate, frame_size);
 
-	set_fail_to_start_encoder_state(output, audio_encoder);
+	set_fail_to_start_output_state(output, audio_encoder);
 }
 
 static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
