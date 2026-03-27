@@ -2685,34 +2685,114 @@ static void reset_raw_output(obs_output_t *output)
 	pause_reset(&output->pause);
 }
 
-static void calculate_batch_size(struct obs_output *output)
+static void set_fail_to_start_output_state(struct obs_output *output, obs_encoder_t *encoder) {
+	const char *last_error = obs_encoder_get_last_error(encoder);
+	obs_output_set_last_error(output,
+				  last_error && *last_error ? last_error : "Output encoder is not ready to start");
+}
+
+static void log_invalid_video_encoder_params(struct obs_output *output, obs_encoder_t *video_encoder,
+					     const char *reason, uint32_t fps_num, uint32_t fps_den,
+					     uint32_t frame_rate_divisor)
+{
+	blog(LOG_WARNING,
+	     "Output '%s': Cannot start data capture because encoder '%s' (video) has invalid timing for "
+	     "interleaver batch size calculation (%s: fps_num=%" PRIu32 ", fps_den=%" PRIu32
+	     ", frame_rate_divisor=%" PRIu32 ")",
+	     obs_output_get_name(output), obs_encoder_get_name(video_encoder), reason, fps_num, fps_den,
+	     frame_rate_divisor);
+
+	set_fail_to_start_output_state(output, video_encoder);
+}
+
+static void log_invalid_audio_encoder_params(struct obs_output *output, obs_encoder_t *audio_encoder,
+					     const char *reason, uint32_t sample_rate, size_t frame_size)
+{
+	blog(LOG_WARNING,
+	     "Output '%s': Cannot start data capture because encoder '%s' (audio) has invalid timing for "
+	     "interleaver batch size calculation (%s: sample_rate=%" PRIu32 ", frame_size=%zu)",
+	     obs_output_get_name(output), obs_encoder_get_name(audio_encoder), reason, sample_rate, frame_size);
+
+	set_fail_to_start_output_state(output, audio_encoder);
+}
+
+static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 {
 	struct obs_video_info ovi;
 	obs_get_video_info(&ovi);
 	DARRAY(uint64_t) intervals;
 	da_init(intervals);
 
+	*batch_size = 0;
+
 	uint64_t largest_interval = 0;
 
 	/* Step 1: Calculate the largest interval between packets of any encoder. */
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		if (!output->video_encoders[i])
-			continue;
+		obs_encoder_t *video_encoder = output->video_encoders[i];
+		uint32_t frame_rate_divisor;
+		uint64_t den;
+		uint64_t encoder_interval;
 
-		uint32_t den = ovi.fps_den * obs_encoder_get_frame_rate_divisor(output->video_encoders[i]);
-		uint64_t encoder_interval = util_mul_div64(1000000000ULL, den, ovi.fps_num);
+		if (!video_encoder)
+			continue;
+		
+		frame_rate_divisor = obs_encoder_get_frame_rate_divisor(video_encoder);
+		// Here and in other places we validate encoder timing params before data capture is hooked so
+		// malformed encoder state fails cleanly instead of crashing during startup batch-size math.
+		if (!ovi.fps_num) {
+			da_free(intervals);
+			log_invalid_video_encoder_params(output, video_encoder, "video FPS numerator is zero",
+											 ovi.fps_num, ovi.fps_den, frame_rate_divisor);
+			return false;
+		}
+
+		den = (uint64_t)ovi.fps_den * frame_rate_divisor;
+		encoder_interval = util_mul_div64(1000000000ULL, den, ovi.fps_num);
+		if (!encoder_interval) {
+			da_free(intervals);
+			log_invalid_video_encoder_params(output, video_encoder, "video encoder interval is zero",
+											 ovi.fps_num, ovi.fps_den, frame_rate_divisor);
+			return false;
+		}
+
 		da_push_back(intervals, &encoder_interval);
 
 		largest_interval = encoder_interval > largest_interval ? encoder_interval : largest_interval;
 	}
 
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-		if (!output->audio_encoders[i])
+		obs_encoder_t *audio_encoder = output->audio_encoders[i];
+		uint32_t sample_rate;
+		size_t frame_size;
+		uint64_t encoder_interval;
+
+		if (!audio_encoder)
 			continue;
 
-		uint32_t sample_rate = obs_encoder_get_sample_rate(output->audio_encoders[i]);
-		size_t frame_size = obs_encoder_get_frame_size(output->audio_encoders[i]);
-		uint64_t encoder_interval = util_mul_div64(1000000000ULL, frame_size, sample_rate);
+		sample_rate = obs_encoder_get_sample_rate(audio_encoder);
+		frame_size = obs_encoder_get_frame_size(audio_encoder);
+		if (!sample_rate) {
+			da_free(intervals);
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio sample rate is zero", sample_rate,
+											 frame_size);
+			return false;
+		}
+		if (!frame_size) {
+			da_free(intervals);
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio frame size is zero", sample_rate,
+											 frame_size);
+			return false;
+		}
+
+		encoder_interval = util_mul_div64(1000000000ULL, frame_size, sample_rate);
+		if (!encoder_interval) {
+			da_free(intervals);
+			log_invalid_audio_encoder_params(output, audio_encoder, "audio encoder interval is zero",
+											 sample_rate, frame_size);
+			return false;
+		}
+
 		da_push_back(intervals, &encoder_interval);
 
 		largest_interval = encoder_interval > largest_interval ? encoder_interval : largest_interval;
@@ -2723,13 +2803,14 @@ static void calculate_batch_size(struct obs_output *output)
 	 * divisible by all smaller ones. For example, 33.3... ms video (30 FPS) and 21.3... ms audio (48 kHz AAC). */
 	for (size_t i = 0; i < intervals.num; i++) {
 		uint64_t num = (largest_interval * 2) / intervals.array[i];
-		output->interleaver_max_batch_size += num;
+		*batch_size += num;
 	}
 
 	blog(LOG_DEBUG, "Maximum interleaver batch size for '%s' calculated to be %zu packets",
-	     obs_output_get_name(output), output->interleaver_max_batch_size);
+	     obs_output_get_name(output), *batch_size);
 
 	da_free(intervals);
+	return true;
 }
 
 bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
@@ -2755,10 +2836,17 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 	if (flag_video(output) && flag_audio(output))
 		pair_encoders(output);
 
+	size_t batch_size;
+	if (!calculate_batch_size(output, &batch_size)) {
+		// Abort before activation so callers get a clean start failure instead of a partial capture state.
+		return false;
+	}
+
+	// Batch size is recomputed for each start, so overwrite the previous value instead of accumulating it.
+	output->interleaver_max_batch_size = batch_size;
+
 	os_atomic_set_bool(&output->data_active, true);
 	hook_data_capture(output);
-
-	calculate_batch_size(output);
 
 	if (flag_service(output))
 		obs_service_activate(output->service);
