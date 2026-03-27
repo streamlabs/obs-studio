@@ -2731,38 +2731,37 @@ static void reset_raw_output(obs_output_t *output)
 	pause_reset(&output->pause);
 }
 
-static const char *get_encoder_type_name(const obs_encoder_t *encoder)
-{
-	switch (encoder->info.type) {
-	case OBS_ENCODER_VIDEO:
-		return "video";
-	case OBS_ENCODER_AUDIO:
-		return "audio";
-	default:
-		return "unknown";
-	}
-}
-
-static bool log_invalid_encoder_timing(struct obs_output *output, obs_encoder_t *encoder, const char *reason,
-				       uint32_t fps_num, uint32_t fps_den, uint32_t frame_rate_divisor,
-				       uint32_t sample_rate, size_t frame_size)
-{
+static void set_fail_to_start_encoder_state(struct obs_output *output, obs_encoder_t *encoder) {
 	const char *last_error = obs_encoder_get_last_error(encoder);
-
-	blog(LOG_WARNING,
-	     "Output '%s': Cannot start data capture because encoder '%s' (%s) has invalid timing for "
-	     "interleaver batch size calculation (%s: fps_num=%" PRIu32 ", fps_den=%" PRIu32
-	     ", frame_rate_divisor=%" PRIu32 ", sample_rate=%" PRIu32 ", frame_size=%zu)",
-	     obs_output_get_name(output), obs_encoder_get_name(encoder), get_encoder_type_name(encoder), reason,
-	     fps_num, fps_den, frame_rate_divisor, sample_rate, frame_size);
-
 	obs_output_set_last_error(output,
 				  last_error && *last_error ? last_error : "Output encoder is not ready to start");
-	return false;
 }
 
-/* Validate encoder timing before data capture is hooked so malformed encoder state fails cleanly
- * instead of crashing during startup batch-size math. */
+static void log_invalid_video_encoder_params(struct obs_output *output, obs_encoder_t *video_encoder,
+					     const char *reason, uint32_t fps_num, uint32_t fps_den,
+					     uint32_t frame_rate_divisor)
+{
+	blog(LOG_WARNING,
+	     "Output '%s': Cannot start data capture because encoder '%s' (video) has invalid timing for "
+	     "interleaver batch size calculation (%s: fps_num=%" PRIu32 ", fps_den=%" PRIu32
+	     ", frame_rate_divisor=%" PRIu32 ")",
+	     obs_output_get_name(output), obs_encoder_get_name(video_encoder), reason, fps_num, fps_den,
+	     frame_rate_divisor);
+
+	set_fail_to_start_encoder_state(output, video_encoder);
+}
+
+static void log_invalid_audio_encoder_params(struct obs_output *output, obs_encoder_t *audio_encoder,
+					     const char *reason, uint32_t sample_rate, size_t frame_size)
+{
+	blog(LOG_WARNING,
+	     "Output '%s': Cannot start data capture because encoder '%s' (audio) has invalid timing for "
+	     "interleaver batch size calculation (%s: sample_rate=%" PRIu32 ", frame_size=%zu)",
+	     obs_output_get_name(output), obs_encoder_get_name(audio_encoder), reason, sample_rate, frame_size);
+
+	set_fail_to_start_encoder_state(output, audio_encoder);
+}
+
 static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 {
 	struct obs_video_info ovi;
@@ -2776,27 +2775,31 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 
 	/* Step 1: Calculate the largest interval between packets of any encoder. */
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		obs_encoder_t *video = output->video_encoders[i];
+		obs_encoder_t *video_encoder = output->video_encoders[i];
 		uint32_t frame_rate_divisor;
 		uint64_t den;
 		uint64_t encoder_interval;
 
-		if (!video)
+		if (!video_encoder)
 			continue;
-
-		frame_rate_divisor = obs_encoder_get_frame_rate_divisor(video);
+		
+		frame_rate_divisor = obs_encoder_get_frame_rate_divisor(video_encoder);
+		// Here and in other places we validate encoder timing params before data capture is hooked so
+		// malformed encoder state fails cleanly instead of crashing during startup batch-size math.
 		if (!ovi.fps_num) {
 			da_free(intervals);
-			return log_invalid_encoder_timing(output, video, "video FPS numerator is zero", ovi.fps_num,
-							 ovi.fps_den, frame_rate_divisor, 0, 0);
+			log_invalid_video_encoder_params(output, video_encoder, "video FPS numerator is zero",
+											 ovi.fps_num, ovi.fps_den, frame_rate_divisor);
+			return false;
 		}
 
 		den = (uint64_t)ovi.fps_den * frame_rate_divisor;
 		encoder_interval = util_mul_div64(1000000000ULL, den, ovi.fps_num);
 		if (!encoder_interval) {
 			da_free(intervals);
-			return log_invalid_encoder_timing(output, video, "video encoder interval is zero",
-							 ovi.fps_num, ovi.fps_den, frame_rate_divisor, 0, 0);
+			log_invalid_video_encoder_params(output, video_encoder, "video encoder interval is zero",
+											 ovi.fps_num, ovi.fps_den, frame_rate_divisor);
+			return false;
 		}
 
 		da_push_back(intervals, &encoder_interval);
@@ -2817,20 +2820,23 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 		frame_size = obs_encoder_get_frame_size(audio);
 		if (!sample_rate) {
 			da_free(intervals);
-			return log_invalid_encoder_timing(output, audio, "audio sample rate is zero", 0, 0, 0,
-							 sample_rate, frame_size);
+			log_invalid_audio_encoder_params(output, audio, "audio sample rate is zero", sample_rate,
+											 frame_size);
+			return false;
 		}
 		if (!frame_size) {
 			da_free(intervals);
-			return log_invalid_encoder_timing(output, audio, "audio frame size is zero", 0, 0, 0,
-							 sample_rate, frame_size);
+			log_invalid_audio_encoder_params(output, audio, "audio frame size is zero", sample_rate,
+											 frame_size);
+			return false;
 		}
 
 		encoder_interval = util_mul_div64(1000000000ULL, frame_size, sample_rate);
 		if (!encoder_interval) {
 			da_free(intervals);
-			return log_invalid_encoder_timing(output, audio, "audio encoder interval is zero", 0, 0, 0,
-							 sample_rate, frame_size);
+			log_invalid_audio_encoder_params(output, audio, "audio encoder interval is zero",
+											 sample_rate, frame_size);
+			return false;
 		}
 
 		da_push_back(intervals, &encoder_interval);
@@ -2878,11 +2884,11 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 
 	size_t batch_size;
 	if (!calculate_batch_size(output, &batch_size)) {
-		/* Abort before activation so callers get a clean start failure instead of a partial capture state. */
+		// Abort before activation so callers get a clean start failure instead of a partial capture state.
 		return false;
 	}
 
-	/* Batch size is recomputed for each start, so overwrite the previous value instead of accumulating it. */
+	// Batch size is recomputed for each start, so overwrite the previous value instead of accumulating it.
 	output->interleaver_max_batch_size = batch_size;
 
 	os_atomic_set_bool(&output->data_active, true);
