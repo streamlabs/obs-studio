@@ -126,6 +126,9 @@ static void nvidia_audio_destroy(void *data)
 		return;
 
 	if (ng->nvidia_sdk_dir_found)
+		pthread_join(ng->nvafx_thread, NULL);
+
+	if (ng->nvidia_sdk_dir_found)
 		pthread_mutex_lock(&ng->nvafx_mutex);
 
 	for (size_t i = 0; i < ng->channels; i++) {
@@ -151,7 +154,6 @@ static void nvidia_audio_destroy(void *data)
 	bfree(ng->sdk_path);
 	bfree((void *)ng->fx);
 	if (ng->nvidia_sdk_dir_found) {
-		pthread_join(ng->nvafx_thread, NULL);
 		pthread_mutex_unlock(&ng->nvafx_mutex);
 		pthread_mutex_destroy(&ng->nvafx_mutex);
 	}
