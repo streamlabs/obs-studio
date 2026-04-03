@@ -274,6 +274,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	ovi->scale_type = encoder->gpu_scale_type;
 
 	ovi->gpu_conversion = true;
+	ovi->id = current_mix->ovi->id; // Copy current id so obs_source->item->canvas render works
 
 	mix = obs_create_video_mix(ovi);
 	if (!mix)

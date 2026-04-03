@@ -1086,10 +1086,10 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 	gs_blend_state_push();
 	gs_reset_blend_state();
 
+	size_t canvas_id = (obs_get_video_rendering_canvas() != NULL) ? obs_get_video_rendering_canvas()->id : -1;
 	item = scene->first_item;
 	while (item) {
-		if (obs_get_video_rendering_canvas() != item->canvas &&
-		    item->canvas != NULL) {
+		if (item->canvas != NULL && canvas_id != item->canvas->id) {
 			item = item->next;
 			continue;
 		}

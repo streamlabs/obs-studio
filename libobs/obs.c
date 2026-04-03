@@ -1967,8 +1967,19 @@ struct obs_video_info *obs_create_video_info()
 	ovi->scale_type = OBS_SCALE_BILINEAR;
 	ovi->adapter = 0;
 	ovi->gpu_conversion = true;
+	ovi->id = obs_create_video_info_id();
 
 	return ovi;
+}
+
+size_t obs_create_video_info_id()
+{
+	static size_t id = 0;
+	size_t currId = id++;
+	if (id == (size_t)-1) {
+		blog(LOG_ERROR, "obs_create_video_info_id wrap around detected!");
+	}
+	return currId;
 }
 
 size_t obs_get_video_info_count()
