@@ -224,6 +224,7 @@ struct obs_video_info {
 	enum video_range_type range;      /**< YUV range (if YUV) */
 
 	enum obs_scale_type scale_type; /**< How to scale if scaling */
+	size_t id;
 };
 
 /**
@@ -477,6 +478,7 @@ EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
 EXPORT int obs_remove_video_info(struct obs_video_info *ovi);
 /** Adds new video info to array of video info objects, need to be initialized */
 EXPORT struct obs_video_info *obs_create_video_info();
+EXPORT size_t obs_create_video_info_id();
 
 /**
  * Sets base audio output format/channels/samples/etc
