@@ -575,6 +575,7 @@ extern void cache_multiple_rendering(void);
 extern bool get_cached_multiple_rendering(void);
 
 extern struct obs_core_video_mix *get_mix_for_video(video_t *video);
+/* Use during an active mix render pass to set both the snapshot and canonical canvas context. */
 extern void obs_set_video_rendering_mix(struct obs_core_video_mix *mix);
 
 extern void start_raw_video(video_t *video, const struct video_scale_info *conversion, uint32_t frame_rate_divisor,

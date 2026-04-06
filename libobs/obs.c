@@ -2914,23 +2914,25 @@ struct obs_video_info *obs_get_audio_rendering_canvas(void)
 	return obs ? obs->audio_rendering_canvas : NULL;
 }
 
-void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
-{
-	if (!obs)
-		return;
-
-	// blog(LOG_INFO, "obs_set_video_rendering_canvas - canvas (ovi): 0x%"PRIXPTR, (uintptr_t)ovi);
-	obs->video_rendering_mix = NULL;
-	obs->video_rendering_canvas = ovi;
-}
-
-void obs_set_video_rendering_mix(struct obs_core_video_mix *mix)
+static inline void obs_set_video_render_context(struct obs_core_video_mix *mix,
+						struct obs_video_info *canvas)
 {
 	if (!obs)
 		return;
 
 	obs->video_rendering_mix = mix;
-	obs->video_rendering_canvas = mix ? mix->canvas_ovi : NULL;
+	obs->video_rendering_canvas = mix ? mix->canvas_ovi : canvas;
+}
+
+void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
+{
+	// blog(LOG_INFO, "obs_set_video_rendering_canvas - canvas (ovi): 0x%"PRIXPTR, (uintptr_t)ovi);
+	obs_set_video_render_context(NULL, ovi);
+}
+
+void obs_set_video_rendering_mix(struct obs_core_video_mix *mix)
+{
+	obs_set_video_render_context(mix, NULL);
 }
 
 struct obs_video_info *obs_get_video_rendering_canvas(void)
