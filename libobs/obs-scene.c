@@ -620,17 +620,8 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	/* Reset bounds crop */
 	memset(&item->bounds_crop, 0, sizeof(item->bounds_crop));
 
-	// TODO: this code seems to do nothing and can be safely removed
-	// struct obs_video_info *saved_canvas = NULL;
-	// if (item->canvas) {
-	// 	saved_canvas = obs_get_video_rendering_canvas();
-	// 	obs_set_video_rendering_canvas(item->canvas);
-	// }
 	width = obs_source_get_width(item->source);
 	height = obs_source_get_height(item->source);
-	// if (saved_canvas)
-	// 	obs_set_video_rendering_canvas(saved_canvas);
-
 
 	/* Adjust crop on nested scenes (if any) */
 	if (update_tex && item->is_scene)
@@ -1086,10 +1077,12 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 	gs_blend_state_push();
 	gs_reset_blend_state();
 
+	struct obs_video_info *render_canvas = obs && obs->video_rendering_mix
+						       ? obs->video_rendering_mix->canvas_ovi
+						       : NULL;
 	item = scene->first_item;
 	while (item) {
-		if (obs_get_video_rendering_canvas() != item->canvas &&
-		    item->canvas != NULL) {
+		if (render_canvas != item->canvas && item->canvas != NULL) {
 			item = item->next;
 			continue;
 		}

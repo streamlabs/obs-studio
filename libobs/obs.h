@@ -875,9 +875,8 @@ EXPORT enum obs_audio_rendering_mode obs_get_audio_rendering_mode(void);
 EXPORT struct obs_video_info *obs_get_audio_rendering_canvas(void);
 EXPORT void obs_set_audio_rendering_canvas(struct obs_video_info *ovi);
 
-/** Sets/Gets the video rendering canvas for manual/fallback rendering when no mix is active. */
-EXPORT void obs_set_video_rendering_canvas(struct obs_video_info *ovi);
-EXPORT struct obs_video_info *obs_get_video_rendering_canvas(void);
+/** Sets the active video render context for the current render pass. */
+EXPORT void obs_set_video_render_context(obs_core_video_mix_t *mix);
 
 /** Set the replay buffer rendering mode*/
 EXPORT void obs_set_replay_buffer_rendering_mode(

@@ -1850,19 +1850,11 @@ bool obs_reset_audio(const struct obs_audio_info *oai)
 
 bool obs_get_video_info_current(struct obs_video_info *ovi)
 {
-	if (!obs->video.graphics || !ovi) {
+	if (!obs->video.graphics || !ovi || !obs->video_rendering_mix) {
 		return false;
 	}
 
-	if (obs->video_rendering_mix) {
-		*ovi = obs->video_rendering_mix->ovi;
-		return true;
-	}
-
-	if (!obs->video_rendering_canvas)
-		return false;
-
-	*ovi = *(obs->video_rendering_canvas);
+	*ovi = obs->video_rendering_mix->ovi;
 
 	return true;
 }
@@ -1939,7 +1931,6 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 		if (obs->video.canvases.array[i] == ovi) {
 			bfree(obs->video.canvases.array[i]);
 			da_erase(obs->video.canvases, i);
-			obs_set_video_rendering_canvas(NULL);
 			break;
 		}
 	}
@@ -2914,30 +2905,12 @@ struct obs_video_info *obs_get_audio_rendering_canvas(void)
 	return obs ? obs->audio_rendering_canvas : NULL;
 }
 
-static inline void obs_set_video_render_context(struct obs_core_video_mix *mix,
-						struct obs_video_info *canvas)
+void obs_set_video_render_context(struct obs_core_video_mix *mix)
 {
 	if (!obs)
 		return;
 
 	obs->video_rendering_mix = mix;
-	obs->video_rendering_canvas = mix ? mix->canvas_ovi : canvas;
-}
-
-void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
-{
-	// blog(LOG_INFO, "obs_set_video_rendering_canvas - canvas (ovi): 0x%"PRIXPTR, (uintptr_t)ovi);
-	obs_set_video_render_context(NULL, ovi);
-}
-
-void obs_set_video_rendering_mix(struct obs_core_video_mix *mix)
-{
-	obs_set_video_render_context(mix, NULL);
-}
-
-struct obs_video_info *obs_get_video_rendering_canvas(void)
-{
-	return obs ? obs->video_rendering_canvas : NULL;
 }
 
 void obs_set_replay_buffer_rendering_mode(

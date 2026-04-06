@@ -538,8 +538,7 @@ struct obs_core {
 	/* Active mix for the current render pass. */
 	struct obs_core_video_mix *video_rendering_mix;
 
-	struct obs_video_info *video_rendering_canvas;
-	struct obs_video_info *audio_rendering_canvas;
+	struct obs_video_info *audio_rendering_canvas; /* Canonical canvas identity for the current audio render context. */
 
 	os_task_queue_t *destruction_task_thread;
 
@@ -575,8 +574,8 @@ extern void cache_multiple_rendering(void);
 extern bool get_cached_multiple_rendering(void);
 
 extern struct obs_core_video_mix *get_mix_for_video(video_t *video);
-/* Use during an active mix render pass to set both the snapshot and canonical canvas context. */
-extern void obs_set_video_rendering_mix(struct obs_core_video_mix *mix);
+/* Use to set the active video render context for the current render pass. */
+extern void obs_set_video_render_context(struct obs_core_video_mix *mix);
 
 extern void start_raw_video(video_t *video, const struct video_scale_info *conversion, uint32_t frame_rate_divisor,
 			    void (*callback)(void *param, struct video_data *frame), void *param);

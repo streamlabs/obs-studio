@@ -878,7 +878,7 @@ static inline void output_frame(struct obs_core_video_mix *video)
 	else
 		return;
 
-	obs_set_video_rendering_mix(video);
+	obs_set_video_render_context(video);
 
 	const bool raw_active = video->raw_was_active;
 	const bool gpu_active = video->gpu_was_active;
