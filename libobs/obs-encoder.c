@@ -274,6 +274,8 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	ovi->scale_type = encoder->gpu_scale_type;
 
 	ovi->gpu_conversion = true;
+	// Source items will be unaware of this new ovi* since it doesn't match their cached ptr. So we will set the parent ovi*
+	ovi->parent_ovi = current_mix->ovi;
 
 	mix = obs_create_video_mix(ovi);
 	if (!mix)
