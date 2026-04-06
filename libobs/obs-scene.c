@@ -1086,9 +1086,13 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 	gs_blend_state_push();
 	gs_reset_blend_state();
 
+	// Determine if there is another obs_video_info this scene item can render into
+	struct obs_video_info *parent_ovi =
+		obs_get_video_rendering_canvas() != NULL ? obs_get_video_rendering_canvas()->parent_ovi : NULL;
+
 	item = scene->first_item;
 	while (item) {
-		if (obs_get_video_rendering_canvas() != item->canvas &&
+		if (parent_ovi != item->canvas && obs_get_video_rendering_canvas() != item->canvas &&
 		    item->canvas != NULL) {
 			item = item->next;
 			continue;
