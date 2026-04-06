@@ -347,8 +347,8 @@ static inline void get_scene_dimensions(const obs_sceneitem_t *item, float *x, f
 {
 	obs_scene_t *parent = item->parent;
 	if (!parent || (parent->is_group && !parent->source->canvas)) {
-		*x = (float)obs->data.main_canvas->mix->ovi->base_width;
-		*y = (float)obs->data.main_canvas->mix->ovi->base_height;
+		*x = (float)obs->data.main_canvas->mix->ovi.base_width;
+		*y = (float)obs->data.main_canvas->mix->ovi.base_height;
 	} else if (parent->is_group) {
 		*x = (float)canvas_getwidth(parent->source->canvas);
 		*y = (float)canvas_getheight(parent->source->canvas);

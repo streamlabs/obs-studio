@@ -316,7 +316,8 @@ struct obs_core_video_mix {
 	bool gpu_want_destroy_thread;
 
 	video_t *video;
-	struct obs_video_info *ovi;
+	struct obs_video_info ovi;         /* Mix-local render settings. */
+	struct obs_video_info *canvas_ovi; /* Stable public canvas identity for lookups/routing. */
 	enum obs_video_rendering_mode rendering_mode;
 
 	bool gpu_conversion;
@@ -394,7 +395,7 @@ struct audio_monitor;
 
 struct obs_core_audio {
 	audio_t *audio;
-	/* These 3 values are not present in the original OBS code. They serve as a main audio parameters cache, 
+	/* These 3 values are not present in the original OBS code. They serve as a main audio parameters cache,
 	 * allowing audio processing to finish the current iteration even if the global audio object has been destroyed. */
 	uint32_t samples_per_sec;
 	enum speaker_layout speakers;
@@ -533,6 +534,10 @@ struct obs_core {
 	enum obs_replay_buffer_rendering_mode replay_buffer_rendering_mode;
 	enum obs_video_rendering_mode video_rendering_mode;
 	enum obs_audio_rendering_mode audio_rendering_mode;
+
+	/* Active mix for the current render pass. */
+	struct obs_core_video_mix *video_rendering_mix;
+
 	struct obs_video_info *video_rendering_canvas;
 	struct obs_video_info *audio_rendering_canvas;
 
@@ -570,6 +575,7 @@ extern void cache_multiple_rendering(void);
 extern bool get_cached_multiple_rendering(void);
 
 extern struct obs_core_video_mix *get_mix_for_video(video_t *video);
+extern void obs_set_video_rendering_mix(struct obs_core_video_mix *mix);
 
 extern void start_raw_video(video_t *video, const struct video_scale_info *conversion, uint32_t frame_rate_divisor,
 			    void (*callback)(void *param, struct video_data *frame), void *param);

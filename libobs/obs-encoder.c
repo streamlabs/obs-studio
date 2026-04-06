@@ -241,8 +241,12 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		const struct video_output_info *voi = video_output_get_info(current->video);
 		if (current_mix->view != current->view)
 			continue;
+		if (current_mix->canvas_ovi != current->canvas_ovi)
+			continue;
+		if (current_mix->rendering_mode != current->rendering_mode)
+			continue;
 
-		if (current->ovi->scale_type != encoder->gpu_scale_type)
+		if (current->ovi.scale_type != encoder->gpu_scale_type)
 			continue;
 
 		if (voi->width != width || voi->height != height)
@@ -262,26 +266,27 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	if (!create_mix)
 		return;
 
-	struct obs_video_info *ovi = bzalloc(sizeof(struct obs_video_info));
-	*ovi = *current_mix->ovi;
+	struct obs_video_info ovi = current_mix->ovi;
 
-	ovi->output_format = format;
-	ovi->colorspace = space;
-	ovi->range = range;
+	ovi.output_format = format;
+	ovi.colorspace = space;
+	ovi.range = range;
 
-	ovi->output_height = height;
-	ovi->output_width = width;
-	ovi->scale_type = encoder->gpu_scale_type;
+	ovi.output_height = height;
+	ovi.output_width = width;
+	ovi.scale_type = encoder->gpu_scale_type;
 
-	ovi->gpu_conversion = true;
+	ovi.gpu_conversion = true;
 
-	mix = obs_create_video_mix(ovi);
+	mix = obs_create_video_mix(&ovi);
 	if (!mix)
 		return;
 
 	mix->encoder_only_mix = true;
 	mix->encoder_refs = 1;
+	mix->canvas_ovi = current_mix->canvas_ovi;
 	mix->view = current_mix->view;
+	mix->rendering_mode = current_mix->rendering_mode;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 
@@ -291,8 +296,12 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		const struct video_output_info *voi = video_output_get_info(current->video);
 		if (current->view != current_mix->view)
 			continue;
+		if (current->canvas_ovi != current_mix->canvas_ovi)
+			continue;
+		if (current->rendering_mode != current_mix->rendering_mode)
+			continue;
 
-		if (current->ovi->scale_type != encoder->gpu_scale_type)
+		if (current->ovi.scale_type != encoder->gpu_scale_type)
 			continue;
 
 		if (voi->width != width || voi->height != height)
@@ -301,6 +310,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		if (voi->format != format || voi->colorspace != space || voi->range != range)
 			continue;
 
+		current->encoder_refs += 1;
 		obs_encoder_set_video(encoder, current->video);
 		create_mix = false;
 		break;

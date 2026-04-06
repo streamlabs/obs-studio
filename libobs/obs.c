@@ -434,7 +434,7 @@ static bool obs_init_textures(struct obs_core_video_mix *video)
 		break;
 	}
 
-	struct obs_video_info *ovi = video->ovi;
+	struct obs_video_info *ovi = &video->ovi;
 	video->render_texture = gs_texture_create(ovi->base_width,
 						  ovi->base_height, format, 1,
 						  NULL, GS_RENDER_TARGET);
@@ -623,16 +623,16 @@ static int obs_init_video_mix(struct obs_video_info *ovi, struct obs_core_video_
 	pthread_mutex_init_value(&video->gpu_encoder_mutex);
 
 	make_video_info(&vi, ovi);
-	video->ovi = ovi;
+	video->ovi = *ovi;
 
 	/* main view graphics thread drives all frame output,
 	 * so share FPS settings for aux views */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	size_t num = obs->video.mixes.num;
 	if (num && obs->data.main_canvas->mix) {
-		struct obs_video_info main_ovi = *obs->data.main_canvas->mix->ovi;
-		video->ovi->fps_num = main_ovi.fps_num;
-		video->ovi->fps_den = main_ovi.fps_den;
+		struct obs_video_info main_ovi = obs->data.main_canvas->mix->ovi;
+		video->ovi.fps_num = main_ovi.fps_num;
+		video->ovi.fps_den = main_ovi.fps_den;
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
@@ -673,7 +673,7 @@ struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi)
 {
 	struct obs_core_video_mix *video =
 		bzalloc(sizeof(struct obs_core_video_mix));
-	video->ovi = ovi;
+	video->canvas_ovi = ovi;
 	if (obs_init_video_mix(ovi, video) != OBS_VIDEO_SUCCESS) {
 		bfree(video);
 		video = NULL;
@@ -864,6 +864,9 @@ static void obs_free_render_textures(struct obs_core_video_mix *video)
 
 void obs_free_video_mix(struct obs_core_video_mix *video)
 {
+	if (obs && obs->video_rendering_mix == video)
+		obs->video_rendering_mix = NULL;
+
 	if (video->video) {
 		video_output_close(video->video);
 		video->video = NULL;
@@ -1847,9 +1850,17 @@ bool obs_reset_audio(const struct obs_audio_info *oai)
 
 bool obs_get_video_info_current(struct obs_video_info *ovi)
 {
-	if (!obs->video.graphics || !obs->video_rendering_canvas || !ovi) {
+	if (!obs->video.graphics || !ovi) {
 		return false;
 	}
+
+	if (obs->video_rendering_mix) {
+		*ovi = obs->video_rendering_mix->ovi;
+		return true;
+	}
+
+	if (!obs->video_rendering_canvas)
+		return false;
 
 	*ovi = *(obs->video_rendering_canvas);
 
@@ -1885,17 +1896,16 @@ bool obs_get_video_info_for_output(obs_output_t *output,
 					      ovi);
 }
 
-bool obs_get_video_info_for_encoder(obs_encoder_t *encoder,
-				    struct obs_video_info *ovi)
+bool obs_get_video_info_for_encoder(obs_encoder_t *encoder, struct obs_video_info *ovi)
 {
 	blog(LOG_INFO, "[VIDEO_CANVAS] video info requested for encoder");
 	if (!encoder || !encoder->video || !ovi)
 		return false;
 	struct obs_core_video_mix *video = encoder->video;
-	if (!video || !video->ovi)
+	if (!video)
 		return false;
 
-	*ovi = *(video->ovi);
+	*ovi = video->ovi;
 
 	return true;
 }
@@ -2857,7 +2867,9 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi,
 	// As this canvas is unused, we can safely skip it.
 	for (size_t i = 1, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
-		if ((mix->ovi == ovi || ovi == NULL) &&
+		if (!mix || mix->encoder_only_mix)
+			continue;
+		if ((mix->canvas_ovi == ovi || ovi == NULL) &&
 		    mix->rendering_mode == mode)
 			return mix;
 	}
@@ -2908,7 +2920,17 @@ void obs_set_video_rendering_canvas(struct obs_video_info *ovi)
 		return;
 
 	// blog(LOG_INFO, "obs_set_video_rendering_canvas - canvas (ovi): 0x%"PRIXPTR, (uintptr_t)ovi);
+	obs->video_rendering_mix = NULL;
 	obs->video_rendering_canvas = ovi;
+}
+
+void obs_set_video_rendering_mix(struct obs_core_video_mix *mix)
+{
+	if (!obs)
+		return;
+
+	obs->video_rendering_mix = mix;
+	obs->video_rendering_canvas = mix ? mix->canvas_ovi : NULL;
 }
 
 struct obs_video_info *obs_get_video_rendering_canvas(void)
