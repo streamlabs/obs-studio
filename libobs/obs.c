@@ -616,25 +616,37 @@ static inline void set_video_matrix(struct obs_core_video_mix *video, struct vid
 	memcpy(video->color_matrix, &mat, sizeof(float) * 16);
 }
 
+static void sync_mix_fps_with_main_canvas(struct obs_core_video_mix *video)
+{
+	/* Main view graphics thread drives frame pacing for all views. Keep the
+	 * mix snapshot and the public canvas handle aligned for callers that
+	 * still read fps_num/fps_den from obs_video_info. */
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+
+	if (obs->video.mixes.num && obs->data.main_canvas->mix) {
+		const struct obs_video_info *main_ovi = &obs->data.main_canvas->mix->ovi;
+
+		video->ovi.fps_num = main_ovi->fps_num;
+		video->ovi.fps_den = main_ovi->fps_den;
+
+		if (video->canvas_ovi) {
+			video->canvas_ovi->fps_num = main_ovi->fps_num;
+			video->canvas_ovi->fps_den = main_ovi->fps_den;
+		}
+	}
+
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+}
+
 static int obs_init_video_mix(struct obs_video_info *ovi, struct obs_core_video_mix *video)
 {
 	struct video_output_info vi;
 
 	pthread_mutex_init_value(&video->gpu_encoder_mutex);
 
-	make_video_info(&vi, ovi);
 	video->ovi = *ovi;
-
-	/* main view graphics thread drives all frame output,
-	 * so share FPS settings for aux views */
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-	size_t num = obs->video.mixes.num;
-	if (num && obs->data.main_canvas->mix) {
-		struct obs_video_info main_ovi = obs->data.main_canvas->mix->ovi;
-		video->ovi.fps_num = main_ovi.fps_num;
-		video->ovi.fps_den = main_ovi.fps_den;
-	}
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
+	sync_mix_fps_with_main_canvas(video);
+	make_video_info(&vi, &video->ovi);
 
 	video->gpu_conversion = ovi->gpu_conversion;
 	video->gpu_was_active = false;
