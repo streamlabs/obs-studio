@@ -535,10 +535,11 @@ struct obs_core {
 	enum obs_video_rendering_mode video_rendering_mode;
 	enum obs_audio_rendering_mode audio_rendering_mode;
 
-	/* Active mix for the current render pass. */
+	/* Active mix for the current video render pass. */
 	struct obs_core_video_mix *video_rendering_mix;
 
-	struct obs_video_info *audio_rendering_canvas; /* Canonical canvas identity for the current audio render context. */
+	/* Canvas identity for the current audio render context. */
+	struct obs_video_info *audio_rendering_canvas;
 
 	os_task_queue_t *destruction_task_thread;
 
