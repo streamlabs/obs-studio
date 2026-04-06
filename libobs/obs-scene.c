@@ -1086,10 +1086,15 @@ static void scene_video_render(void *data, gs_effect_t *effect)
 	gs_blend_state_push();
 	gs_reset_blend_state();
 
-	size_t canvas_id = (obs_get_video_rendering_canvas() != NULL) ? obs_get_video_rendering_canvas()->id : -1;
+	size_t current_ovi_id = -1;
+	size_t parent_ovi_id = -1; // another obs_video_info this scene item can render into
+	if (obs_get_video_rendering_canvas() != NULL) {
+		current_ovi_id = obs_get_video_rendering_canvas()->id;
+		parent_ovi_id = obs_get_video_rendering_canvas()->parent_id;
+	}
 	item = scene->first_item;
 	while (item) {
-		if (item->canvas != NULL && canvas_id != item->canvas->id) {
+		if (item->canvas != NULL && item->canvas->id != current_ovi_id && item->canvas->id != parent_ovi_id) {
 			item = item->next;
 			continue;
 		}

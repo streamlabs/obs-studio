@@ -1968,6 +1968,7 @@ struct obs_video_info *obs_create_video_info()
 	ovi->adapter = 0;
 	ovi->gpu_conversion = true;
 	ovi->id = obs_create_video_info_id();
+	ovi->parent_id = 0;
 
 	return ovi;
 }

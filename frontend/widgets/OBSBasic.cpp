@@ -1506,6 +1506,7 @@ int OBSBasic::ResetVideo()
 	ovi.gpu_conversion = true;
 	ovi.scale_type = GetScaleType(activeConfiguration);
 	ovi.id = obs_create_video_info_id();
+	ovi.parent_id = 0;
 
 	if (ovi.base_width < 32 || ovi.base_height < 32) {
 		ovi.base_width = 1920;

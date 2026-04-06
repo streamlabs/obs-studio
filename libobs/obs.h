@@ -224,7 +224,8 @@ struct obs_video_info {
 	enum video_range_type range;      /**< YUV range (if YUV) */
 
 	enum obs_scale_type scale_type; /**< How to scale if scaling */
-	size_t id;
+	size_t id;  /** Unique identifier */
+	size_t parent_id;  /** Id of the "source" ovi */
 };
 
 /**
