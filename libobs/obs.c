@@ -1967,6 +1967,7 @@ struct obs_video_info *obs_create_video_info()
 	ovi->scale_type = OBS_SCALE_BILINEAR;
 	ovi->adapter = 0;
 	ovi->gpu_conversion = true;
+	ovi->parent_ovi = NULL;
 
 	return ovi;
 }

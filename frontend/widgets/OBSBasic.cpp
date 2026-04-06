@@ -1505,6 +1505,7 @@ int OBSBasic::ResetVideo()
 	ovi.adapter = config_get_uint(App()->GetUserConfig(), "Video", "AdapterIdx");
 	ovi.gpu_conversion = true;
 	ovi.scale_type = GetScaleType(activeConfiguration);
+	ovi.parent_ovi = NULL;
 
 	if (ovi.base_width < 32 || ovi.base_height < 32) {
 		ovi.base_width = 1920;
