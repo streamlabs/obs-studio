@@ -141,8 +141,8 @@ static inline bool can_reuse_mix_texture(const struct obs_core_video_mix *mix, s
 			continue;
 		if (other->render_space != mix->render_space)
 			continue;
-		if (other->ovi->base_width != mix->ovi->base_width ||
-		    other->ovi->base_height != mix->ovi->base_height)
+		if (other->ovi.base_width != mix->ovi.base_width ||
+		    other->ovi.base_height != mix->ovi.base_height)
 			continue;
 		if (!other->texture_rendered)
 			continue;
@@ -179,15 +179,13 @@ static inline void render_main_texture(struct obs_core_video_mix *video)
 	gs_set_render_target_with_color_space(video->render_texture, NULL, video->render_space);
 	gs_clear(GS_CLEAR_COLOR, &clear_color, 1.0f, 0);
 
-	set_render_size(video->ovi->base_width, video->ovi->base_height);
+	set_render_size(video->ovi.base_width, video->ovi.base_height);
 
 	pthread_mutex_lock(&obs->data.draw_callbacks_mutex);
 
 	for (size_t i = obs->data.draw_callbacks.num; i > 0; i--) {
-		struct draw_callback *const callback =
-			obs->data.draw_callbacks.array + (i - 1);
-		callback->draw(callback->param, video->ovi->base_width,
-			       video->ovi->base_height);
+		struct draw_callback *const callback = obs->data.draw_callbacks.array + (i - 1);
+		callback->draw(callback->param, video->ovi.base_width, video->ovi.base_height);
 	}
 
 	pthread_mutex_unlock(&obs->data.draw_callbacks_mutex);
@@ -224,12 +222,12 @@ static inline gs_effect_t *get_scale_effect_internal(struct obs_core_video_mix *
 	/* if the dimension is under half the size of the original image,
 	 * bicubic/lanczos can't sample enough pixels to create an accurate
 	 * image, so use the bilinear low resolution effect instead */
-	if (info->width < (mix->ovi->base_width / 2) &&
-	    info->height < (mix->ovi->base_height / 2)) {
+	if (info->width < (mix->ovi.base_width / 2) &&
+	    info->height < (mix->ovi.base_height / 2)) {
 		return video->bilinear_lowres_effect;
 	}
 
-	switch (mix->ovi->scale_type) {
+	switch (mix->ovi.scale_type) {
 	case OBS_SCALE_BILINEAR:
 		return video->default_effect;
 	case OBS_SCALE_LANCZOS:
@@ -246,8 +244,8 @@ static inline gs_effect_t *get_scale_effect_internal(struct obs_core_video_mix *
 static inline bool resolution_close(struct obs_core_video_mix *video,
 				    uint32_t width, uint32_t height)
 {
-	long width_cmp = (long)video->ovi->base_width - (long)width;
-	long height_cmp = (long)video->ovi->base_height - (long)height;
+	long width_cmp = (long)video->ovi.base_width - (long)width;
+	long height_cmp = (long)video->ovi.base_height - (long)height;
 
 	return labs(width_cmp) <= 16 && labs(height_cmp) <= 16;
 }
@@ -276,8 +274,7 @@ static gs_texture_t *render_output_texture(struct obs_core_video_mix *mix)
 	uint32_t width = gs_texture_get_width(target);
 	uint32_t height = gs_texture_get_height(target);
 
-	if ((width == mix->ovi->base_width) &&
-	    (height == mix->ovi->base_height))
+	if ((width == mix->ovi.base_width) && (height == mix->ovi.base_height))
 		return texture;
 
 	profile_start(render_output_texture_name);
@@ -295,15 +292,13 @@ static gs_texture_t *render_output_texture(struct obs_core_video_mix *mix)
 
 	if (bres) {
 		struct vec2 base;
-		vec2_set(&base, (float)mix->ovi->base_width,
-			 (float)mix->ovi->base_height);
+		vec2_set(&base, (float)mix->ovi.base_width, (float)mix->ovi.base_height);
 		gs_effect_set_vec2(bres, &base);
 	}
 
 	if (bres_i) {
 		struct vec2 base_i;
-		vec2_set(&base_i, 1.0f / (float)mix->ovi->base_width,
-			 1.0f / (float)mix->ovi->base_height);
+		vec2_set(&base_i, 1.0f / (float)mix->ovi.base_width, 1.0f / (float)mix->ovi.base_height);
 		gs_effect_set_vec2(bres_i, &base_i);
 	}
 
@@ -883,7 +878,7 @@ static inline void output_frame(struct obs_core_video_mix *video)
 	else
 		return;
 
-	obs_set_video_rendering_canvas(video->ovi);
+	obs_set_video_render_context(video);
 
 	const bool raw_active = video->raw_was_active;
 	const bool gpu_active = video->gpu_was_active;
