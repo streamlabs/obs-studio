@@ -184,25 +184,6 @@ static void *gpu_encode_thread(void *data)
 				ept->fer = fer_ts;
 			}
 
-			/* Generate and enqueue the frame timing metrics, namely
-			 * the CTS (composition time), FER (frame encode request), FERC
-			 * (frame encode request complete) and current PTS. PTS is used to
-			 * associate the frame timing data with the encode packet. */
-			if (tf.timestamp) {
-				struct encoder_packet_time *ept = da_push_back_new(encoder->encoder_packet_times);
-				// Get the frame encode request complete timestamp
-				if (success) {
-					ept->ferc = os_gettime_ns();
-				} else {
-					// Encode had error, set ferc to 0
-					ept->ferc = 0;
-				}
-
-				ept->pts = encoder->cur_pts;
-				ept->cts = tf.timestamp;
-				ept->fer = fer_ts;
-			}
-
 			send_off_encoder_packet(encoder, success, received, &pkt);
 
 			lock_key = next_key;
