@@ -1737,19 +1737,6 @@ static inline void send_interleaved(struct obs_output *output)
 	}
 	pthread_mutex_unlock(&output->pkt_callbacks_mutex);
 
-	/* Iterate the registered packet callback(s) and invoke
-	 * each one. The caption track logic further above should
-	 * eventually migrate to the packet callback mechanism.
-	 */
-	pthread_mutex_lock(&output->pkt_callbacks_mutex);
-	for (size_t i = 0; i < output->pkt_callbacks.num; ++i) {
-		struct packet_callback *const callback = &output->pkt_callbacks.array[i];
-		// Packet interleave request timestamp
-		ept_local.pir = os_gettime_ns();
-		callback->packet_cb(output, &out, found_ept ? &ept_local : NULL, callback->param);
-	}
-	pthread_mutex_unlock(&output->pkt_callbacks_mutex);
-
 	output->info.encoded_packet(output->context.data, &out);
 	obs_encoder_packet_release(&out);
 }
@@ -2606,6 +2593,15 @@ static inline void pair_encoders(obs_output_t *output)
 			obs_weak_encoder_t *weak_video = obs_encoder_get_weak_encoder(video);
 			da_push_back(video->paired_encoders, &weak_audio);
 			da_push_back(audio->paired_encoders, &weak_video);
+
+			/*
+			 * Audio output routing is canvas-aware. In multi-canvas sessions an
+			 * audio encoder without an associated video mix gets fed once per
+			 * canvas, which duplicates audio blocks at the same timestamp. Have
+			 * the audio encoder follow the paired video encoder's canvas so it
+			 * only receives the intended mix.
+			 */
+			audio->video = video->video;
 		}
 		pthread_mutex_unlock(&audio->init_mutex);
 	}
