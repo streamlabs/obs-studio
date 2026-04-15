@@ -215,6 +215,7 @@ struct TextSource {
 	unique_ptr<PrivateFontCollection> private_fonts;
 	HFONTObj hfont;
 	unique_ptr<Font> font;
+	string custom_font_path;
 
 	bool read_from_file = false;
 	string file;
@@ -814,21 +815,28 @@ inline void TextSource::Update(obs_data_t *s)
 	uint32_t new_bk_opacity = obs_data_get_uint32(s, S_BKOPACITY);
 
 	/* ----------------------------- */
+	string new_custom_font = custom_font_str ? custom_font_str : "";
 	wstring new_face = to_wide(font_face);
 
-	face = new_face;
-	face_size = font_size;
-	bold = new_bold;
-	italic = new_italic;
-	underline = new_underline;
-	strikeout = new_strikeout;
+	if (new_face != face || face_size != font_size || new_bold != bold ||
+	    new_italic != italic || new_underline != underline ||
+	    new_strikeout != strikeout ||
+	    new_custom_font != custom_font_path) {
+		face = new_face;
+		face_size = font_size;
+		bold = new_bold;
+		italic = new_italic;
+		underline = new_underline;
+		strikeout = new_strikeout;
+		custom_font_path = new_custom_font;
 
-	if (strlen(custom_font_str) != 0) {
-		UpdateCustomFont(to_wide(custom_font_str).c_str());
-		if (!font)
+		if (!custom_font_path.empty()) {
+			UpdateCustomFont(to_wide(custom_font_path.c_str()).c_str());
+			if (!font)
+				UpdateFont();
+		} else {
 			UpdateFont();
-	} else {
-		UpdateFont();
+		}
 	}
 
 	/* ----------------------------- */
