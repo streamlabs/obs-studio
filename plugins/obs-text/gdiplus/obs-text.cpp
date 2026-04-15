@@ -157,6 +157,39 @@ static inline uint32_t rgb_to_bgr(uint32_t rgb)
 
 /* ------------------------------------------------------------------------- */
 
+template<typename T, typename T2, BOOL WINAPI deleter(T2)> class GDIObj {
+	T obj = nullptr;
+
+	inline GDIObj &Replace(T obj_)
+	{
+		if (obj)
+			deleter(obj);
+		obj = obj_;
+		return *this;
+	}
+
+public:
+	inline GDIObj() {}
+	inline GDIObj(T obj_) : obj(obj_) {}
+	inline ~GDIObj() { deleter(obj); }
+
+	inline T operator=(T obj_)
+	{
+		Replace(obj_);
+		return obj;
+	}
+
+	inline operator T() const { return obj; }
+
+	inline bool operator==(T obj_) const { return obj == obj_; }
+	inline bool operator!=(T obj_) const { return obj != obj_; }
+};
+
+using HDCObj = GDIObj<HDC, HDC, DeleteDC>;
+using HFONTObj = GDIObj<HFONT, HGDIOBJ, DeleteObject>;
+
+/* ------------------------------------------------------------------------- */
+
 enum class Align {
 	Left,
 	Center,
@@ -176,14 +209,12 @@ struct TextSource {
 	uint32_t cx = 0;
 	uint32_t cy = 0;
 
-	HDC hdc;
+	HDCObj hdc;
 	Graphics graphics;
 
-	bool custom_font = false;
-	PrivateFontCollection private_fonts;
-	InstalledFontCollection installed_fonts;
-
-	unique_ptr<FontFamily> family;
+	unique_ptr<PrivateFontCollection> private_fonts;
+	HFONTObj hfont;
+	unique_ptr<Font> font;
 
 	bool read_from_file = false;
 	string file;
@@ -240,8 +271,6 @@ struct TextSource {
 
 	inline ~TextSource()
 	{
-		DeleteDC(hdc);
-
 		if (tex) {
 			obs_enter_graphics();
 			gs_texture_destroy(tex);
@@ -252,10 +281,9 @@ struct TextSource {
 	void UpdateFont();
 	void UpdateCustomFont(const wchar_t *font_path);
 	void GetStringFormat(StringFormat &format);
-	void RemoveNewlinePadding(Font *font, const StringFormat &format,
-				  RectF &box);
-	void CalculateTextSizes(Font *font, const StringFormat &format,
-				RectF &bounding_box, SIZE &text_size);
+	void RemoveNewlinePadding(const StringFormat &format, RectF &box);
+	void CalculateTextSizes(const StringFormat &format, RectF &bounding_box,
+				SIZE &text_size);
 	void RenderOutlineText(Graphics &graphics, const GraphicsPath &path,
 			       const Brush &brush);
 	void RenderText();
@@ -280,15 +308,70 @@ static time_t get_modified_timestamp(const char *filename)
 
 void TextSource::UpdateCustomFont(const wchar_t *font_path)
 {
-	private_fonts.AddFontFile(font_path);
+	hfont = nullptr;
+	font.reset(nullptr);
+	private_fonts.reset(nullptr);
 
-	family.reset(new FontFamily(face.c_str(), &private_fonts));
+	unique_ptr<PrivateFontCollection> collection(new PrivateFontCollection());
+	Status stat = collection->GetLastStatus();
+	warn_stat("PrivateFontCollection");
+
+	if (stat != Ok)
+		return;
+
+	stat = collection->AddFontFile(font_path);
+	warn_stat("PrivateFontCollection::AddFontFile");
+
+	if (stat != Ok)
+		return;
+
+	INT style = (underline ? FontStyleUnderline : 0) |
+		    (strikeout ? FontStyleStrikeout : 0) |
+		    (italic ? FontStyleItalic : 0) | (bold ? FontStyleBold : 0);
+
+	font.reset(new Font(face.c_str(), REAL(face_size), style, UnitPixel,
+			    collection.get()));
+	if (!font)
+		return;
+
+	stat = font->GetLastStatus();
+	warn_stat("Font");
+
+	if (stat != Ok || !font->IsAvailable()) {
+		font.reset(nullptr);
+		return;
+	}
+
+	private_fonts = std::move(collection);
 }
 
 void TextSource::UpdateFont()
 {
-	/* We don't spawn a font from this, we use it for metainfo */
-	family.reset(new FontFamily(face.c_str(), &installed_fonts));
+	hfont = nullptr;
+	font.reset(nullptr);
+	private_fonts.reset(nullptr);
+
+	LOGFONT lf = {};
+	lf.lfHeight = face_size;
+	lf.lfWeight = bold ? FW_BOLD : FW_DONTCARE;
+	lf.lfItalic = italic;
+	lf.lfUnderline = underline;
+	lf.lfStrikeOut = strikeout;
+	lf.lfQuality = ANTIALIASED_QUALITY;
+	lf.lfCharSet = DEFAULT_CHARSET;
+
+	if (!face.empty()) {
+		wcscpy(lf.lfFaceName, face.c_str());
+		hfont = CreateFontIndirect(&lf);
+	}
+
+	if (!hfont) {
+		wcscpy(lf.lfFaceName, L"Arial");
+		hfont = CreateFontIndirect(&lf);
+	}
+
+	if (hfont)
+		font.reset(new Font(hdc, hfont));
 }
 
 void TextSource::GetStringFormat(StringFormat &format)
@@ -349,18 +432,18 @@ void TextSource::GetStringFormat(StringFormat &format)
  * calculating the texture size, so we have to calculate the size of '\n' to
  * remove the padding.  Because we always add a newline to the string, we
  * also remove the extra unused newline. */
-void TextSource::RemoveNewlinePadding(Font *font, const StringFormat &format,
-				      RectF &box)
+void TextSource::RemoveNewlinePadding(const StringFormat &format, RectF &box)
 {
 	RectF before;
 	RectF after;
 	Status stat;
 
-	stat = graphics.MeasureString(L"W", 2, font, PointF(0.0f, 0.0f),
+	stat = graphics.MeasureString(L"W", 2, font.get(), PointF(0.0f, 0.0f),
 				      &format, &before);
 	warn_stat("MeasureString (without newline)");
 
-	stat = graphics.MeasureString(L"W\n", 3, font, PointF(0.0f, 0.0f),
+	stat = graphics.MeasureString(L"W\n", 3, font.get(),
+				      PointF(0.0f, 0.0f),
 				      &format, &after);
 	warn_stat("MeasureString (with newline)");
 
@@ -389,7 +472,7 @@ void TextSource::RemoveNewlinePadding(Font *font, const StringFormat &format,
 	box.Height -= offset_cy;
 }
 
-void TextSource::CalculateTextSizes(Font *font, const StringFormat &format,
+void TextSource::CalculateTextSizes(const StringFormat &format,
 				    RectF &bounding_box, SIZE &text_size)
 {
 	RectF layout_box;
@@ -407,18 +490,17 @@ void TextSource::CalculateTextSizes(Font *font, const StringFormat &format,
 				layout_box.Height -= outline_size;
 			}
 
-			stat = graphics.MeasureString(text.c_str(),
-						      (int)text.size() + 1,
-						      font, layout_box, &format,
-						      &bounding_box);
+			stat = graphics.MeasureString(text.c_str(), (int)text.size() + 1,
+						      font.get(), layout_box,
+						      &format, &bounding_box);
 			warn_stat("MeasureString (wrapped)");
 
 			temp_box = bounding_box;
 		} else {
-			stat = graphics.MeasureString(text.c_str(),
-						      (int)text.size() + 1,
-						      font, PointF(0.0f, 0.0f),
-						      &format, &bounding_box);
+			stat = graphics.MeasureString(text.c_str(), (int)text.size() + 1,
+						      font.get(),
+						      PointF(0.0f, 0.0f), &format,
+						      &bounding_box);
 			warn_stat("MeasureString (non-wrapped)");
 
 			temp_box = bounding_box;
@@ -426,7 +508,7 @@ void TextSource::CalculateTextSizes(Font *font, const StringFormat &format,
 			bounding_box.X = 0.0f;
 			bounding_box.Y = 0.0f;
 
-			RemoveNewlinePadding(font, format, bounding_box);
+			RemoveNewlinePadding(format, bounding_box);
 
 			if (use_outline) {
 				bounding_box.Width += outline_size;
@@ -521,46 +603,18 @@ void TextSource::RenderText()
 	RectF box;
 	SIZE size;
 
-	std::unique_ptr<Font> font;
-	HFONT hfont = NULL;
-
-	INT style = (underline ? FontStyleUnderline : 0) |
-		    (strikeout ? FontStyleStrikeout : 0) |
-		    (italic ? FontStyleItalic : 0) | (bold ? FontStyleBold : 0);
-
 	if (text_transform == S_TRANSFORM_UPPERCASE)
 		transform(text.begin(), text.end(), text.begin(), towupper);
 	else if (text_transform == S_TRANSFORM_LOWERCASE)
 		transform(text.begin(), text.end(), text.begin(), towlower);
 
-	/* This has gotten a bit messy. FIXME */
-	if (custom_font)
-		font.reset(new Font(family.get(), REAL(face_size), style,
-				    UnitPixel));
-	else {
-		/* I realize that we're not passing emSize here, unlike
-		 * above. Unfortunately, since we passed cell height
-		 * before, we still need to do so now for compatibility */
-		LOGFONT lf = {0};
-		lf.lfHeight = face_size;
-		lf.lfWeight = bold ? FW_BOLD : FW_DONTCARE;
-		lf.lfItalic = italic;
-		lf.lfUnderline = underline;
-		lf.lfStrikeOut = strikeout;
-		lf.lfQuality = ANTIALIASED_QUALITY;
-		lf.lfCharSet = DEFAULT_CHARSET;
-
-		if (!face.empty()) {
-			wcscpy(lf.lfFaceName, face.c_str());
-			hfont = CreateFontIndirectW(&lf);
-		}
-
-		if (hfont)
-			font.reset(new Font(hdc, hfont));
+	if (!font || !font->IsAvailable()) {
+		warning("%s: no usable font is available", __FUNCTION__);
+		return;
 	}
 
 	GetStringFormat(format);
-	CalculateTextSizes(font.get(), format, box, size);
+	CalculateTextSizes(format, box, size);
 
 	unique_ptr<uint8_t[]> bits(new uint8_t[size.cx * size.cy * 4]);
 	Bitmap bitmap(size.cx, size.cy, 4 * size.cx, PixelFormat32bppARGB, bits.get());
@@ -592,14 +646,31 @@ void TextSource::RenderText()
 		if (use_outline) {
 			box.Offset(outline_size / 2, outline_size / 2);
 
+			FontFamily family;
 			GraphicsPath path;
 
-			stat = path.AddString(text.c_str(), (int)text.size(),
-					      family.get(), font->GetStyle(),
-					      font->GetSize(), box, &format);
-			warn_stat("path.AddString");
+			stat = font->GetFamily(&family);
+			warn_stat("font->GetFamily");
 
-			RenderOutlineText(graphics_bitmap, path, brush);
+			if (stat == Ok) {
+				stat = path.AddString(text.c_str(), (int)text.size(),
+						      &family, font->GetStyle(),
+						      font->GetSize(), box,
+						      &format);
+				warn_stat("path.AddString");
+
+				if (stat == Ok)
+					RenderOutlineText(graphics_bitmap, path,
+							  brush);
+			}
+
+			if (stat != Ok) {
+				stat = graphics_bitmap.DrawString(text.c_str(),
+								  (int)text.size(),
+								  font.get(), box,
+								  &format, &brush);
+				warn_stat("graphics_bitmap.DrawString");
+			}
 		} else {
 			stat = graphics_bitmap.DrawString(text.c_str(), (int)text.size(), font.get(), box, &format,
 							  &brush);
@@ -626,8 +697,6 @@ void TextSource::RenderText()
 		gs_texture_set_image(tex, bits.get(), size.cx * 4, false);
 		obs_leave_graphics();
 	}
-
-	DeleteObject(hfont);
 }
 
 const char *TextSource::GetMainString(const char *str)
@@ -755,11 +824,11 @@ inline void TextSource::Update(obs_data_t *s)
 	strikeout = new_strikeout;
 
 	if (strlen(custom_font_str) != 0) {
-		custom_font = true;
 		UpdateCustomFont(to_wide(custom_font_str).c_str());
+		if (!font)
+			UpdateFont();
 	} else {
 		UpdateFont();
-		custom_font = false;
 	}
 
 	/* ----------------------------- */
