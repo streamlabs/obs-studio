@@ -646,30 +646,46 @@ void TextSource::RenderText()
 	if (!text.empty()) {
 		if (use_outline) {
 			box.Offset(outline_size / 2, outline_size / 2);
-
-			FontFamily family;
+			bool rendered_outline = false;
 			GraphicsPath path;
 
-			stat = font->GetFamily(&family);
-			warn_stat("font->GetFamily");
+			if (!custom_font_path.empty() && private_fonts) {
+				FontFamily family(face.c_str(), private_fonts.get());
+				stat = family.GetLastStatus();
+				warn_stat("FontFamily(custom)");
 
-			if (stat == Ok) {
-				stat = path.AddString(text.c_str(), (int)text.size(),
-						      &family, font->GetStyle(),
-						      font->GetSize(), box,
-						      &format);
-				warn_stat("path.AddString");
+				if (stat == Ok && family.IsAvailable()) {
+					stat = path.AddString(
+						text.c_str(), (int)text.size(), &family,
+						font->GetStyle(), font->GetSize(), box, &format);
+					warn_stat("path.AddString");
 
-				if (stat == Ok)
-					RenderOutlineText(graphics_bitmap, path,
-							  brush);
+					if (stat == Ok) {
+						RenderOutlineText(graphics_bitmap, path, brush);
+						rendered_outline = true;
+					}
+				}
+			} else {
+				FontFamily family;
+				stat = font->GetFamily(&family);
+				warn_stat("font->GetFamily");
+
+				if (stat == Ok) {
+					stat = path.AddString(
+						text.c_str(), (int)text.size(), &family,
+						font->GetStyle(), font->GetSize(), box, &format);
+					warn_stat("path.AddString");
+
+					if (stat == Ok) {
+						RenderOutlineText(graphics_bitmap, path, brush);
+						rendered_outline = true;
+					}
+				}
 			}
 
-			if (stat != Ok) {
-				stat = graphics_bitmap.DrawString(text.c_str(),
-								  (int)text.size(),
-								  font.get(), box,
-								  &format, &brush);
+			if (!rendered_outline) {
+				stat = graphics_bitmap.DrawString(
+					text.c_str(), (int)text.size(), font.get(), box, &format, &brush);
 				warn_stat("graphics_bitmap.DrawString");
 			}
 		} else {
