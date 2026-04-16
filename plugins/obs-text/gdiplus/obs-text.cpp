@@ -2,6 +2,7 @@
 #include <util/platform.h>
 #include <util/util.hpp>
 #include <obs-module.h>
+#include <obs.hpp>
 #include <sys/stat.h>
 #include <combaseapi.h>
 #include <gdiplus.h>
@@ -156,37 +157,19 @@ static inline uint32_t rgb_to_bgr(uint32_t rgb)
 }
 
 /* ------------------------------------------------------------------------- */
+// This helper is needed because OBSRefAutoRelease in unhappy about WinAPI functions as deleters
+template<typename H, typename ReleaseArg, BOOL(WINAPI *ReleaseFunc)(ReleaseArg)>
+static void release_win_handle(H handle)
+{
+	if (handle)
+		ReleaseFunc((ReleaseArg)handle);
+}
 
-template<typename T, typename T2, BOOL WINAPI deleter(T2)> class GDIObj {
-	T obj = nullptr;
+template<typename T, typename ReleaseArg, BOOL(WINAPI *ReleaseFunc)(ReleaseArg)>
+using WinHandleAutoRelease = OBSRefAutoRelease<T, release_win_handle<T, ReleaseArg, ReleaseFunc>>;
 
-	inline GDIObj &Replace(T obj_)
-	{
-		if (obj)
-			deleter(obj);
-		obj = obj_;
-		return *this;
-	}
-
-public:
-	inline GDIObj() {}
-	inline GDIObj(T obj_) : obj(obj_) {}
-	inline ~GDIObj() { deleter(obj); }
-
-	inline T operator=(T obj_)
-	{
-		Replace(obj_);
-		return obj;
-	}
-
-	inline operator T() const { return obj; }
-
-	inline bool operator==(T obj_) const { return obj == obj_; }
-	inline bool operator!=(T obj_) const { return obj != obj_; }
-};
-
-using HDCObj = GDIObj<HDC, HDC, DeleteDC>;
-using HFONTObj = GDIObj<HFONT, HGDIOBJ, DeleteObject>;
+using HDCAutoRelease = WinHandleAutoRelease<HDC, HDC, ::DeleteDC>;
+using HFONTAutoRelease = WinHandleAutoRelease<HFONT, HGDIOBJ, ::DeleteObject>;
 
 /* ------------------------------------------------------------------------- */
 
@@ -209,13 +192,14 @@ struct TextSource {
 	uint32_t cx = 0;
 	uint32_t cy = 0;
 
-	HDCObj hdc;
+	HDCAutoRelease hdc;
 	Graphics graphics;
 
 	unique_ptr<PrivateFontCollection> private_fonts;
-	HFONTObj hfont;
+	HFONTAutoRelease hfont;
 	unique_ptr<Font> font;
 	string custom_font_path;
+	time_t custom_font_timestamp = 0;
 
 	bool read_from_file = false;
 	string file;
@@ -833,11 +817,31 @@ inline void TextSource::Update(obs_data_t *s)
 	/* ----------------------------- */
 	string new_custom_font = custom_font_str ? custom_font_str : "";
 	wstring new_face = to_wide(font_face);
+	time_t new_custom_font_timestamp = 0;
 
-	if (new_face != face || face_size != font_size || new_bold != bold ||
-	    new_italic != italic || new_underline != underline ||
-	    new_strikeout != strikeout ||
-	    new_custom_font != custom_font_path) {
+	if (!new_custom_font.empty())
+		new_custom_font_timestamp =
+			get_modified_timestamp(new_custom_font.c_str());
+
+	bool font_settings_changed = new_face != face ||
+				     face_size != font_size ||
+				     new_bold != bold ||
+				     new_italic != italic ||
+				     new_underline != underline ||
+				     new_strikeout != strikeout ||
+				     new_custom_font != custom_font_path;
+	bool custom_font_file_changed =
+		!new_custom_font.empty() &&
+		new_custom_font == custom_font_path &&
+		new_custom_font_timestamp != custom_font_timestamp;
+	bool retry_custom_font =
+		!new_custom_font.empty() &&
+		new_custom_font == custom_font_path &&
+		!private_fonts &&
+		new_custom_font_timestamp != -1;
+
+	if (font_settings_changed || custom_font_file_changed ||
+	    retry_custom_font) {
 		face = new_face;
 		face_size = font_size;
 		bold = new_bold;
@@ -845,6 +849,7 @@ inline void TextSource::Update(obs_data_t *s)
 		underline = new_underline;
 		strikeout = new_strikeout;
 		custom_font_path = new_custom_font;
+		custom_font_timestamp = new_custom_font_timestamp;
 
 		if (!custom_font_path.empty()) {
 			UpdateCustomFont(to_wide(custom_font_path.c_str()).c_str());
