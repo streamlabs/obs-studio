@@ -124,7 +124,7 @@ void *bmalloc(size_t size)
 		     (unsigned long)size);
 #endif
 		alloc_has_failed = true;
-		os_breakpoint();
+		os_oom();
 		bcrash("Out of memory while trying to allocate %lu bytes", (unsigned long)size);
 	}
 
@@ -155,7 +155,7 @@ void *brealloc(void *ptr, size_t size)
 		     (unsigned long)size);
 #endif
 		alloc_has_failed = true;
-		os_breakpoint();
+		os_oom();
 		bcrash("Out of memory while trying to allocate %lu bytes", (unsigned long)size);
 	}
 

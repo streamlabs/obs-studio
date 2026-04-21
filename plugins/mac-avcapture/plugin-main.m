@@ -34,7 +34,15 @@ static void *av_fast_capture_create(obs_data_t *settings, obs_source_t *source)
     capture_info->isFastPath = true;
     capture_info->settings = settings;
     capture_info->source = source;
-    capture_info->effect = obs_get_base_effect(OBS_EFFECT_DEFAULT_RECT);
+
+    obs_enter_graphics();
+    if (gs_get_device_type() == GS_DEVICE_OPENGL) {
+        capture_info->effect = obs_get_base_effect(OBS_EFFECT_DEFAULT_RECT);
+    } else {
+        capture_info->effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
+    }
+    obs_leave_graphics();
+
     capture_info->frameSize = CGRectZero;
 
     if (!capture_info->effect) {

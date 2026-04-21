@@ -35,10 +35,8 @@ endfunction()
 # _check_deps_version: Checks for obs-deps VERSION file in prefix paths
 function(_check_deps_version version)
   set(found FALSE PARENT_SCOPE)
-  message(STATUS "Checking CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}")
   foreach(path IN LISTS CMAKE_PREFIX_PATH)
     if(EXISTS "${path}/share/obs-deps/VERSION")
-      message(STATUS "Checking ${path}/share/obs-deps/VERSION")
       if(dependency STREQUAL qt6 AND NOT EXISTS "${path}/lib/cmake/Qt6/Qt6Config.cmake")
         set(found FALSE PARENT_SCOPE)
         continue()
@@ -77,11 +75,37 @@ function(_check_deps_version version)
   return(PROPAGATE found CMAKE_PREFIX_PATH)
 endfunction()
 
+function(_get_dependency_data variable_name)
+  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/CMakePresets.json" preset_data)
+
+  string(JSON configure_presets GET ${preset_data} "configurePresets")
+
+  string(JSON preset_count LENGTH "${configure_presets}")
+  math(EXPR preset_count "${preset_count}-1")
+
+  foreach(index RANGE 0 ${preset_count})
+    string(JSON preset_member_data GET "${configure_presets}" ${index})
+    string(JSON preset_name GET ${preset_member_data} "name")
+
+    if(preset_name STREQUAL dependencies)
+      string(JSON vendor_data GET ${preset_member_data} "vendor")
+      string(JSON vendor_data GET ${vendor_data} "obsproject.com/obs-studio")
+      string(JSON dependency_data GET ${vendor_data} "dependencies")
+      break()
+    else()
+      continue()
+    endif()
+  endforeach()
+
+  set(${variable_name} "${dependency_data}")
+
+  return(PROPAGATE ${variable_name})
+endfunction()
+
 # _check_dependencies: Fetch and extract pre-built OBS build dependencies
 function(_check_dependencies)
-  file(READ "${CMAKE_CURRENT_SOURCE_DIR}/buildspec.json" buildspec)
-
-  string(JSON dependency_data GET ${buildspec} dependencies)
+  set(dependencies_list ${ARGV})
+  _get_dependency_data(dependency_data)
 
   foreach(dependency IN LISTS dependencies_list)
     if(dependency STREQUAL cef AND NOT ENABLE_BROWSER)
@@ -90,8 +114,11 @@ function(_check_dependencies)
     if(dependency STREQUAL cef AND arch STREQUAL universal)
       if(CMAKE_OSX_ARCHITECTURES MATCHES ".+;.+")
         continue()
+      elseif(CMAKE_OSX_ARCHITECTURES MATCHES "(arm64|x86_64)")
+        set(arch ${CMAKE_OSX_ARCHITECTURES})
+      else()
+        set(arch ${CMAKE_HOST_SYSTEM_PROCESSOR})
       endif()
-      set(arch ${CMAKE_OSX_ARCHITECTURES})
       set(platform macos-${arch})
     endif()
 
@@ -120,14 +147,12 @@ function(_check_dependencies)
 
     if(EXISTS "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256")
       file(
-        READ
-        "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256"
+        READ "${dependencies_dir}/.dependency_${dependency}_${arch}.sha256"
         OBS_DEPENDENCY_${dependency}_${arch}_HASH
       )
     endif()
 
     set(skip FALSE)
-    message(STATUS "Working on dependency and version ${dependency} ${version}")
     if(dependency STREQUAL prebuilt OR dependency STREQUAL qt6)
       if(OBS_DEPENDENCY_${dependency}_${arch}_HASH STREQUAL ${hash})
         _check_deps_version(${version})
@@ -161,14 +186,9 @@ function(_check_dependencies)
     elseif(dependency STREQUAL openssl)
       set(file "${dependency}-${version}-${arch}.7z")
       set(url ${url}/${file})
-    elseif(dependency STREQUAL qt6)
-      set(url ${url}/${version}/${file})
     else()
-      # TODO: original code from OBS: set(url ${url}/${version}/${file})
-      set(url ${url}/${file})
+      set(url ${url}/${version}/${file})
     endif()
-
-    message(STATUS "Working on url ${url}, file ${file}")
 
     if(NOT EXISTS "${dependencies_dir}/${file}")
       message(STATUS "Downloading ${url}")
@@ -191,14 +211,10 @@ function(_check_dependencies)
 
     if(NOT EXISTS "${dependencies_dir}/${destination}")
       file(MAKE_DIRECTORY "${dependencies_dir}/${destination}")
-      if(dependency STREQUAL obs-studio)
-        file(ARCHIVE_EXTRACT INPUT "${dependencies_dir}/${file}" DESTINATION "${dependencies_dir}")
-      elseif(dependency STREQUAL libmediasoupclient)
-        file(ARCHIVE_EXTRACT INPUT "${dependencies_dir}/${file}" DESTINATION "${dependencies_dir}")
-      elseif(dependency STREQUAL webrtc)
-        file(ARCHIVE_EXTRACT INPUT "${dependencies_dir}/${file}" DESTINATION "${dependencies_dir}")
+      if(dependency STREQUAL obs-studio OR dependency STREQUAL libmediasoupclient OR dependency STREQUAL webrtc)
+        extract_archive("${dependencies_dir}/${file}" "${dependencies_dir}")
       else()
-        file(ARCHIVE_EXTRACT INPUT "${dependencies_dir}/${file}" DESTINATION "${dependencies_dir}/${destination}")
+        extract_archive("${dependencies_dir}/${file}" "${dependencies_dir}/${destination}")
       endif()
     endif()
 
@@ -301,10 +317,6 @@ function(_check_dependencies)
       set(GRPC_PATH "${dependencies_dir}/${grpc_subdir}" CACHE PATH "GRPC directory" FORCE)
 
       list(APPEND CMAKE_PREFIX_PATH "${GRPC_PATH}")
-
-      message(STATUS "Setting up GRPC_PATH ${GRPC_PATH}")
-      message(STATUS "Setting up Protobuf_DIR ${Protobuf_DIR}")
-      message(STATUS "Setting up CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH}")
     elseif(dependency STREQUAL openssl)
       set(openssl_subdir "openssl-VERSION-ARCH")
       string(REPLACE "VERSION" "${version}" openssl_subdir "${openssl_subdir}")
@@ -322,16 +334,7 @@ function(_check_dependencies)
       set(OPENSSL_LIBRARIES "${OPENSSL_LIB_PATH};${OPENSSL_CRYPTO_LIB_PATH}" CACHE PATH "OpenSSL libraries" FORCE)
 
       list(APPEND CMAKE_PREFIX_PATH "${OPENSSL_PATH}")
-
-      message(STATUS "Setting up OPENSSL_PATH ${OPENSSL_PATH}")
-      message(STATUS "Setting up OPENSSL_INCLUDE_PATH ${OPENSSL_INCLUDE_PATH}")
-      message(STATUS "Setting up OPENSSL_LIB_PATH ${OPENSSL_LIB_PATH}")
-      message(STATUS "Setting up OPENSSL_CRYPTO_LIB_PATH ${OPENSSL_CRYPTO_LIB_PATH}")
-      message(STATUS "Setting up OPENSSL_ROOT_DIR ${OPENSSL_ROOT_DIR}")
-      message(STATUS "Setting up OPENSSL_LIBRARIES ${OPENSSL_LIBRARIES}")
     endif()
-
-    message(STATUS "Finished with file and destination ${file} ${destination}")
     message(STATUS "Setting up ${label} (${arch}) - done")
   endforeach()
 

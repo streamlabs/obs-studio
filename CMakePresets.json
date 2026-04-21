@@ -21,6 +21,105 @@
       }
     },
     {
+      "name": "dependencies",
+      "hidden": true,
+      "vendor": {
+        "obsproject.com/obs-studio": {
+          "dependencies": {
+              "prebuilt": {
+                  "version": "2025-08-23",
+                  "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+                  "label": "Pre-Built obs-deps",
+                  "hashes": {
+                      "macos-universal": "9403bb43fb0a9bb215739a5659ca274fe884dbbbcd22bd9ca781c961fb041c42",
+                      "windows-x64": "8de229cff6f1981508c0eb646b35e644633a5855787b9f5d3b90ae2aeb87ffc1",
+                      "windows-x86": "fb3c68b75911f292b3206e346053638db1c73605957207445a0a92b33ab5e00a",
+                      "windows-arm64": "dd87ba00a6cbc153182fb62b3678a3b5021d1d11eb2730442060937a645eb97e"
+                  }
+              },
+              "qt6": {
+                  "version": "2025-08-23",
+                  "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+                  "label": "Pre-Built Qt6",
+                  "hashes": {
+                      "macos-universal": "990f11638b80a4509e14e8c315f6e4caa0861e37fcd3113a256fbff835ffca29",
+                      "windows-x64": "c62e82483bc7c0bf199e8ac3220c66a85a6e8a0cd69a05b6d44f873b830e415f",
+                      "windows-arm64": "cc8ec983de9b7d81aa98beeb1b989d707ee3c73b85b4d41c85d94114eba81f91"
+                  },
+                  "debugSymbols": {
+                      "windows-x64": "aae88a17e0211cb37db6a8602f2e20d69255be1f9700c699008ca5adbce1dde2",
+                      "windows-arm64": "6e866490277a8b29e82a87fc2f22407f93ddaf86444ea0d284370339a05511b3"
+                  }
+              },
+              "cef": {
+                  "version": "6533",
+                  "baseUrl": "https://cdn-fastly.obsproject.com/downloads",
+                  "label": "Chromium Embedded Framework",
+                  "hashes": {
+                      "macos-x86_64": "37bf7571a48c5dfa8519817e4a90a3503a0eb30f9eadd68f4c3e783e363f272a",
+                      "macos-arm64": "429b50e74f6c174dcfe2f14d8204b54add497eaafe117f7b69ce6bb2354d2626",
+                      "ubuntu-x86_64": "7963335519a19ccdc5233f7334c5ab023026e2f3e9a0cc417007c09d86608146",
+                      "ubuntu-aarch64": "642514469eaa29a5c887891084d2e73f7dc2d7405f7dfa7726b2dbc24b309999",
+                      "windows-x64": "922efbda1f2f8be9e5b2754d878a14d90afc81f04e94fc9101a7513e2b5cecc1",
+                      "windows-arm64": "df9df4bd85826b4c071c6db404fd59cf93efd9c58ec3ab64e204466ae19bb02a"
+                  },
+                  "revision": {
+                      "macos-x86_64": 5,
+                      "macos-arm64": 5,
+                      "ubuntu-x86_64": 6,
+                      "ubuntu-aarch64": 6,
+                      "windows-x64": 2
+                  }
+              },
+              "openssl": {
+                  "version": "1.1.1c",
+                  "baseUrl": "https://streamlabs-obs-updater-deps.s3.us-west-2.amazonaws.com",
+                  "label": "openssl",
+                  "hashes": {
+                      "windows-x64": "801CE178E86CB13A1485878DE053B6089C32941800CFD2440F33158117A58860"
+                  }
+              },
+              "libmediasoupclient": {
+                  "version": "3.4.3",
+                  "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
+                  "label": "libmediasoupclient",
+                  "hashes": {
+                      "macos-x86_64": "D06CF8593EBFA2DAE3AB6A59EA889A931C1EE77586D76EB890AF93DB936D18C5",
+                      "macos-arm64": "DC4424D32A86306172C57E9D8D7EDD2CB3897C364A56F46318DEE5395B68474B",
+                      "windows-x64": "03E25130EDF6B49009404B6FE4B75D5DDC92885F1DAD2DF3ED0FB3068D98C682"
+                  }
+              },
+              "webrtc": {
+                  "version": "m120",
+                  "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
+                  "label": "webrtc",
+                  "hashes": {
+                      "macos-x86_64": "5FAD4805BC81256BD3B7E06EE75FFF9BD2A8983DCCD5F31C1F500A214A3B08B2",
+                      "macos-arm64": "5D9FA128386DA4ADA0FF0AD2D092C2F9DD2B93A93FD85A50EE04358855680473",
+                      "windows-x64": "0FCE7305A5C1D2A026157B2BEFFFABA25A4202CE403614F6A98965CECA15E2B0"
+                  }
+              },
+              "grpc": {
+                  "version": "v1.47.0",
+                  "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
+                  "label": "gRPC",
+                  "hashes": {
+                      "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C"
+                  }
+              }
+            },
+            "tools": {
+              "sparkle": {
+                  "version": "2.6.4",
+                  "baseUrl": "https://github.com/sparkle-project/Sparkle/releases/download",
+                  "label": "Sparkle 2",
+                  "hash": "50612a06038abc931f16011d7903b8326a362c1074dabccb718404ce8e585f0b"
+              }
+            }
+          }
+        }
+    },
+    {
       "name": "macos",
       "displayName": "macOS",
       "description": "Default macOS build (single architecture only)",
@@ -54,7 +153,8 @@
       "warnings": {"dev": true, "deprecated": true},
       "cacheVariables": {
         "CMAKE_COMPILE_WARNING_AS_ERROR": true,
-        "ENABLE_CCACHE": true
+        "CMAKE_XCODE_ATTRIBUTE_COMPILATION_CACHE_ENABLE_CACHING": "YES",
+        "CMAKE_XCODE_ATTRIBUTE_COMPILATION_CACHE_CAS_PATH": "$penv{XCODE_CAS_PATH}"
       }
     },
     {
@@ -99,7 +199,7 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "architecture": "x64,version=10.0.22621",
+      "architecture": "x64,version=10.0.22621.0",
       "binaryDir": "${sourceDir}/build_x64",
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
@@ -132,7 +232,7 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
-      "architecture": "ARM64,version=10.0.22621",
+      "architecture": "ARM64,version=10.0.22621.0",
       "binaryDir": "${sourceDir}/build_arm64",
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {

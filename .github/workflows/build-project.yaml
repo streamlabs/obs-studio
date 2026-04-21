@@ -15,7 +15,7 @@ jobs:
       config: ${{ steps.setup.outputs.config }}
       commitHash: ${{ steps.setup.outputs.commitHash }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
       - name: Check Event Data ☑️
@@ -65,19 +65,18 @@ jobs:
       fail-fast: false
       matrix:
         target: [arm64, x86_64]
-
     env:
       OS_TAG: "osx"
       InstallPath: "packed_build"
       RELEASE_BUCKET: "obsstudios3.streamlabs.com"
       PACKAGE_NAME: "libobs"
       ReleaseName: release
-      SKIP_OBS_STEP: true # Skip unsupported OBS steps
+      SKIP_OBS_STEP: true
     defaults:
       run:
         shell: zsh --no-rcs --errexit --pipefail {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
           fetch-depth: 0
@@ -86,14 +85,15 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
         shell: bash
+
       - name: Set Up Environment 🔧
         id: setup
         run: |
           : Set Up Environment 🔧
           if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
-          print '::group::Enable Xcode 16.1'
-          sudo xcode-select --switch /Applications/Xcode_16.1.0.app/Contents/Developer
+          print '::group::Enable Xcode 26.1'
+          sudo xcode-select --switch /Applications/Xcode_26.1.app/Contents/Developer
           print '::endgroup::'
 
           print '::group::Clean Homebrew Environment'
@@ -109,13 +109,19 @@ jobs:
           local -A arch_names=(x86_64 intel arm64 apple)
           print "cpuName=${arch_names[${{ matrix.target }}]}" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache/restore@v4
-        id: ccache-cache
+          local xcode_cas_path="${HOME}/Library/Developer/Xcode/DerivedData/CompilationCache.noindex"
+
+          if ! [[ -d ${xcode_cas_path} ]] mkdir -p ${xcode_cas_path}
+
+          print "xcodeCasPath=${xcode_cas_path}" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: xcode-cache
         with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ matrix.target }}-${{ needs.check-event.outputs.config }}
+          path: ${{ steps.setup.outputs.xcodeCasPath }}
+          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ needs.check-event.outputs.config }}
           restore-keys: |
-            ${{ runner.os }}-ccache-${{ matrix.target }}-
+            ${{ runner.os }}-xcode-${{ matrix.target }}-
 
       - name: Set Up Code Signing 🔑
         uses: ./.github/actions/setup-macos-codesigning
@@ -141,10 +147,10 @@ jobs:
           YOUTUBE_CLIENTID_HASH: ${{ secrets.YOUTUBE_CLIENTID_HASH }}
           YOUTUBE_SECRET: ${{ secrets.YOUTUBE_SECRET }}
           YOUTUBE_SECRET_HASH: ${{ secrets.YOUTUBE_SECRET_HASH }}
+          XCODE_CAS_PATH: ${{ steps.setup.outputs.xcodeCasPath }}
         with:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
-          # Disable the 'codesign' statements below to avoid an error. Do not notarize or codesign (the build agent does not store this information)
           # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) }}
           # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
           # codesignTeam: ${{ steps.codesign.outputs.codesignTeam }}
@@ -157,7 +163,6 @@ jobs:
           target: ${{ matrix.target }}
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
-          # Disable the 'codesign' statements below to avoid an error. Do not notarize or codesign (the build agent does not store this information)
           # codesign: ${{ fromJSON(needs.check-event.outputs.codesign) && fromJSON(steps.codesign.outputs.haveCodesignIdent) }}
           # codesignIdent: ${{ steps.codesign.outputs.codesignIdent }}
           # notarize: ${{ fromJSON(needs.check-event.outputs.notarize) && fromJSON(steps.codesign.outputs.haveNotarizationUser) }}
@@ -166,13 +171,13 @@ jobs:
 
       - name: Upload Artifacts 📡
         if: ${{ env.SKIP_OBS_STEP == 'false' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: obs-studio-macos-${{ matrix.target }}-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_macos/obs-studio-*-macos-${{ steps.setup.outputs.cpuName }}.*
 
       - name: Upload Debug Symbol Artifacts 🪲
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ env.SKIP_OBS_STEP == 'false' && needs.check-event.outputs.config == 'Release' }}
         with:
           name: obs-studio-macos-${{ matrix.target }}-${{ needs.check-event.outputs.commitHash }}-dSYMs
@@ -182,29 +187,32 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           : Add items into tar file
-          cd build_macos/${{env.InstallPath}}
-          7z a -r ../../${{env.TARGET_ARTIFACT}}.7z *
+          cd build_macos/${{ env.InstallPath }}
+          7z a -r ../../${{ env.TARGET_ARTIFACT }}.7z *
           cd ../..
         env:
-          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{env.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
+          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
+
       - name: Configure AWS credentials
         if: startsWith(github.ref, 'refs/tags/')
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{secrets.AWS_RELEASE_ACCESS_KEY_ID}}
-          aws-secret-access-key: ${{secrets.AWS_RELEASE_SECRET_ACCESS_KEY}}
+          aws-access-key-id: ${{ secrets.AWS_RELEASE_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_RELEASE_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
+
       - name: Deploy
         if: startsWith(github.ref, 'refs/tags/')
-        run: aws s3 cp ${{env.TARGET_ARTIFACT}}.7z s3://${{env.RELEASE_BUCKET}} --acl public-read
+        run: aws s3 cp ${{ env.TARGET_ARTIFACT }}.7z s3://${{ env.RELEASE_BUCKET }} --acl public-read
         env:
-          TARGET_ARTIFACT: ${{env.PACKAGE_NAME}}-${{env.OS_TAG}}-${{env.ReleaseName}}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
-      - name: 'Upload debug files to Sentry'
+          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}-${{ matrix.target }}
+
+      - name: Upload debug files to Sentry
         if: startsWith(github.ref, 'refs/tags/')
-        run: 'python ./slobs_CI/sentry-osx.py'
+        run: python ./slobs_CI/sentry-osx.py
         env:
-            SENTRY_AUTH_TOKEN: ${{secrets.SENTRY_AUTH_TOKEN}}
-            BUILDCONFIG: ${{matrix.BuildConfig}}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          BUILDCONFIG: ${{ needs.check-event.outputs.config }}
 
       - name: Symbol Server and Sentry Integration
         if: ${{ env.SKIP_OBS_STEP == 'false' }}
@@ -216,11 +224,11 @@ jobs:
           repoBranch: ${{ github.sha }}
           buildConfig: RelWithDebInfo
 
-      - uses: actions/cache/save@v4
-        if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: github.event_name != 'pull_request' && steps.xcode-cache.outputs.cache-hit != 'true'
         with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-${{ matrix.target }}-${{ needs.check-event.outputs.config }}
+          path: ${{ steps.setup.outputs.xcodeCasPath }}
+          key: ${{ runner.os }}-xcode-${{ matrix.target }}-${{ needs.check-event.outputs.config }}
 
   ubuntu-build:
     name: Ubuntu 🐧
@@ -234,12 +242,12 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         id: ccache-cache
         with:
           path: ${{ github.workspace }}/.ccache
@@ -270,25 +278,25 @@ jobs:
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
       - name: Upload Source Tarball 🗜️
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: obs-studio-${{ matrix.os }}-sources-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_ubuntu/obs-studio-*-sources.*
 
       - name: Upload Artifacts 📡
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: obs-studio-${{ matrix.os }}-x86_64-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_ubuntu/obs-studio-*-x86_64-ubuntu-gnu.*
 
       - name: Upload Debug Symbol Artifacts 🪲
-        uses: actions/upload-artifact@v4
-        if: github.repository == 'obsproject/obs-studio' && fromJSON(needs.check-event.outputs.package)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ fromJSON(needs.check-event.outputs.package) }}
         with:
           name: obs-studio-${{ matrix.os }}-x86_64-${{ needs.check-event.outputs.commitHash }}-dbgsym
           path: ${{ github.workspace }}/build_ubuntu/obs-studio-*-x86_64-ubuntu-gnu-dbgsym.ddeb
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ github.workspace }}/.ccache
@@ -305,10 +313,54 @@ jobs:
     env:
       FLATPAK_BUILD_SHARE_PATH: flatpak_app/files/share
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.8
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
+      volumes:
+        - /usr/local/lib/android:/to_clean/android
+        - /opt/hostedtoolcache/CodeQL:/to_clean/codeql
+        - /usr/local/.ghcup:/to_clean/ghcup
+        - /opt/hostedtoolcache/Python:/to_clean/python
+        - /usr/share/swift:/to_clean/swift
+        - /usr/share/dotnet:/to_clean/dotnet
     steps:
-      - uses: actions/checkout@v4
+      - name: Prepare build space
+        shell: bash
+        run: |
+          : Prepare build space
+
+          echo ::group::Available storage
+          df -h
+          echo ::endgroup::
+
+          echo ::group::Remove Android stuff
+          rm -rf /to_clean/android/*
+          echo ::endgroup::
+
+          echo ::group::Remove CodeQL stuff
+          rm -rf /to_clean/codeql/*
+          echo ::endgroup::
+
+          echo ::group::Remove GHCup stuff
+          rm -rf /to_clean/ghcup/*
+          echo ::endgroup::
+
+          echo ::group::Remove Python stuff
+          rm -rf /to_clean/python/*
+          echo ::endgroup::
+
+          echo ::group::Remove Swift stuff
+          rm -rf /to_clean/swift/*
+          echo ::endgroup::
+
+          echo ::group::Remove .NET stuff
+          rm -rf /to_clean/dotnet/*
+          echo ::endgroup::
+
+          echo ::group::Available storage
+          df -h
+          echo ::endgroup::
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
           fetch-depth: 0
@@ -324,7 +376,7 @@ jobs:
 
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
-          cache_key='flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}'
+          cache_key='flatpak-builder-${{ hashFiles('build-aux/com.obsproject.Studio.json') }}'
           cache_ref='master'
           read -r id key size unit created accessed <<< \
             "$(gh cache list --ref "refs/heads/${cache_ref}" --key "${cache_key}-x86_64" | head -1)"
@@ -344,7 +396,7 @@ jobs:
           path: build-aux/com.obsproject.Studio.json
 
       - name: Build Flatpak Manifest 🧾
-        uses: flatpak/flatpak-github-actions/flatpak-builder@10a3c29f0162516f0f68006be14c92f34bd4fa6c
+        uses: flatpak/flatpak-github-actions/flatpak-builder@b8a638469ea7ec62844d7b6e487b697e6f249576
         with:
           build-bundle: ${{ fromJSON(needs.check-event.outputs.package) }}
           bundle: obs-studio-flatpak-${{ needs.check-event.outputs.commitHash }}.flatpak
@@ -383,7 +435,7 @@ jobs:
     name: Windows 🪟
     strategy:
       matrix:
-        architecture: [x64] # TODO: it was [x64, arm64]
+        architecture: [x64]
     runs-on: windows-2022
     needs: check-event
     env:
@@ -397,12 +449,14 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
           fetch-depth: 0
-      - name: 'Add msbuild to PATH'
+
+      - name: Add msbuild to PATH
         uses: microsoft/setup-msbuild@v1
+
       - name: Build OBS Studio 🧱
         uses: ./.github/actions/build-obs
         env:
@@ -441,7 +495,7 @@ jobs:
 
       - name: Upload Artifacts 📡
         if: github.repository == 'obsproject/obs-studio'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: obs-studio-windows-${{ matrix.architecture }}-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_${{ matrix.architecture }}/obs-studio-*-windows-${{ matrix.architecture }}.zip
@@ -451,10 +505,11 @@ jobs:
         run: |
           $version = "${{ github.ref }}".Replace("refs/tags/", "")
           echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       - name: Package OBS lib 🗜️
         run: |
-          cd ${{env.BuildDir}}
-          7z a -r ../${{env.TARGET_ARTIFACT}}.7z ${{env.InstallDir}}
+          cd ${{ env.BuildDir }}
+          7z a -r ../${{ env.TARGET_ARTIFACT }}.7z ${{ env.InstallDir }}
           cd ..
         env:
           TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
@@ -463,11 +518,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{secrets.AWS_RELEASE_ACCESS_KEY_ID}}
-          aws-secret-access-key: ${{secrets.AWS_RELEASE_SECRET_ACCESS_KEY}}
+          aws-access-key-id: ${{ secrets.AWS_RELEASE_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_RELEASE_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
+
       - name: Deploy
         if: startsWith(github.ref, 'refs/tags/')
-        run: aws s3 cp ${{env.TARGET_ARTIFACT}}.7z s3://${{env.RELEASE_BUCKET}} --acl public-read
+        run: aws s3 cp ${{ env.TARGET_ARTIFACT }}.7z s3://${{ env.RELEASE_BUCKET }} --acl public-read
         env:
           TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}

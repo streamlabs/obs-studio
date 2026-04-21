@@ -20,14 +20,17 @@
 #include "OBSBasic.hpp"
 #include "OBSBasicStats.hpp"
 
+#include <dialogs/LogUploadDialog.hpp>
 #include <dialogs/OBSAbout.hpp>
 #include <dialogs/OBSBasicAdvAudio.hpp>
 #include <dialogs/OBSBasicFilters.hpp>
 #include <dialogs/OBSBasicInteraction.hpp>
 #include <dialogs/OBSBasicProperties.hpp>
 #include <dialogs/OBSBasicTransform.hpp>
+#ifdef ENABLE_IDIAN_PLAYGROUND
+#include <dialogs/OBSIdianPlayground.hpp>
+#endif
 #include <dialogs/OBSLogViewer.hpp>
-#include <dialogs/OBSLogReply.hpp>
 #ifdef __APPLE__
 #include <dialogs/OBSPermissions.hpp>
 #endif
@@ -62,6 +65,8 @@ extern QCef *cef;
 extern QCefCookieManager *panel_cookies;
 
 using namespace std;
+using LogUploadDialog = OBS::LogUploadDialog;
+using LogUploadType = OBS::LogFileType;
 
 void OBSBasic::CreateInteractionWindow(obs_source_t *source)
 {
@@ -115,10 +120,11 @@ void OBSBasic::ResetUI()
 {
 	bool studioPortraitLayout = config_get_bool(App()->GetUserConfig(), "BasicWindow", "StudioPortraitLayout");
 
-	if (studioPortraitLayout)
+	if (studioPortraitLayout) {
 		ui->previewLayout->setDirection(QBoxLayout::BottomToTop);
-	else
+	} else {
 		ui->previewLayout->setDirection(QBoxLayout::LeftToRight);
+	}
 
 	UpdatePreviewProgramIndicators();
 }
@@ -256,23 +262,21 @@ static BPtr<char> ReadLogFile(const char *subdir, const char *log)
 	return file;
 }
 
-void OBSBasic::UploadLog(const char *subdir, const char *file, const bool crash)
+void OBSBasic::UploadLog(const char *subdir, const char *file, const LogUploadType uploadType)
 {
 	BPtr<char> fileString{ReadLogFile(subdir, file)};
 
-	if (!fileString)
+	if (!fileString || !*fileString) {
+		OBSApp *app = App();
+		emit app->logUploadFailed(uploadType, QTStr("LogUploadDialog.Errors.NoLogFile"));
 		return;
-
-	if (!*fileString)
-		return;
+	}
 
 	ui->menuLogFiles->setEnabled(false);
-#if defined(_WIN32)
-	ui->menuCrashLogs->setEnabled(false);
-#endif
 
 	stringstream ss;
-	ss << "OBS " << App()->GetVersionString(false) << " log file uploaded at " << CurrentDateTimeString() << "\n\n"
+	ss << "OBS " << App()->GetVersionString(false) << " log file uploaded at " << CurrentDateTimeString()
+	   << ((uploadType == OBS::LogFileType::CurrentAppLog) ? " (Active Log)" : " (Complete Log)") << "\n\n"
 	   << fileString;
 
 	if (logUploadThread) {
@@ -282,11 +286,11 @@ void OBSBasic::UploadLog(const char *subdir, const char *file, const bool crash)
 	RemoteTextThread *thread = new RemoteTextThread("https://obsproject.com/logs/upload", "text/plain", ss.str());
 
 	logUploadThread.reset(thread);
-	if (crash) {
-		connect(thread, &RemoteTextThread::Result, this, &OBSBasic::crashUploadFinished);
-	} else {
-		connect(thread, &RemoteTextThread::Result, this, &OBSBasic::logUploadFinished);
-	}
+
+	connect(thread, &RemoteTextThread::Result, this, [this, uploadType](const QString &text, const QString &error) {
+		logUploadFinished(text, error, uploadType);
+	});
+
 	logUploadThread->start();
 }
 
@@ -302,12 +306,24 @@ void OBSBasic::on_actionShowLogs_triggered()
 
 void OBSBasic::on_actionUploadCurrentLog_triggered()
 {
-	UploadLog("obs-studio/logs", App()->GetCurrentLog(), false);
+	ui->menuLogFiles->setEnabled(false);
+
+	LogUploadDialog uploadDialog{this, LogUploadType::CurrentAppLog};
+
+	uploadDialog.exec();
+
+	ui->menuLogFiles->setEnabled(true);
 }
 
 void OBSBasic::on_actionUploadLastLog_triggered()
 {
-	UploadLog("obs-studio/logs", App()->GetLastLog(), false);
+	ui->menuLogFiles->setEnabled(false);
+
+	LogUploadDialog uploadDialog{this, LogUploadType::LastAppLog};
+
+	uploadDialog.exec();
+
+	ui->menuLogFiles->setEnabled(true);
 }
 
 void OBSBasic::on_actionViewCurrentLog_triggered()
@@ -323,17 +339,18 @@ void OBSBasic::on_actionViewCurrentLog_triggered()
 
 void OBSBasic::on_actionShowCrashLogs_triggered()
 {
-	char logDir[512];
-	if (GetAppConfigPath(logDir, sizeof(logDir), "obs-studio/crashes") <= 0)
-		return;
-
-	QUrl url = QUrl::fromLocalFile(QT_UTF8(logDir));
-	QDesktopServices::openUrl(url);
+	App()->openCrashLogDirectory();
 }
 
 void OBSBasic::on_actionUploadLastCrashLog_triggered()
 {
-	UploadLog("obs-studio/crashes", App()->GetLastCrashLog(), true);
+	ui->menuCrashLogs->setEnabled(false);
+
+	LogUploadDialog uploadDialog{this, LogUploadType::CrashLog};
+
+	uploadDialog.exec();
+
+	ui->menuCrashLogs->setEnabled(true);
 }
 
 void OBSBasic::on_actionCheckForUpdates_triggered()
@@ -367,43 +384,19 @@ void OBSBasic::on_actionRestartSafe_triggered()
 	}
 }
 
-void OBSBasic::logUploadFinished(const QString &text, const QString &error)
+void OBSBasic::logUploadFinished(const QString &text, const QString &error, LogUploadType uploadType)
 {
-	ui->menuLogFiles->setEnabled(true);
-#if defined(_WIN32)
-	ui->menuCrashLogs->setEnabled(true);
-#endif
+	OBSApp *app = App();
 
 	if (text.isEmpty()) {
-		OBSMessageBox::critical(this, QTStr("LogReturnDialog.ErrorUploadingLog"), error);
-		return;
+		emit app->logUploadFailed(uploadType, error);
+	} else {
+		OBSDataAutoRelease returnData = obs_data_create_from_json(QT_TO_UTF8(text));
+		string resURL = obs_data_get_string(returnData, "url");
+		QString logURL = resURL.c_str();
+
+		emit app->logUploadFinished(uploadType, logURL);
 	}
-	openLogDialog(text, false);
-}
-
-void OBSBasic::crashUploadFinished(const QString &text, const QString &error)
-{
-	ui->menuLogFiles->setEnabled(true);
-#if defined(_WIN32)
-	ui->menuCrashLogs->setEnabled(true);
-#endif
-
-	if (text.isEmpty()) {
-		OBSMessageBox::critical(this, QTStr("LogReturnDialog.ErrorUploadingLog"), error);
-		return;
-	}
-	openLogDialog(text, true);
-}
-
-void OBSBasic::openLogDialog(const QString &text, const bool crash)
-{
-
-	OBSDataAutoRelease returnData = obs_data_create_from_json(QT_TO_UTF8(text));
-	string resURL = obs_data_get_string(returnData, "url");
-	QString logURL = resURL.c_str();
-
-	OBSLogReply logDialog(this, logURL, crash);
-	logDialog.exec();
 }
 
 void OBSBasic::on_actionHelpPortal_triggered()
@@ -497,7 +490,7 @@ void OBSBasic::CreateEditTransformWindow(obs_sceneitem_t *item)
 	if (transformWindow)
 		transformWindow->close();
 	transformWindow = new OBSBasicTransform(item, this);
-	connect(ui->scenes, &QListWidget::currentItemChanged, transformWindow, &OBSBasicTransform::OnSceneChanged);
+	connect(ui->scenes, &QListWidget::currentItemChanged, transformWindow, &OBSBasicTransform::onSceneChanged);
 	transformWindow->show();
 	transformWindow->setAttribute(Qt::WA_DeleteOnClose, true);
 }
@@ -529,9 +522,9 @@ void OBSBasic::on_toggleListboxToolbars_toggled(bool visible)
 {
 	ui->sourcesToolbar->setVisible(visible);
 	ui->scenesToolbar->setVisible(visible);
-	ui->mixerToolbar->setVisible(visible);
 
 	config_set_bool(App()->GetUserConfig(), "BasicWindow", "ShowListboxToolbars", visible);
+	emit userSettingChanged("BasicWindow", "ShowListboxToolbars");
 }
 
 void OBSBasic::on_toggleStatusBar_toggled(bool visible)
@@ -647,6 +640,16 @@ void OBSBasic::on_stats_triggered()
 	stats = statsDlg;
 }
 
+void OBSBasic::on_idianPlayground_triggered()
+{
+#ifdef ENABLE_IDIAN_PLAYGROUND
+	OBSIdianPlayground playground(this);
+	playground.setModal(true);
+	playground.show();
+	playground.exec();
+#endif
+}
+
 void OBSBasic::on_actionShowAbout_triggered()
 {
 	if (about)
@@ -674,8 +677,6 @@ void OBSBasic::on_OBSBasic_customContextMenuRequested(const QPoint &pos)
 			ui->scenes->customContextMenuRequested(globalPos);
 		} else if (objName.compare("sourcesDock") == 0) {
 			ui->sources->customContextMenuRequested(globalPos);
-		} else if (objName.compare("mixerDock") == 0) {
-			StackedMixerAreaContextMenuRequested();
 		}
 	} else if (!className) {
 		ui->menuDocks->exec(globalPos);

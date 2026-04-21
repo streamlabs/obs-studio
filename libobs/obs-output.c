@@ -135,6 +135,40 @@ const char *obs_output_get_display_name(const char *id)
 	return (info != NULL) ? info->get_name(info->type_data) : NULL;
 }
 
+obs_module_t *obs_output_get_module(const char *id)
+{
+	obs_module_t *module = obs->first_module;
+	while (module) {
+		for (size_t i = 0; i < module->outputs.num; i++) {
+			if (strcmp(module->outputs.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	module = obs->first_disabled_module;
+	while (module) {
+		for (size_t i = 0; i < module->outputs.num; i++) {
+			if (strcmp(module->outputs.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	return NULL;
+}
+
+enum obs_module_load_state obs_output_load_state(const char *id)
+{
+	obs_module_t *module = obs_output_get_module(id);
+	if (!module) {
+		return OBS_MODULE_MISSING;
+	}
+	return module->load_state;
+}
+
 static const char *output_signals[] = {
 	"void start(ptr output)",         "void stop(ptr output, int code)",
 	"void pause(ptr output)",         "void unpause(ptr output)",
@@ -1627,11 +1661,11 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 			 * nuh_temporal_id_plus1    u(3)
 			 * }
 			 */
-			const uint8_t prefix_sei_nal_type = 39;
+			const uint8_t suffix_sei_nal_type = 40;
 			/* The first bit is always 0, so we just need to
 			 * save the last bit off the original header and
 			 * add the SEI NAL type. */
-			uint8_t first_byte = (prefix_sei_nal_type << 1) | (0x01 & hevc_nal_header[0]);
+			uint8_t first_byte = (suffix_sei_nal_type << 1) | (0x01 & hevc_nal_header[0]);
 			hevc_nal_header[0] = first_byte;
 			/* The HEVC NAL unit header is 2 byte instead of
 			 * one, otherwise everything else is the
@@ -1781,7 +1815,23 @@ static size_t get_interleaved_start_idx(struct obs_output *output)
 		}
 	}
 
-	return video_idx < idx ? video_idx : idx;
+	idx = video_idx < idx ? video_idx : idx;
+
+	/* Early AAC/Opus audio packets will be for "priming" the encoder and contain silence, but they should not be
+	 * discarded. Set the idx to the first audio packet if closest PTS was <= 0. */
+	size_t first_audio_idx = idx;
+	while (output->interleaved_packets.array[first_audio_idx].type != OBS_ENCODER_AUDIO)
+		first_audio_idx++;
+
+	if (output->interleaved_packets.array[first_audio_idx].pts <= 0) {
+		for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
+			int audio_idx = find_first_packet_type_idx(output, OBS_ENCODER_AUDIO, i);
+			if (audio_idx >= 0 && (size_t)audio_idx < idx)
+				idx = audio_idx;
+		}
+	}
+
+	return idx;
 }
 
 static int64_t get_encoder_duration(struct obs_encoder *encoder)
@@ -1848,10 +1898,16 @@ static int prune_premature_packets(struct obs_output *output)
 	return diff > duration_usec ? max_idx + 1 : 0;
 }
 
+#define DEBUG_STARTING_PACKETS 0
+
 static void discard_to_idx(struct obs_output *output, size_t idx)
 {
 	for (size_t i = 0; i < idx; i++) {
 		struct encoder_packet *packet = &output->interleaved_packets.array[i];
+#if DEBUG_STARTING_PACKETS == 1
+		blog(LOG_DEBUG, "discarding %s packet, dts: %lld, pts: %lld",
+		     packet->type == OBS_ENCODER_VIDEO ? "video" : "audio", packet->dts, packet->pts);
+#endif
 		if (packet->type == OBS_ENCODER_VIDEO) {
 			da_pop_front(output->encoder_packet_times[packet->track_idx]);
 		}
@@ -1860,8 +1916,6 @@ static void discard_to_idx(struct obs_output *output, size_t idx)
 
 	da_erase_range(output->interleaved_packets, 0, idx);
 }
-
-#define DEBUG_STARTING_PACKETS 0
 
 static bool prune_interleaved_packets(struct obs_output *output)
 {
@@ -2681,7 +2735,9 @@ static void reset_raw_output(obs_output_t *output)
 	pause_reset(&output->pause);
 }
 
-static void set_fail_to_start_output_state(struct obs_output *output, obs_encoder_t *encoder) {
+static void set_fail_to_start_output_state(struct obs_output *output,
+					  obs_encoder_t *encoder)
+{
 	const char *last_error = obs_encoder_get_last_error(encoder);
 	obs_output_set_last_error(output,
 				  last_error && *last_error ? last_error : "Output encoder is not ready to start");
@@ -2720,7 +2776,6 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 	da_init(intervals);
 
 	*batch_size = 0;
-
 	uint64_t largest_interval = 0;
 
 	/* Step 1: Calculate the largest interval between packets of any encoder. */
@@ -2751,7 +2806,6 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 											 ovi.fps_num, ovi.fps_den, frame_rate_divisor);
 			return false;
 		}
-
 		da_push_back(intervals, &encoder_interval);
 
 		largest_interval = encoder_interval > largest_interval ? encoder_interval : largest_interval;
@@ -2788,7 +2842,6 @@ static bool calculate_batch_size(struct obs_output *output, size_t *batch_size)
 											 sample_rate, frame_size);
 			return false;
 		}
-
 		da_push_back(intervals, &encoder_interval);
 
 		largest_interval = encoder_interval > largest_interval ? encoder_interval : largest_interval;

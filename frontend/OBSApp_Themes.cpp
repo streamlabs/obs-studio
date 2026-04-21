@@ -704,6 +704,7 @@ static QString PrepareQSS(const QHash<QString, OBSThemeVariable> &vars, const QS
 			replace = EvalMath(vars, var, var.type);
 		} else if (var.type == OBSThemeVariable::Size || var.type == OBSThemeVariable::Number) {
 			double val = value.toDouble();
+
 			bool isInteger = ceill(val) == val;
 			replace = QString::number(val, 'f', isInteger ? 0 : -1);
 
@@ -711,6 +712,15 @@ static QString PrepareQSS(const QHash<QString, OBSThemeVariable> &vars, const QS
 				replace += var.suffix;
 		} else {
 			replace = value.toString();
+		}
+
+		// Round any values with a px suffix. Qt does this anyway for some properties,
+		// but then will flat out break with decimals for others.
+		if (replace.right(2) == "px") {
+			QString replaceValue = replace.sliced(0, replace.length() - 2);
+			int val = (int)std::roundf(replaceValue.toDouble());
+
+			replace = QString::number(val) + "px";
 		}
 
 		stylesheet = stylesheet.replace(needle, replace);

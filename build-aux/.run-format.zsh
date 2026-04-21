@@ -54,7 +54,7 @@ invoke_formatter() {
         exit 2
       fi
 
-      if (( ! #source_files )) source_files=((libobs|libobs-*|frontend|plugins|deps|shared)/**/*.(c|cpp|h|hpp|m|mm)(.N))
+      if (( ! #source_files )) source_files=((libobs|libobs-*|frontend|plugins|deps|shared|test)/**/*.(c|cpp|h|hpp|m|mm)(.N))
 
       source_files=(${source_files:#*/(obs-websocket/deps|decklink/*/decklink-sdk|mac-syphon/syphon-framework|libdshowcapture)/*})
 
@@ -92,15 +92,22 @@ invoke_formatter() {
       }
       ;;
     gersemi)
-      local formatter=gersemi
-      if (( ${+commands[gersemi]} )) {
-        local gersemi_version=($(gersemi --version))
 
-        if ! is-at-least 0.12.0 ${gersemi_version[2]}; then
-          log_error "gersemi is not version 0.12.0 or above (found ${gersemi_version[2]}."
-          exit 2
-        fi
+      if (( ${+commands[gersemi-0.25]} )) {
+        local formatter=gersemi-0.25
+      } elif (( ${+commands[gersemi]} )) {
+        local formatter=gersemi
+      } else {
+        log_error "No viable gersemi version found (required 0.25.0)"
+        exit 2
       }
+
+      local gersemi_version=($(${formatter} --version))
+
+      if ! is-at-least 0.25.0 ${gersemi_version[2]}; then
+        log_error "gersemi is not version 0.25.0 or above (found ${gersemi_version[2]}."
+        exit 2
+      fi
 
       if (( ! #source_files )) source_files=(CMakeLists.txt (libobs|libobs-*|frontend|plugins|deps|shared|cmake|test)/**/(CMakeLists.txt|*.cmake)(.N))
 
@@ -112,13 +119,30 @@ invoke_formatter() {
         local -a source_files=($@)
         local file
         local -a command=(${formatter} -c --no-cache ${source_files})
+        local -i in_error=0
 
         if (( ${#source_files} )) {
           while read -r line; do
             local -a line_tokens=(${(z)line})
-            file=${line_tokens[1]//*obs-studio\//}
+            if (( #line_tokens )) {
+              file=${line_tokens[1]}
 
-            log_error "${file} requires formatting changes."
+              if [[ -r ${file} ]] {
+                in_error=0
+                file=${file//*${project_root}\//}
+
+                log_error "${file} requires formatting changes."
+              } else {
+                if (( in_error )) {
+                  log_output "${line}"
+                } else {
+                  log_error "${line}"
+                }
+                in_error=1
+              }
+            } else {
+              log_output "${line}"
+            }
 
             if (( fail_on_error == 2 )) return 2
             num_failures=$(( num_failures + 1 ))
@@ -205,6 +229,7 @@ invoke_formatter() {
 run_format() {
   if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
   if (( ! ${+FORMATTER_NAME} )) typeset -g FORMATTER_NAME=${${(s:-:)ZSH_ARGZERO:t:r}[2]}
+  local project_root=${SCRIPT_HOME:A:h}
 
   typeset -g host_os=${${(L)$(uname -s)}//darwin/macos}
   local -i fail_on_error=0

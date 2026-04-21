@@ -44,6 +44,40 @@ const char *obs_encoder_get_display_name(const char *id)
 	return ei ? ei->get_name(ei->type_data) : NULL;
 }
 
+obs_module_t *obs_encoder_get_module(const char *id)
+{
+	obs_module_t *module = obs->first_module;
+	while (module) {
+		for (size_t i = 0; i < module->encoders.num; i++) {
+			if (strcmp(module->encoders.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	module = obs->first_disabled_module;
+	while (module) {
+		for (size_t i = 0; i < module->encoders.num; i++) {
+			if (strcmp(module->encoders.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	return NULL;
+}
+
+enum obs_module_load_state obs_encoder_load_state(const char *id)
+{
+	obs_module_t *module = obs_encoder_get_module(id);
+	if (!module) {
+		return OBS_MODULE_MISSING;
+	}
+	return module->load_state;
+}
+
 static bool init_encoder(struct obs_encoder *encoder, const char *name, obs_data_t *settings, obs_data_t *hotkey_data)
 {
 	blog(LOG_INFO, "init_encoder - begin '%s' (%s) (%p)", name,
@@ -234,6 +268,10 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	current_mix = get_mix_for_video(encoder->media);
 	if (!current_mix)
 		return;
+
+	/* Store original video_t so it can be restored if scaling is disabled. */
+	if (!current_mix->encoder_only_mix)
+		encoder->original_video = encoder->media;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
@@ -683,7 +721,7 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 		if (!mix->encoder_only_mix)
 			break;
 
-		encoder_set_video(encoder, obs_get_video());
+		encoder_set_video(encoder, encoder->original_video);
 		mix->encoder_refs -= 1;
 		if (mix->encoder_refs == 0) {
 			da_erase(obs->video.mixes, i);
@@ -2188,4 +2226,13 @@ bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_forma
 		return mix->using_p010_tex;
 
 	return false;
+}
+
+uint32_t obs_encoder_get_priming_samples(const obs_encoder_t *encoder)
+{
+	if (encoder->info.get_priming_samples) {
+		return encoder->info.get_priming_samples(encoder->context.data);
+	}
+
+	return 0;
 }
