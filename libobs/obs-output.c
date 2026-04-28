@@ -192,6 +192,13 @@ obs_output_t *obs_output_create(const char *id, const char *name, obs_data_t *se
 {
 	const struct obs_output_info *info = find_output(id);
 	struct obs_output *output;
+	bool interleaved_mutex_initialized = false;
+	bool delay_mutex_initialized = false;
+	bool pause_mutex_initialized = false;
+	bool pkt_callbacks_mutex_initialized = false;
+	bool stopping_event_initialized = false;
+	bool context_initialized = false;
+	bool reconnect_stop_event_initialized = false;
 	int ret;
 
 	output = bzalloc(sizeof(struct obs_output));
@@ -202,16 +209,22 @@ obs_output_t *obs_output_create(const char *id, const char *name, obs_data_t *se
 
 	if (pthread_mutex_init(&output->interleaved_mutex, NULL) != 0)
 		goto fail;
+	interleaved_mutex_initialized = true;
 	if (pthread_mutex_init(&output->delay_mutex, NULL) != 0)
 		goto fail;
+	delay_mutex_initialized = true;
 	if (pthread_mutex_init(&output->pause.mutex, NULL) != 0)
 		goto fail;
+	pause_mutex_initialized = true;
 	if (pthread_mutex_init(&output->pkt_callbacks_mutex, NULL) != 0)
 		goto fail;
+	pkt_callbacks_mutex_initialized = true;
 	if (os_event_init(&output->stopping_event, OS_EVENT_TYPE_MANUAL) != 0)
 		goto fail;
+	stopping_event_initialized = true;
 	if (!init_output_handlers(output, name, settings, hotkey_data))
 		goto fail;
+	context_initialized = true;
 
 	os_event_signal(output->stopping_event);
 
@@ -233,6 +246,7 @@ obs_output_t *obs_output_create(const char *id, const char *name, obs_data_t *se
 	ret = os_event_init(&output->reconnect_stop_event, OS_EVENT_TYPE_MANUAL);
 	if (ret < 0)
 		goto fail;
+	reconnect_stop_event_initialized = true;
 
 	output->reconnect_retry_sec = 2;
 	output->reconnect_retry_max = 20;
@@ -251,7 +265,23 @@ obs_output_t *obs_output_create(const char *id, const char *name, obs_data_t *se
 	return output;
 
 fail:
-	obs_output_destroy(output);
+	if (reconnect_stop_event_initialized)
+		os_event_destroy(output->reconnect_stop_event);
+	if (context_initialized)
+		obs_context_data_free(&output->context);
+	if (stopping_event_initialized)
+		os_event_destroy(output->stopping_event);
+	if (pkt_callbacks_mutex_initialized)
+		pthread_mutex_destroy(&output->pkt_callbacks_mutex);
+	if (pause_mutex_initialized)
+		pthread_mutex_destroy(&output->pause.mutex);
+	if (delay_mutex_initialized)
+		pthread_mutex_destroy(&output->delay_mutex);
+	if (interleaved_mutex_initialized)
+		pthread_mutex_destroy(&output->interleaved_mutex);
+	if (output->owns_info_id)
+		bfree((void *)output->info.id);
+	bfree(output);
 	return NULL;
 }
 
@@ -287,14 +317,16 @@ void obs_output_destroy(obs_output_t *output)
 {
 	if (output) {
 		obs_context_data_remove(&output->context);
-		os_atomic_set_long(&output->context.control->ref.refs, -0xFF);
+		if (output->context.control)
+			os_atomic_set_long(&output->context.control->ref.refs, -0xFF);
 
 		blog(LOG_DEBUG, "output '%s' destroyed", output->context.name);
 
 		if (output->valid && active(output))
 			obs_output_actual_stop(output, true, 0);
 
-		os_event_wait(output->stopping_event);
+		if (output->stopping_event)
+			os_event_wait(output->stopping_event);
 		if (data_capture_ending(output))
 			pthread_join(output->end_data_capture_thread, NULL);
 
