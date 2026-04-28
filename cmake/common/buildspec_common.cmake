@@ -10,18 +10,20 @@ function(extract_archive file destination)
 
   # Determine the file extension
   get_filename_component(extension "${file}" EXT)
+  string(TOLOWER "${extension}" extension)
 
-  # If it's a .7z file, use 7z to extract
-  if("${extension}" STREQUAL ".7z")
-    message(STATUS "Extracting .7z archive: ${file}")
+  # CMake's ZIP extraction has been unreliable with some large Windows dependency archives.
+  if("${extension}" STREQUAL ".7z" OR (CMAKE_HOST_WIN32 AND "${extension}" STREQUAL ".zip"))
+    find_program(_7ZIP_EXECUTABLE NAMES 7z REQUIRED)
+    message(STATUS "Extracting archive with 7-Zip: ${file}")
     execute_process(
-      COMMAND 7z x "${file}" -o"${destination}" -y
+      COMMAND "${_7ZIP_EXECUTABLE}" x "${file}" "-o${destination}" -y
       RESULT_VARIABLE _result
       OUTPUT_QUIET
       ERROR_QUIET
     )
     if(NOT _result EQUAL 0)
-      message(FATAL_ERROR "Failed to extract .7z archive: ${file}")
+      message(FATAL_ERROR "Failed to extract archive with 7-Zip: ${file}")
     endif()
   else()
     # For other archive types, use file(ARCHIVE_EXTRACT)

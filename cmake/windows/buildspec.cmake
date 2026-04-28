@@ -14,7 +14,6 @@ function(_handle_qt_cross_compile architecture)
   _get_dependency_data(dependency_data)
 
   string(JSON data GET ${dependency_data} qt6)
-  string(JSON version GET ${data} version)
 
   set(qt_build_arch "")
   set(qt_target_arch "")
@@ -23,6 +22,7 @@ function(_handle_qt_cross_compile architecture)
   set(config_has_buildabi FALSE)
   set(qt_cross_compiled FALSE)
 
+  string(JSON version GET ${data} version)
   string(REPLACE "VERSION" "${version}" directory "${_HQCC_DIRECTORY}")
   string(TOLOWER "${CMAKE_VS_PLATFORM_NAME}" platform_name)
   string(REPLACE "ARCH" "${platform_name}" qt_arch_location "${directory}")
