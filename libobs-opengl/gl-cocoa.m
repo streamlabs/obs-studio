@@ -505,13 +505,15 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device, void *io
 
     OSType pixelFormat = IOSurfaceGetPixelFormat(ref);
 
-    GLenum color_format = 0;
+    enum gs_color_format obs_format = GS_UNKNOWN;
+    GLenum gl_format = 0;
     GLenum internal_format = 0;
     GLenum texture_type = 0;
 
     switch (pixelFormat) {
         case kCVPixelFormatType_ARGB2101010LEPacked: {
-            color_format = GL_BGRA;
+            obs_format = GS_R10G10B10A2;
+            gl_format = GL_BGRA;
             internal_format = convert_gs_internal_format(GS_R10G10B10A2);
             texture_type = GL_UNSIGNED_INT_2_10_10_10_REV;
 
@@ -525,7 +527,8 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device, void *io
              * get treated as valid 32BGRA, but it is how it is. */
         case 0:
         case kCVPixelFormatType_32BGRA: {
-            color_format = convert_gs_format(GS_BGRA);
+            obs_format = GS_BGRA;
+            gl_format = convert_gs_format(GS_BGRA);
             internal_format = convert_gs_internal_format(GS_BGRA);
             texture_type = GL_UNSIGNED_INT_8_8_8_8_REV;
             break;
@@ -538,9 +541,9 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device, void *io
 
     tex->base.device = device;
     tex->base.type = GS_TEXTURE_2D;
-    tex->base.format = color_format;
+    tex->base.format = obs_format;
     tex->base.levels = 1;
-    tex->base.gl_format = color_format;
+    tex->base.gl_format = gl_format;
     tex->base.gl_internal_format = internal_format;
     tex->base.gl_type = texture_type;
     tex->base.gl_target = GL_TEXTURE_RECTANGLE_ARB;
