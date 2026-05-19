@@ -879,6 +879,8 @@ void obs_free_video_mix(struct obs_core_video_mix *video)
 	if (obs && obs->video_rendering_mix == video)
 		obs->video_rendering_mix = NULL;
 
+	obs_encoder_release_video_mix_references(video);
+
 	if (video->video) {
 		video_output_close(video->video);
 		video->video = NULL;

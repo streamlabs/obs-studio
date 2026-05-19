@@ -693,6 +693,31 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 }
 
+void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
+{
+	if (!obs || !mix)
+		return;
+
+	video_t *freed_video = mix->video;
+
+	pthread_mutex_lock(&obs->data.encoders_mutex);
+	obs_encoder_t *encoder = obs->data.first_encoder;
+	while (encoder) {
+		obs_encoder_t *next = (obs_encoder_t *)encoder->context.next;
+
+		if (encoder->info.type == OBS_ENCODER_VIDEO) {
+			if (encoder->video == mix)
+				encoder->video = NULL;
+
+			if (freed_video && encoder->media == freed_video)
+				encoder_set_video(encoder, NULL);
+		}
+
+		encoder = next;
+	}
+	pthread_mutex_unlock(&obs->data.encoders_mutex);
+}
+
 void obs_encoder_shutdown(obs_encoder_t *encoder)
 {
 	blog(LOG_INFO, "obs_encoder_shutdown '%s' (%s) (%p)",
