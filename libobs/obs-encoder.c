@@ -709,7 +709,9 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 		obs_encoder_t *next = (obs_encoder_t *)encoder->context.next;
 		if (encoder->info.type == OBS_ENCODER_VIDEO &&
 		    ((encoder->video == mix) || (freed_video && encoder->media == freed_video))) {
-			da_push_back(elimenated, &encoder);
+			obs_encoder_t *ref = obs_encoder_get_ref(encoder);
+			if (ref)
+				da_push_back(elimenated, &ref);
 		}
 		encoder = next;
 	}
@@ -722,6 +724,7 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 			blog(LOG_WARNING,
 			     "obs_encoder_release_video_mix_references: encoder '%s' references a freed video mix while active; leaving as-is",
 			     obs_encoder_get_name(enc));
+			obs_encoder_release(enc);
 			continue;
 		}
 
@@ -739,6 +742,8 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 			enc->video = NULL;
 		encoder_set_video(enc, NULL);
 		pthread_mutex_unlock(&enc->init_mutex);
+
+		obs_encoder_release(enc);
 	}
 	da_free(elimenated);
 }
