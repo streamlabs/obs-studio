@@ -911,6 +911,11 @@ static void obs_free_video(bool full_clean)
 		return;
 	}
 
+	/* Snapshot under mixes_mutex; cleanup runs outside it to preserve
+	 * the global encoders_mutex -> mixes_mutex order. */
+	DARRAY(struct obs_core_video_mix *) doomed_mixes;
+	da_init(doomed_mixes);
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	size_t num_views = 0;
 	// 0 value of "i" is reserved for the main canvas, which is created first and
@@ -920,7 +925,7 @@ static void obs_free_video(bool full_clean)
 		struct obs_core_video_mix *video = obs->video.mixes.array[i];
 		if (video && video->view)
 			num_views++;
-		obs_free_video_mix(video);
+		da_push_back(doomed_mixes, &video);
 		obs->video.mixes.array[i] = NULL;
 	}
 	da_free(obs->video.mixes);
@@ -928,6 +933,15 @@ static void obs_free_video(bool full_clean)
 		blog(LOG_WARNING, "Number of remaining views: %ld", num_views);
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	for (size_t i = 0; i < doomed_mixes.num; i++) {
+		struct obs_core_video_mix *video = doomed_mixes.array[i];
+		if (!video)
+			continue;
+		obs_encoder_release_video_mix_references(video);
+		obs_free_video_mix(video);
+	}
+	da_free(doomed_mixes);
 
 	if (full_clean) {
 		pthread_mutex_destroy(&obs->video.mixes_mutex);

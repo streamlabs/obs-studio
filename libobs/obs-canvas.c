@@ -268,16 +268,25 @@ void obs_canvas_clear_mix(obs_canvas_t *canvas)
 	if (!canvas->mix)
 		return;
 
+	/* Detach under mixes_mutex; cleanup runs outside it to preserve
+	 * the global encoders_mutex -> mixes_mutex order. */
+	struct obs_core_video_mix *doomed = NULL;
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix == canvas->mix) {
 			da_erase(obs->video.mixes, i);
-			obs_free_video_mix(mix);
+			doomed = mix;
 			break;
 		}
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (doomed) {
+		obs_encoder_release_video_mix_references(doomed);
+		obs_free_video_mix(doomed);
+	}
 
 	canvas->mix = NULL;
 }
