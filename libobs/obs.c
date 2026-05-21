@@ -918,21 +918,52 @@ static void obs_free_video(bool full_clean)
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	size_t num_views = 0;
-	// 0 value of "i" is reserved for the main canvas, which is created first and
-	// remains present throughout the lifetime of the application.
-	// As this canvas is unused, we can safely skip it.
-	for (size_t i = 1; i < obs->video.mixes.num; i++) {
+	/* For a partial reset (full_clean == false) we preserve the main
+	 * canvas's mix at index 0 so the subsequent
+	 * obs_init_video -> obs_canvas_clear_mix(main_canvas) call can still
+	 * find it in the global array and free it through
+	 * obs_encoder_release_video_mix_references. If we removed it here
+	 * the old main mix would be orphaned (leaked) and any encoder
+	 * pointing into it would never be invalidated. Full teardown
+	 * frees every mix including index 0. */
+	size_t boundary = full_clean ? 0 : 1;
+	for (size_t i = boundary; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *video = obs->video.mixes.array[i];
 		if (video && video->view)
 			num_views++;
 		da_push_back(doomed_mixes, &video);
 		obs->video.mixes.array[i] = NULL;
 	}
-	da_free(obs->video.mixes);
+	if (full_clean) {
+		da_free(obs->video.mixes);
+	} else {
+		/* Drop the freed slots; the main mix remains at index 0. */
+		obs->video.mixes.num = boundary;
+	}
 	if (num_views > 0)
 		blog(LOG_WARNING, "Number of remaining views: %ld", num_views);
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	/* Nullify canvas->mix pointers that reference mixes we just
+	 * detached. Without this, the subsequent obs_canvas_clear_mix calls
+	 * (from obs_init_video -> restore_canvases) would dereference
+	 * dangling pointers when comparing canvas->mix against the now-
+	 * shrunk global array. */
+	pthread_mutex_lock(&obs->data.canvases_mutex);
+	struct obs_context_data *ctx, *tmp;
+	HASH_ITER (hh, (struct obs_context_data *)obs->data.canvases, ctx, tmp) {
+		obs_canvas_t *canvas = (obs_canvas_t *)ctx;
+		if (!canvas->mix)
+			continue;
+		for (size_t i = 0; i < doomed_mixes.num; i++) {
+			if (canvas->mix == doomed_mixes.array[i]) {
+				canvas->mix = NULL;
+				break;
+			}
+		}
+	}
+	pthread_mutex_unlock(&obs->data.canvases_mutex);
 
 	for (size_t i = 0; i < doomed_mixes.num; i++) {
 		struct obs_core_video_mix *video = doomed_mixes.array[i];

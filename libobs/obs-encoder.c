@@ -720,15 +720,58 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 	for (size_t i = 0; i < elimenated.num; i++) {
 		obs_encoder_t *enc = elimenated.array[i];
 
+		pthread_mutex_lock(&enc->init_mutex);
+
 		if (encoder_active(enc)) {
-			blog(LOG_WARNING,
-			     "obs_encoder_release_video_mix_references: encoder '%s' references a freed video mix while active; leaving as-is",
+			/* In correct use, obs_deactivate_video_info's
+			 * obs_video_active() check should prevent us from
+			 * getting here: start/stop_raw_video and
+			 * start/stop_gpu_encode bump the per-mix counters
+			 * that obs_video_active() inspects, so an active
+			 * encoder should always block the reset. If we do
+			 * land here, the alternative to forcing the
+			 * disconnect is a guaranteed UAF when
+			 * obs_free_video_mix closes the video_t below. */
+			bool gpu = (enc->info.caps & OBS_ENCODER_CAP_PASS_TEXTURE) != 0 &&
+				   (mix->using_p010_tex || mix->using_nv12_tex);
+
+			if (gpu) {
+				/* GPU path needs to drain the per-mix encode
+				 * thread (see stop_gpu_encode) before it's
+				 * safe to destroy enc->context.data, and we
+				 * don't have a way to do that with the mix
+				 * already detached from obs->video.mixes.
+				 * Leave the codec state alone but clear the
+				 * media pointers so future operations on this
+				 * encoder fail safely instead of following a
+				 * dangling pointer once obs_free_video_mix
+				 * closes the video_t below. */
+				blog(LOG_ERROR,
+				     "obs_encoder_release_video_mix_references: active GPU encoder '%s' references a freed video mix; leaving codec state (reset path should have been blocked)",
+				     obs_encoder_get_name(enc));
+				if (enc->video == mix)
+					enc->video = NULL;
+				encoder_set_video(enc, NULL);
+				pthread_mutex_unlock(&enc->init_mutex);
+				obs_encoder_release(enc);
+				continue;
+			}
+
+			/* Raw path: break the video->encoder callback.
+			 * video_output_disconnect2 holds the video's
+			 * input_mutex, which is also held by the video
+			 * thread for the duration of each receive_video
+			 * dispatch, so after it returns no in-flight or
+			 * future callback can touch this encoder. */
+			blog(LOG_ERROR,
+			     "obs_encoder_release_video_mix_references: active raw encoder '%s' references a freed video mix; forcing disconnect (reset path should have been blocked)",
 			     obs_encoder_get_name(enc));
-			obs_encoder_release(enc);
-			continue;
+
+			if (freed_video)
+				video_output_disconnect2(freed_video, receive_video, enc);
+			set_encoder_active(enc, false);
 		}
 
-		pthread_mutex_lock(&enc->init_mutex);
 		if (enc->context.data) {
 			enc->info.destroy(enc->context.data);
 			enc->context.data = NULL;
