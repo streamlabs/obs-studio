@@ -941,7 +941,7 @@ static void obs_free_video(bool full_clean)
 		obs->video.mixes.num = boundary;
 	}
 	if (num_views > 0)
-		blog(LOG_WARNING, "Number of remaining views: %ld", num_views);
+		blog(LOG_WARNING, "Number of remaining views: %zu", num_views);
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
