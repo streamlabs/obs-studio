@@ -937,21 +937,23 @@ static void obs_free_video(bool full_clean)
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
-	/* Clear canvas mix pointers to detached mixes. */
-	pthread_mutex_lock(&obs->data.canvases_mutex);
-	struct obs_context_data *ctx, *tmp;
-	HASH_ITER (hh, (struct obs_context_data *)obs->data.canvases, ctx, tmp) {
-		obs_canvas_t *canvas = (obs_canvas_t *)ctx;
-		if (!canvas->mix)
-			continue;
-		for (size_t i = 0; i < doomed_mixes.num; i++) {
-			if (canvas->mix == doomed_mixes.array[i]) {
-				canvas->mix = NULL;
-				break;
+	/* Clear detached canvas mix pointers (partial reset only). */
+	if (!full_clean) {
+		pthread_mutex_lock(&obs->data.canvases_mutex);
+		struct obs_context_data *ctx, *tmp;
+		HASH_ITER (hh, (struct obs_context_data *)obs->data.canvases, ctx, tmp) {
+			obs_canvas_t *canvas = (obs_canvas_t *)ctx;
+			if (!canvas->mix)
+				continue;
+			for (size_t i = 0; i < doomed_mixes.num; i++) {
+				if (canvas->mix == doomed_mixes.array[i]) {
+					canvas->mix = NULL;
+					break;
+				}
 			}
 		}
+		pthread_mutex_unlock(&obs->data.canvases_mutex);
 	}
-	pthread_mutex_unlock(&obs->data.canvases_mutex);
 
 	for (size_t i = 0; i < doomed_mixes.num; i++) {
 		struct obs_core_video_mix *video = doomed_mixes.array[i];
