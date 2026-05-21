@@ -911,21 +911,13 @@ static void obs_free_video(bool full_clean)
 		return;
 	}
 
-	/* Snapshot under mixes_mutex; cleanup runs outside it to preserve
-	 * the global encoders_mutex -> mixes_mutex order. */
+	/* Snapshot under mixes_mutex; cleanup happens after unlock. */
 	DARRAY(struct obs_core_video_mix *) doomed_mixes;
 	da_init(doomed_mixes);
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	size_t num_views = 0;
-	/* For a partial reset (full_clean == false) we preserve the main
-	 * canvas's mix at index 0 so the subsequent
-	 * obs_init_video -> obs_canvas_clear_mix(main_canvas) call can still
-	 * find it in the global array and free it through
-	 * obs_encoder_release_video_mix_references. If we removed it here
-	 * the old main mix would be orphaned (leaked) and any encoder
-	 * pointing into it would never be invalidated. Full teardown
-	 * frees every mix including index 0. */
+	/* Partial reset keeps main mix at index 0. */
 	size_t boundary = full_clean ? 0 : 1;
 	for (size_t i = boundary; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *video = obs->video.mixes.array[i];
@@ -937,7 +929,7 @@ static void obs_free_video(bool full_clean)
 	if (full_clean) {
 		da_free(obs->video.mixes);
 	} else {
-		/* Drop the freed slots; the main mix remains at index 0. */
+		/* Drop freed slots; keep main mix. */
 		obs->video.mixes.num = boundary;
 	}
 	if (num_views > 0)
@@ -945,11 +937,7 @@ static void obs_free_video(bool full_clean)
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
-	/* Nullify canvas->mix pointers that reference mixes we just
-	 * detached. Without this, the subsequent obs_canvas_clear_mix calls
-	 * (from obs_init_video -> restore_canvases) would dereference
-	 * dangling pointers when comparing canvas->mix against the now-
-	 * shrunk global array. */
+	/* Clear canvas mix pointers to detached mixes. */
 	pthread_mutex_lock(&obs->data.canvases_mutex);
 	struct obs_context_data *ctx, *tmp;
 	HASH_ITER (hh, (struct obs_context_data *)obs->data.canvases, ctx, tmp) {
