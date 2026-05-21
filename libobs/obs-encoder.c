@@ -720,15 +720,36 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 	for (size_t i = 0; i < elimenated.num; i++) {
 		obs_encoder_t *enc = elimenated.array[i];
 
+		pthread_mutex_lock(&enc->init_mutex);
+
 		if (encoder_active(enc)) {
-			blog(LOG_WARNING,
-			     "obs_encoder_release_video_mix_references: encoder '%s' references a freed video mix while active; leaving as-is",
+			/* Unexpected: active encoder still references a freed mix. */
+			bool gpu = (enc->info.caps & OBS_ENCODER_CAP_PASS_TEXTURE) != 0 &&
+				   (mix->using_p010_tex || mix->using_nv12_tex);
+
+			if (gpu) {
+				/* Keep codec state; just clear media pointers. */
+				blog(LOG_ERROR,
+				     "obs_encoder_release_video_mix_references: active GPU encoder '%s' references a freed video mix; leaving codec state (reset path should have been blocked)",
+				     obs_encoder_get_name(enc));
+				if (enc->video == mix)
+					enc->video = NULL;
+				enc->media = NULL;
+				pthread_mutex_unlock(&enc->init_mutex);
+				obs_encoder_release(enc);
+				continue;
+			}
+
+			/* Raw path: disconnect callback and mark inactive. */
+			blog(LOG_ERROR,
+			     "obs_encoder_release_video_mix_references: active raw encoder '%s' references a freed video mix; forcing disconnect (reset path should have been blocked)",
 			     obs_encoder_get_name(enc));
-			obs_encoder_release(enc);
-			continue;
+
+			if (freed_video)
+				video_output_disconnect2(freed_video, receive_video, enc);
+			set_encoder_active(enc, false);
 		}
 
-		pthread_mutex_lock(&enc->init_mutex);
 		if (enc->context.data) {
 			enc->info.destroy(enc->context.data);
 			enc->context.data = NULL;
