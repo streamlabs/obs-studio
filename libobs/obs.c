@@ -2897,9 +2897,11 @@ enum obs_video_rendering_mode obs_get_video_rendering_mode(void)
 		return obs->video_rendering_mode;
 }
 
-obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi,
-					enum obs_video_rendering_mode mode)
+obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_video_rendering_mode mode)
 {
+	struct obs_core_video_mix *result = NULL;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
 	// 0 value of "i" is reserved for the main canvas, which is created first and
 	// remains present throughout the lifetime of the application.
 	// As this canvas is unused, we can safely skip it.
@@ -2907,11 +2909,14 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi,
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (!mix || mix->encoder_only_mix)
 			continue;
-		if ((mix->canvas_ovi == ovi || ovi == NULL) &&
-		    mix->rendering_mode == mode)
-			return mix;
+		if ((mix->canvas_ovi == ovi || ovi == NULL) && mix->rendering_mode == mode) {
+			result = mix;
+			break;
+		}
 	}
-	return NULL;
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	return result;
 }
 
 video_t *obs_video_mix_get_video(struct obs_core_video_mix *mix)
