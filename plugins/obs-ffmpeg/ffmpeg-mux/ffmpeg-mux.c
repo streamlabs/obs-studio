@@ -682,15 +682,17 @@ static size_t safe_read(void *vdata, size_t size)
 
 	uint8_t *dst = vdata;
 	size_t remain = size;
-	HANDLE h[2] = {psi.shutdown_event, psi.data_event};
+	/*
+	* If data_event and shutdown_event are both signaled, WaitForMultipleObjects returns the lowest-index
+	* signaled handle. Prefer pending pipe data over shutdown so mux packets already written by the parent
+	* are drained before safe_read reports EOF.
+	*/
+	HANDLE h[2] = {psi.data_event, psi.shutdown_event};
 
 	while (remain) {
 		DWORD wr = WaitForMultipleObjects(2, h, FALSE, INFINITE);
 
-		if (wr == WAIT_OBJECT_0) // shutdown
-			return 0;
-
-		if (wr == WAIT_OBJECT_0 + 1) { // data available
+		if (wr == WAIT_OBJECT_0) { // data available
 			DWORD want = (DWORD)remain, got = 0;
 			if (!ReadFile(psi.pipe, dst, want, &got, NULL) ||
 			    got == 0)
@@ -698,6 +700,14 @@ static size_t safe_read(void *vdata, size_t size)
 
 			dst += got;
 			remain -= got;
+		} else if (wr == WAIT_OBJECT_0 + 1) { // shutdown
+			DWORD avail = 0;
+			if (PeekNamedPipe(psi.pipe, NULL, 0, NULL, &avail, NULL) &&
+			    avail > 0) {
+				continue;
+			}
+
+			return 0;
 		} else {
 			fprintf(stderr, "safe_read: Wait failed: %lu\n",
 				GetLastError());
