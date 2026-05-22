@@ -2062,17 +2062,38 @@ void obs_encoder_set_last_error(obs_encoder_t *encoder, const char *message)
 		encoder->last_error_message = NULL;
 }
 
-void obs_encoder_set_video_mix(obs_encoder_t *encoder,
-			       struct obs_core_video_mix *video)
+void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix *video)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_set_video_mix"))
 		return;
 
-	if (!video)
+	if (!video) {
+		blog(LOG_WARNING, "obs_encoder_set_video_mix: NULL mix for encoder '%s'",
+		     obs_encoder_get_name(encoder));
 		return;
+	}
 
-	encoder->video = video;
-	obs_encoder_set_video(encoder, video->video);
+	/* Validate and publish under mixes_mutex in a single critical section.
+	 * Free paths (obs_canvas_clear_mix / obs_free_video / output_frames) remove
+	 * the mix under mixes_mutex before calling obs_encoder_release_video_mix_references,
+	 * so either the removal is ordered before our lock (we see the mix gone and bail)
+	 * or after our unlock (the subsequent encoder walk sees encoder->media via the
+	 * release-acquire chain through mixes_mutex and clears it). */
+	bool bound = false;
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
+		if (obs->video.mixes.array[i] == video) {
+			encoder->video = video;
+			obs_encoder_set_video(encoder, video->video);
+			bound = true;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (!bound)
+		blog(LOG_WARNING, "obs_encoder_set_video_mix: stale mix for encoder '%s'",
+		     obs_encoder_get_name(encoder));
 }
 
 uint64_t obs_encoder_get_pause_offset(const obs_encoder_t *encoder)
