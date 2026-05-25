@@ -530,7 +530,7 @@ static bool stinger_audio_render(void *data, uint64_t *ts_out, struct obs_source
 	if (!*ts_out || ts < *ts_out)
 		*ts_out = ts;
 
-	struct obs_source_audio_mix child_audio;
+	struct obs_source_audio_mix child_audio = {0};
 	obs_source_get_audio_mix(s->media_source, &child_audio);
 
 	for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
@@ -540,6 +540,8 @@ static bool stinger_audio_render(void *data, uint64_t *ts_out, struct obs_source
 		for (size_t ch = 0; ch < channels; ch++) {
 			register float *out = audio->output[mix].data[ch];
 			register float *in = child_audio.output[mix].data[ch];
+			if (!in || !out)
+				continue;
 			register float *end = in + AUDIO_OUTPUT_FRAMES;
 
 			while (in < end)
@@ -578,7 +580,7 @@ static bool stinger_audio_render_do(void *data, uint64_t *ts_out,
 	if (!*ts_out || ts < *ts_out)
 		*ts_out = ts;
 
-	struct obs_source_audio_mix child_audio;
+	struct obs_source_audio_mix child_audio = {0};
 	obs_source_get_audio_mix(s->media_source, &child_audio);
 	for (size_t canvas_idx = 0; canvas_idx < audio->outputs.num;
 	     canvas_idx++) {
@@ -593,6 +595,8 @@ static bool stinger_audio_render_do(void *data, uint64_t *ts_out,
 						.data[ch];
 				register float *in =
 					child_audio.output[mix].data[ch];
+				if (!in || !out)
+					continue;
 				register float *end = in + AUDIO_OUTPUT_FRAMES;
 
 				while (in < end)
