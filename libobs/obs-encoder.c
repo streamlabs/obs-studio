@@ -731,6 +731,82 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 }
 
+void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
+{
+	if (!obs || !mix)
+		return;
+
+	video_t *freed_video = mix->video;
+
+	DARRAY(obs_encoder_t *) elimenated;
+	da_init(elimenated);
+
+	pthread_mutex_lock(&obs->data.encoders_mutex);
+	obs_encoder_t *encoder = obs->data.first_encoder;
+	while (encoder) {
+		obs_encoder_t *next = (obs_encoder_t *)encoder->context.next;
+		if (encoder->info.type == OBS_ENCODER_VIDEO &&
+		    ((encoder->video == mix) || (freed_video && encoder->media == freed_video))) {
+			obs_encoder_t *ref = obs_encoder_get_ref(encoder);
+			if (ref)
+				da_push_back(elimenated, &ref);
+		}
+		encoder = next;
+	}
+	pthread_mutex_unlock(&obs->data.encoders_mutex);
+
+	for (size_t i = 0; i < elimenated.num; i++) {
+		obs_encoder_t *enc = elimenated.array[i];
+
+		pthread_mutex_lock(&enc->init_mutex);
+
+		if (encoder_active(enc)) {
+			/* Unexpected: active encoder still references a freed mix. */
+			bool gpu = (enc->info.caps & OBS_ENCODER_CAP_PASS_TEXTURE) != 0 &&
+				   (mix->using_p010_tex || mix->using_nv12_tex);
+
+			if (gpu) {
+				/* Keep codec state; just clear media pointers. */
+				blog(LOG_ERROR,
+				     "obs_encoder_release_video_mix_references: active GPU encoder '%s' references a freed video mix; leaving codec state (reset path should have been blocked)",
+				     obs_encoder_get_name(enc));
+				if (enc->video == mix)
+					enc->video = NULL;
+				enc->media = NULL;
+				pthread_mutex_unlock(&enc->init_mutex);
+				obs_encoder_release(enc);
+				continue;
+			}
+
+			/* Raw path: disconnect callback and mark inactive. */
+			blog(LOG_ERROR,
+			     "obs_encoder_release_video_mix_references: active raw encoder '%s' references a freed video mix; forcing disconnect (reset path should have been blocked)",
+			     obs_encoder_get_name(enc));
+
+			if (freed_video)
+				video_output_disconnect2(freed_video, receive_video, enc);
+			set_encoder_active(enc, false);
+		}
+
+		if (enc->context.data) {
+			enc->info.destroy(enc->context.data);
+			enc->context.data = NULL;
+			enc->first_received = false;
+			enc->offset_usec = 0;
+			enc->start_ts = 0;
+			enc->frame_rate_divisor_counter = 0;
+		}
+		enc->initialized = false;
+		if (enc->video == mix)
+			enc->video = NULL;
+		encoder_set_video(enc, NULL);
+		pthread_mutex_unlock(&enc->init_mutex);
+
+		obs_encoder_release(enc);
+	}
+	da_free(elimenated);
+}
+
 void obs_encoder_shutdown(obs_encoder_t *encoder)
 {
 	blog(LOG_INFO, "obs_encoder_shutdown '%s' (%s) (%p)",
@@ -2024,17 +2100,38 @@ void obs_encoder_set_last_error(obs_encoder_t *encoder, const char *message)
 		encoder->last_error_message = NULL;
 }
 
-void obs_encoder_set_video_mix(obs_encoder_t *encoder,
-			       struct obs_core_video_mix *video)
+void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix *video)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_set_video_mix"))
 		return;
 
-	if (!video)
+	if (!video) {
+		blog(LOG_WARNING, "obs_encoder_set_video_mix: NULL mix for encoder '%s'",
+		     obs_encoder_get_name(encoder));
 		return;
+	}
 
-	encoder->video = video;
-	obs_encoder_set_video(encoder, video->video);
+	/* Validate and publish under mixes_mutex in a single critical section.
+	 * Free paths (obs_canvas_clear_mix / obs_free_video / output_frames) remove
+	 * the mix under mixes_mutex before calling obs_encoder_release_video_mix_references,
+	 * so either the removal is ordered before our lock (we see the mix gone and bail)
+	 * or after our unlock (the subsequent encoder walk sees encoder->media via the
+	 * release-acquire chain through mixes_mutex and clears it). */
+	bool bound = false;
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
+		if (obs->video.mixes.array[i] == video) {
+			encoder->video = video;
+			obs_encoder_set_video(encoder, video->video);
+			bound = true;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (!bound)
+		blog(LOG_WARNING, "obs_encoder_set_video_mix: stale mix for encoder '%s'",
+		     obs_encoder_get_name(encoder));
 }
 
 uint64_t obs_encoder_get_pause_offset(const obs_encoder_t *encoder)

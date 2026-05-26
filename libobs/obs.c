@@ -911,23 +911,58 @@ static void obs_free_video(bool full_clean)
 		return;
 	}
 
+	/* Snapshot under mixes_mutex; cleanup happens after unlock. */
+	DARRAY(struct obs_core_video_mix *) doomed_mixes;
+	da_init(doomed_mixes);
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	size_t num_views = 0;
-	// 0 value of "i" is reserved for the main canvas, which is created first and
-	// remains present throughout the lifetime of the application.
-	// As this canvas is unused, we can safely skip it.
-	for (size_t i = 1; i < obs->video.mixes.num; i++) {
+	/* Partial reset keeps main mix at index 0. */
+	size_t boundary = full_clean ? 0 : 1;
+	for (size_t i = boundary; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *video = obs->video.mixes.array[i];
 		if (video && video->view)
 			num_views++;
-		obs_free_video_mix(video);
+		da_push_back(doomed_mixes, &video);
 		obs->video.mixes.array[i] = NULL;
 	}
-	da_free(obs->video.mixes);
+	if (full_clean) {
+		da_free(obs->video.mixes);
+	} else {
+		/* Drop freed slots; keep main mix. */
+		obs->video.mixes.num = boundary;
+	}
 	if (num_views > 0)
-		blog(LOG_WARNING, "Number of remaining views: %ld", num_views);
+		blog(LOG_WARNING, "Number of remaining views: %zu", num_views);
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	/* Clear detached canvas mix pointers (partial reset only). */
+	if (!full_clean) {
+		pthread_mutex_lock(&obs->data.canvases_mutex);
+		struct obs_context_data *ctx, *tmp;
+		HASH_ITER (hh, (struct obs_context_data *)obs->data.canvases, ctx, tmp) {
+			obs_canvas_t *canvas = (obs_canvas_t *)ctx;
+			if (!canvas->mix)
+				continue;
+			for (size_t i = 0; i < doomed_mixes.num; i++) {
+				if (canvas->mix == doomed_mixes.array[i]) {
+					canvas->mix = NULL;
+					break;
+				}
+			}
+		}
+		pthread_mutex_unlock(&obs->data.canvases_mutex);
+	}
+
+	for (size_t i = 0; i < doomed_mixes.num; i++) {
+		struct obs_core_video_mix *video = doomed_mixes.array[i];
+		if (!video)
+			continue;
+		obs_encoder_release_video_mix_references(video);
+		obs_free_video_mix(video);
+	}
+	da_free(doomed_mixes);
 
 	if (full_clean) {
 		pthread_mutex_destroy(&obs->video.mixes_mutex);
@@ -2901,9 +2936,11 @@ enum obs_video_rendering_mode obs_get_video_rendering_mode(void)
 		return obs->video_rendering_mode;
 }
 
-obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi,
-					enum obs_video_rendering_mode mode)
+obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_video_rendering_mode mode)
 {
+	struct obs_core_video_mix *result = NULL;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
 	// 0 value of "i" is reserved for the main canvas, which is created first and
 	// remains present throughout the lifetime of the application.
 	// As this canvas is unused, we can safely skip it.
@@ -2911,11 +2948,14 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi,
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (!mix || mix->encoder_only_mix)
 			continue;
-		if ((mix->canvas_ovi == ovi || ovi == NULL) &&
-		    mix->rendering_mode == mode)
-			return mix;
+		if ((mix->canvas_ovi == ovi || ovi == NULL) && mix->rendering_mode == mode) {
+			result = mix;
+			break;
+		}
 	}
-	return NULL;
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	return result;
 }
 
 video_t *obs_video_mix_get_video(struct obs_core_video_mix *mix)

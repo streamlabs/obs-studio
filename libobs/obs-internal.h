@@ -390,6 +390,7 @@ struct obs_core_video_mix {
 
 extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi);
 extern void obs_free_video_mix(struct obs_core_video_mix *video);
+extern void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix);
 
 struct obs_core_video {
 	graphics_t *graphics;

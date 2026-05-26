@@ -930,6 +930,10 @@ static inline void output_frame(struct obs_core_video_mix *video)
 
 static inline void output_frames(void)
 {
+	/* Free outside mixes_mutex: encoders_mutex -> mixes_mutex order. */
+	DARRAY(struct obs_core_video_mix *) orphaned;
+	da_init(orphaned);
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
@@ -937,13 +941,20 @@ static inline void output_frames(void)
 			output_frame(mix);
 		} else {
 			obs->video.mixes.array[i] = NULL;
-			obs_free_video_mix(mix);
+			da_push_back(orphaned, &mix);
 			da_erase(obs->video.mixes, i);
 			i--;
 			num--;
 		}
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	for (size_t i = 0; i < orphaned.num; i++) {
+		struct obs_core_video_mix *mix = orphaned.array[i];
+		obs_encoder_release_video_mix_references(mix);
+		obs_free_video_mix(mix);
+	}
+	da_free(orphaned);
 }
 
 #define NBSP "\xC2\xA0"

@@ -232,6 +232,12 @@ void gs_shader::Compile(const char *shaderString, const char *file, const char *
 
 	std::fstream cacheFile;
 	cacheFile.exceptions(std::fstream::badbit | std::fstream::eofbit);
+	auto removeCacheFile = [&cachePath]() {
+		std::error_code ec;
+		std::filesystem::remove(cachePath, ec);
+		if (ec)
+			blog(LOG_WARNING, "Failed to delete shader cache file: %s", ec.message().c_str());
+	};
 
 	if (std::filesystem::exists(cachePath) && !std::filesystem::is_empty(cachePath))
 		cacheFile.open(cachePath, std::ios::in | std::ios::binary | std::ios::ate);
@@ -261,7 +267,7 @@ void gs_shader::Compile(const char *shaderString, const char *file, const char *
 			// Something went wrong reading the cache file, delete it
 			blog(LOG_WARNING, "Loading shader cache file failed with \"%s\": %s", e.what(), file);
 			cacheFile.close();
-			std::filesystem::remove(cachePath);
+			removeCacheFile();
 		}
 	}
 
@@ -286,7 +292,7 @@ void gs_shader::Compile(const char *shaderString, const char *file, const char *
 			} catch (const std::exception &e) {
 				blog(LOG_WARNING, "Writing shader cache file failed with \"%s\": %s", e.what(), file);
 				cacheFile.close();
-				std::filesystem::remove(cachePath);
+				removeCacheFile();
 			}
 		}
 	}
