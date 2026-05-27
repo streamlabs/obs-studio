@@ -751,15 +751,19 @@ static int obs_init_video()
 	// Our canvases
 	uint32_t max_fps_den = 0;
 	uint32_t max_fps_num = 1;
+	bool have_max_fps = false;
 	for (size_t i = 0, num = obs->video.canvases.num; i < num; i++) {
 		struct obs_video_info *ovi = obs->video.canvases.array[i];
 
 		if (!ovi->initialized)
 			continue;
 
-		if (ovi->fps_den / ovi->fps_den > max_fps_den / max_fps_num) {
+		if (!have_max_fps ||
+		    (uint64_t)ovi->fps_num * max_fps_den >
+			    (uint64_t)max_fps_num * ovi->fps_den) {
 			max_fps_den = ovi->fps_den;
 			max_fps_num = ovi->fps_num;
+			have_max_fps = true;
 		}
 	}
 
