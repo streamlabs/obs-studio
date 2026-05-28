@@ -764,6 +764,7 @@ struct obs_canvas {
 	uint32_t flags;
 	/* Video info for this canvas, FPS ignored */
 	struct obs_video_info ovi;
+	bool has_video_info;
 
 	/* Hash table containing scenes (and groups) associated with this canvas */
 	struct obs_source *sources;

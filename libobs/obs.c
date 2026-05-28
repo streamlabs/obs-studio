@@ -963,7 +963,8 @@ static void obs_free_video(bool full_clean)
 		struct obs_core_video_mix *video = doomed_mixes.array[i];
 		if (!video)
 			continue;
-		obs_encoder_release_video_mix_references(video);
+		if (!full_clean)
+			obs_encoder_release_video_mix_references(video);
 		obs_free_video_mix(video);
 	}
 	da_free(doomed_mixes);
