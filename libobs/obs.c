@@ -959,11 +959,7 @@ static void obs_free_video(bool full_clean)
 		struct obs_core_video_mix *video = doomed_mixes.array[i];
 		if (!video)
 			continue;
-		/* On full shutdown, obs_free_data() has already destroyed every encoder
-		 * and obs->data.encoders_mutex (see obs_free_runtime_objects + the
-		 * pthread_mutex_destroy in obs_free_data). Calling the encoder-release
-		 * walk here would lock a dead mutex. The walk would also find nothing,
-		 * since first_encoder is NULL. */
+		/* full_clean: obs_free_data() already destroyed encoders_mutex. */
 		if (!full_clean)
 			obs_encoder_release_video_mix_references(video);
 		obs_free_video_mix(video);
