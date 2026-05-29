@@ -708,6 +708,41 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	os_atomic_set_bool(&item->update_transform, false);
 }
 
+/* Cached box_transform/box_scale race across canvases for scene-source items;
+ * recompute fresh from the source's current dims in the calling thread. */
+static void recompute_box_for_scene_source(const struct obs_scene_item *item, struct matrix4 *out_transform,
+					   struct vec2 *out_scale)
+{
+	uint32_t width = obs_source_get_width(item->source);
+	uint32_t height = obs_source_get_height(item->source);
+	uint32_t cx = calc_cx(item, width);
+	uint32_t cy = calc_cy(item, height);
+
+	struct vec2 scale, position, base_origin;
+	vec2_zero(&base_origin);
+
+	if (!item->absolute_coordinates) {
+		item_canvas_scale(&scale, item);
+		pos_to_absolute(&position, &item->pos, item);
+	} else {
+		scale = item->scale;
+		position = item->pos;
+	}
+
+	scale.x *= (float)cx;
+	scale.y *= (float)cy;
+
+	*out_scale = scale;
+
+	add_alignment(&base_origin, item->align, (int)scale.x, (int)scale.y);
+
+	matrix4_identity(out_transform);
+	matrix4_scale3f(out_transform, out_transform, scale.x, scale.y, 1.0f);
+	matrix4_translate3f(out_transform, out_transform, -base_origin.x, -base_origin.y, 0.0f);
+	matrix4_rotate_aa4f(out_transform, out_transform, 0.0f, 0.0f, 1.0f, RAD(item->rot));
+	matrix4_translate3f(out_transform, out_transform, position.x, position.y, 0.0f);
+}
+
 static inline bool source_size_changed(struct obs_scene_item *item)
 {
 	uint32_t width = obs_source_get_width(item->source);
@@ -3479,14 +3514,26 @@ void obs_sceneitem_get_draw_transform(const obs_sceneitem_t *item, struct matrix
 
 void obs_sceneitem_get_box_transform(const obs_sceneitem_t *item, struct matrix4 *transform)
 {
-	if (item)
-		matrix4_copy(transform, &item->box_transform);
+	if (!item)
+		return;
+	if (item->is_scene && item->bounds_type == OBS_BOUNDS_NONE) {
+		struct vec2 unused_scale;
+		recompute_box_for_scene_source(item, transform, &unused_scale);
+		return;
+	}
+	matrix4_copy(transform, &item->box_transform);
 }
 
 void obs_sceneitem_get_box_scale(const obs_sceneitem_t *item, struct vec2 *scale)
 {
-	if (item)
-		*scale = item->box_scale;
+	if (!item)
+		return;
+	if (item->is_scene && item->bounds_type == OBS_BOUNDS_NONE) {
+		struct matrix4 unused_transform;
+		recompute_box_for_scene_source(item, &unused_transform, scale);
+		return;
+	}
+	*scale = item->box_scale;
 }
 
 bool obs_sceneitem_visible(const obs_sceneitem_t *item)
