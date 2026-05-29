@@ -25,6 +25,9 @@
 #define get_weak(encoder) ((obs_weak_encoder_t *)encoder->context.control)
 
 static void encoder_set_video(obs_encoder_t *encoder, video_t *video);
+static void encoder_set_video_internal(obs_encoder_t *encoder, video_t *video,
+				       struct obs_core_video_mix *mix);
+static struct obs_core_video_mix *get_mix_for_video_locked(video_t *video);
 
 struct obs_encoder_info *find_encoder(const char *id)
 {
@@ -228,8 +231,7 @@ static inline bool gpu_encode_available(const struct obs_encoder *encoder)
 	if (!video)
 		return false;
 	return (encoder->info.caps & OBS_ENCODER_CAP_PASS_TEXTURE) != 0 &&
-	       (encoder->video->using_p010_tex ||
-		encoder->video->using_nv12_tex);
+	       (video->using_p010_tex || video->using_nv12_tex);
 }
 
 /**
@@ -294,7 +296,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 			continue;
 
 		current->encoder_refs += 1;
-		obs_encoder_set_video(encoder, current->video);
+		encoder_set_video_internal(encoder, current->video, current);
 		create_mix = false;
 		break;
 	}
@@ -349,7 +351,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 			continue;
 
 		current->encoder_refs += 1;
-		obs_encoder_set_video(encoder, current->video);
+		encoder_set_video_internal(encoder, current->video, current);
 		create_mix = false;
 		break;
 	}
@@ -358,7 +360,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		obs_free_video_mix(mix);
 	} else {
 		da_push_back(obs->video.mixes, &mix);
-		obs_encoder_set_video(encoder, mix->video);
+		encoder_set_video_internal(encoder, mix->video, mix);
 	}
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
@@ -721,7 +723,9 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 		if (!mix->encoder_only_mix)
 			break;
 
-		encoder_set_video(encoder, encoder->original_video);
+		video_t *original_video = encoder->original_video;
+		encoder_set_video_internal(encoder, original_video,
+					   get_mix_for_video_locked(original_video));
 		mix->encoder_refs -= 1;
 		if (mix->encoder_refs == 0) {
 			da_erase(obs->video.mixes, i);
@@ -1234,37 +1238,66 @@ size_t obs_encoder_get_mixer_index(const obs_encoder_t *encoder)
 	return encoder->mixer_idx;
 }
 
-void obs_encoder_set_video(obs_encoder_t *encoder, video_t *video)
+static bool encoder_can_set_video(obs_encoder_t *encoder, const char *func)
 {
-
-	if (!obs_encoder_valid(encoder, "obs_encoder_set_video"))
-		return;
+	if (!obs_encoder_valid(encoder, func))
+		return false;
 	if (encoder->info.type != OBS_ENCODER_VIDEO) {
 		blog(LOG_WARNING,
-		     "obs_encoder_set_video: "
-		     "encoder '%s' is not a video encoder",
-		     obs_encoder_get_name(encoder));
-		return;
+		     "%s: encoder '%s' is not a video encoder",
+		     func, obs_encoder_get_name(encoder));
+		return false;
 	}
 	if (encoder_active(encoder)) {
 		blog(LOG_WARNING,
 		     "encoder '%s': Cannot apply a new video_t "
 		     "object while the encoder is active",
 		     obs_encoder_get_name(encoder));
-		return;
+		return false;
 	}
 	if (encoder->initialized) {
 		blog(LOG_WARNING,
 		     "encoder '%s': Cannot apply a new video_t object "
 		     "after the encoder has been initialized",
 		     obs_encoder_get_name(encoder));
-		return;
+		return false;
 	}
+
+	return true;
+}
+
+void obs_encoder_set_video(obs_encoder_t *encoder, video_t *video)
+{
+	if (!encoder_can_set_video(encoder, "obs_encoder_set_video"))
+		return;
 
 	encoder_set_video(encoder, video);
 }
 
+static struct obs_core_video_mix *get_mix_for_video_locked(video_t *video)
+{
+	if (!video || !obs)
+		return NULL;
+
+	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
+		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
+
+		if (mix && mix->video == video)
+			return mix;
+	}
+
+	return NULL;
+}
+
 static void encoder_set_video(obs_encoder_t *encoder, video_t *video)
+{
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	encoder_set_video_internal(encoder, video, get_mix_for_video_locked(video));
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+}
+
+static void encoder_set_video_internal(obs_encoder_t *encoder, video_t *video,
+				       struct obs_core_video_mix *mix)
 {
 	const struct video_output_info *voi;
 
@@ -1272,6 +1305,10 @@ static void encoder_set_video(obs_encoder_t *encoder, video_t *video)
 		video_output_free_frame_rate_divisor(encoder->fps_override);
 		encoder->fps_override = NULL;
 	}
+
+	encoder->video = mix;
+	if (!mix || !mix->encoder_only_mix)
+		encoder->original_video = NULL;
 
 	if (video) {
 		voi = video_output_get_info(video);
@@ -2111,6 +2148,24 @@ void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix
 		return;
 	}
 
+	const bool video_encoder = encoder->info.type == OBS_ENCODER_VIDEO;
+	if (video_encoder) {
+		if (encoder_active(encoder)) {
+			blog(LOG_WARNING,
+			     "encoder '%s': Cannot apply a new video_t "
+			     "object while the encoder is active",
+			     obs_encoder_get_name(encoder));
+			return;
+		}
+		if (encoder->initialized) {
+			blog(LOG_WARNING,
+			     "encoder '%s': Cannot apply a new video_t object "
+			     "after the encoder has been initialized",
+			     obs_encoder_get_name(encoder));
+			return;
+		}
+	}
+
 	/* Validate and publish under mixes_mutex in a single critical section.
 	 * Free paths (obs_canvas_clear_mix / obs_free_video / output_frames) remove
 	 * the mix under mixes_mutex before calling obs_encoder_release_video_mix_references,
@@ -2121,8 +2176,10 @@ void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
 		if (obs->video.mixes.array[i] == video) {
-			encoder->video = video;
-			obs_encoder_set_video(encoder, video->video);
+			if (video_encoder)
+				encoder_set_video_internal(encoder, video->video, video);
+			else
+				encoder->video = video;
 			bound = true;
 			break;
 		}
