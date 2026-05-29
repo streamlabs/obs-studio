@@ -288,6 +288,8 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	mix->view = current_mix->view;
 	mix->rendering_mode = current_mix->rendering_mode;
 
+	struct obs_core_video_mix *to_free = NULL;
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 
 	// double check that nobody else added a matching mix while we've created our mix
@@ -317,13 +319,19 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	}
 
 	if (!create_mix) {
-		obs_free_video_mix(mix);
+		// mix was never published into obs->video.mixes; defer the free until
+		// after the unlock to avoid the same AB-BA with the graphics mutex
+		// documented on maybe_clear_encoder_core_video_mix.
+		to_free = mix;
 	} else {
 		da_push_back(obs->video.mixes, &mix);
 		obs_encoder_set_video(encoder, mix->video);
 	}
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (to_free)
+		obs_free_video_mix(to_free);
 }
 
 static void add_connection(struct obs_encoder *encoder)
