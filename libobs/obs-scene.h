@@ -54,6 +54,10 @@ struct obs_scene_item {
 	gs_texrender_t *item_render;
 	struct obs_sceneitem_crop crop;
 
+	/* Source dims when item->crop was authored; canvas-independent anchor for compute_effective_crop. */
+	uint32_t crop_ref_width;
+	uint32_t crop_ref_height;
+
 	bool absolute_coordinates;
 	struct vec2 pos;
 	struct vec2 scale;
