@@ -468,7 +468,7 @@ static void mp4_mux_destroy_task(void *ptr)
 static void mp4_output_actual_stop(struct mp4_output *out, int code)
 {
 	os_atomic_set_bool(&out->active, false);
-	obs_output_remove_packet_callback(out->output, mp4_pkt_callback, NULL);
+	obs_output_remove_packet_callback(out->output, mp4_pkt_callback, (void *)out);
 
 	uint64_t start_time = os_gettime_ns();
 
