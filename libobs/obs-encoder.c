@@ -319,9 +319,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	}
 
 	if (!create_mix) {
-		// mix was never published into obs->video.mixes; defer the free until
-		// after the unlock to avoid the same AB-BA with the graphics mutex
-		// documented on maybe_clear_encoder_core_video_mix.
+		// defer free past mixes_mutex - see maybe_clear_encoder_core_video_mix
 		to_free = mix;
 	} else {
 		da_push_back(obs->video.mixes, &mix);
@@ -677,15 +675,8 @@ bool obs_encoder_initialize(obs_encoder_t *encoder)
 }
 
 /**
- * free video mix if it's an encoder only video mix
- * see `maybe_set_up_gpu_rescale`
- *
- * obs_free_video_mix takes the graphics mutex (via gs_enter_context in
- * obs_free_render_textures), and the graphics thread can be holding the
- * graphics mutex while waiting on mixes_mutex inside obs_video_mix_get -
- * calling obs_free_video_mix while holding mixes_mutex deadlocks. Snapshot
- * the mix to free under the lock and free after release, matching the
- * pattern used by obs_free_video in obs.c.
+ * Free video mix if it's an encoder-only mix (see `maybe_set_up_gpu_rescale`).
+ * Defer obs_free_video_mix past mixes_mutex to avoid AB-BA with the graphics mutex.
  */
 static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 {
