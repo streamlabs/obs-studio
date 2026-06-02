@@ -328,6 +328,8 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	mix->view = current_mix->view;
 	mix->rendering_mode = current_mix->rendering_mode;
 
+	struct obs_core_video_mix *to_free = NULL;
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 
 	// double check that nobody else added a matching mix while we've created our mix
@@ -357,13 +359,19 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	}
 
 	if (!create_mix) {
-		obs_free_video_mix(mix);
+		// mix was never published into obs->video.mixes; defer the free until
+		// after the unlock to avoid the same AB-BA with the graphics mutex
+		// documented on maybe_clear_encoder_core_video_mix.
+		to_free = mix;
 	} else {
 		da_push_back(obs->video.mixes, &mix);
 		encoder_set_video_internal(encoder, mix->video, mix);
 	}
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (to_free)
+		obs_free_video_mix(to_free);
 }
 
 static void add_connection(struct obs_encoder *encoder)
@@ -711,9 +719,18 @@ bool obs_encoder_initialize(obs_encoder_t *encoder)
 /**
  * free video mix if it's an encoder only video mix
  * see `maybe_set_up_gpu_rescale`
+ *
+ * obs_free_video_mix takes the graphics mutex (via gs_enter_context in
+ * obs_free_render_textures), and the graphics thread can be holding the
+ * graphics mutex while waiting on mixes_mutex inside obs_video_mix_get -
+ * calling obs_free_video_mix while holding mixes_mutex deadlocks. Snapshot
+ * the mix to free under the lock and free after release, matching the
+ * pattern used by obs_free_video in obs.c.
  */
 static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 {
+	struct obs_core_video_mix *to_free = NULL;
+
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
@@ -729,10 +746,14 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 		mix->encoder_refs -= 1;
 		if (mix->encoder_refs == 0) {
 			da_erase(obs->video.mixes, i);
-			obs_free_video_mix(mix);
+			to_free = mix;
 		}
+		break;
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (to_free)
+		obs_free_video_mix(to_free);
 }
 
 void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)

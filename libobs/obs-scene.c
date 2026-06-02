@@ -559,16 +559,35 @@ static void calculate_bounds_data(struct obs_scene_item *item, struct vec2 *orig
 	origin->y += (height < 0.0f) ? height : 0.0f;
 }
 
-static inline uint32_t calc_cx(const struct obs_scene_item *item, uint32_t width)
+static inline uint32_t calc_cx(const struct obs_sceneitem_crop *crop, const struct obs_sceneitem_crop *bounds_crop,
+			       uint32_t width)
 {
-	uint32_t crop_cx = item->crop.left + item->crop.right + item->bounds_crop.left + item->bounds_crop.right;
+	uint32_t crop_cx = crop->left + crop->right + bounds_crop->left + bounds_crop->right;
 	return (crop_cx > width) ? 2 : (width - crop_cx);
 }
 
-static inline uint32_t calc_cy(const struct obs_scene_item *item, uint32_t height)
+static inline uint32_t calc_cy(const struct obs_sceneitem_crop *crop, const struct obs_sceneitem_crop *bounds_crop,
+			       uint32_t height)
 {
-	uint32_t crop_cy = item->crop.top + item->crop.bottom + item->bounds_crop.top + item->bounds_crop.bottom;
+	uint32_t crop_cy = crop->top + crop->bottom + bounds_crop->top + bounds_crop->bottom;
 	return (crop_cy > height) ? 2 : (height - crop_cy);
+}
+
+/* Per-canvas crop scaled from item->crop's authored dims; never mutates shared state. */
+static inline void compute_effective_crop(const struct obs_scene_item *item, uint32_t width, uint32_t height,
+					  struct obs_sceneitem_crop *out)
+{
+	if (item->is_scene && item->crop_ref_width && item->crop_ref_height &&
+	    (item->crop_ref_width != width || item->crop_ref_height != height)) {
+		float sx = (float)width / (float)item->crop_ref_width;
+		float sy = (float)height / (float)item->crop_ref_height;
+		out->left = (int)((float)item->crop.left * sx);
+		out->right = (int)((float)item->crop.right * sx);
+		out->top = (int)((float)item->crop.top * sy);
+		out->bottom = (int)((float)item->crop.bottom * sy);
+	} else {
+		*out = item->crop;
+	}
 }
 
 #ifdef DEBUG_TRANSFORM
@@ -585,21 +604,6 @@ static inline void log_matrix(const struct matrix4 *mat, const char *name)
 }
 #endif
 
-static inline void update_nested_scene_crop(struct obs_scene_item *item, uint32_t width, uint32_t height)
-{
-	if (!item->last_height || !item->last_width)
-		return;
-
-	/* Use last size and new size to calculate factor to adjust crop by. */
-	float scale_x = (float)width / (float)item->last_width;
-	float scale_y = (float)height / (float)item->last_height;
-
-	item->crop.left = (int)((float)item->crop.left * scale_x);
-	item->crop.right = (int)((float)item->crop.right * scale_x);
-	item->crop.top = (int)((float)item->crop.top * scale_y);
-	item->crop.bottom = (int)((float)item->crop.bottom * scale_y);
-}
-
 static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 {
 	uint32_t width;
@@ -612,6 +616,7 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	struct vec2 position;
 	struct calldata params;
 	uint8_t stack[128];
+	struct obs_sceneitem_crop effective_crop;
 
 	if (os_atomic_load_long(&item->defer_update) > 0)
 		return;
@@ -622,12 +627,16 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	width = obs_source_get_width(item->source);
 	height = obs_source_get_height(item->source);
 
-	/* Adjust crop on nested scenes (if any) */
-	if (update_tex && item->is_scene)
-		update_nested_scene_crop(item, width, height);
+	/* First-render snapshot when set_crop ran without a current canvas. */
+	if (item->is_scene && (!item->crop_ref_width || !item->crop_ref_height)) {
+		item->crop_ref_width = width;
+		item->crop_ref_height = height;
+	}
 
-	cx = calc_cx(item, width);
-	cy = calc_cy(item, height);
+	compute_effective_crop(item, width, height, &effective_crop);
+
+	cx = calc_cx(&effective_crop, &item->bounds_crop, width);
+	cy = calc_cy(&effective_crop, &item->bounds_crop, height);
 	item->last_width = width;
 	item->last_height = height;
 
@@ -705,6 +714,44 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 		return;
 
 	os_atomic_set_bool(&item->update_transform, false);
+}
+
+/* Cached box_transform/box_scale race across canvases for scene-source items;
+ * recompute fresh from the source's current dims in the calling thread. */
+static void recompute_box_for_scene_source(const struct obs_scene_item *item, struct matrix4 *out_transform,
+					   struct vec2 *out_scale)
+{
+	uint32_t width = obs_source_get_width(item->source);
+	uint32_t height = obs_source_get_height(item->source);
+	struct obs_sceneitem_crop effective_crop;
+	struct obs_sceneitem_crop zero_bounds_crop = {0};
+	compute_effective_crop(item, width, height, &effective_crop);
+	uint32_t cx = calc_cx(&effective_crop, &zero_bounds_crop, width);
+	uint32_t cy = calc_cy(&effective_crop, &zero_bounds_crop, height);
+
+	struct vec2 scale, position, base_origin;
+	vec2_zero(&base_origin);
+
+	if (!item->absolute_coordinates) {
+		item_canvas_scale(&scale, item);
+		pos_to_absolute(&position, &item->pos, item);
+	} else {
+		scale = item->scale;
+		position = item->pos;
+	}
+
+	scale.x *= (float)cx;
+	scale.y *= (float)cy;
+
+	*out_scale = scale;
+
+	add_alignment(&base_origin, item->align, (int)scale.x, (int)scale.y);
+
+	matrix4_identity(out_transform);
+	matrix4_scale3f(out_transform, out_transform, scale.x, scale.y, 1.0f);
+	matrix4_translate3f(out_transform, out_transform, -base_origin.x, -base_origin.y, 0.0f);
+	matrix4_rotate_aa4f(out_transform, out_transform, 0.0f, 0.0f, 1.0f, RAD(item->rot));
+	matrix4_translate3f(out_transform, out_transform, position.x, position.y, 0.0f);
 }
 
 static inline bool source_size_changed(struct obs_scene_item *item)
@@ -924,8 +971,11 @@ static inline void render_item(struct obs_scene_item *item)
 			goto cleanup;
 		}
 
-		uint32_t cx = calc_cx(item, width);
-		uint32_t cy = calc_cy(item, height);
+		struct obs_sceneitem_crop effective_crop;
+		compute_effective_crop(item, width, height, &effective_crop);
+
+		uint32_t cx = calc_cx(&effective_crop, &item->bounds_crop, width);
+		uint32_t cy = calc_cy(&effective_crop, &item->bounds_crop, height);
 
 		if (cx && cy && gs_texrender_begin_with_color_space(item->item_render, cx, cy, source_space)) {
 			float cx_scale = (float)width / (float)cx;
@@ -937,8 +987,8 @@ static inline void render_item(struct obs_scene_item *item)
 			gs_ortho(0.0f, (float)width, 0.0f, (float)height, -100.0f, 100.0f);
 
 			gs_matrix_scale3f(cx_scale, cy_scale, 1.0f);
-			gs_matrix_translate3f(-(float)(item->crop.left + item->bounds_crop.left),
-					      -(float)(item->crop.top + item->bounds_crop.top), 0.0f);
+			gs_matrix_translate3f(-(float)(effective_crop.left + item->bounds_crop.left),
+					      -(float)(effective_crop.top + item->bounds_crop.top), 0.0f);
 
 			if (item->user_visible && transition_active(item->show_transition)) {
 				const int cx = obs_source_get_width(item->source);
@@ -3315,14 +3365,26 @@ void obs_sceneitem_get_draw_transform(const obs_sceneitem_t *item, struct matrix
 
 void obs_sceneitem_get_box_transform(const obs_sceneitem_t *item, struct matrix4 *transform)
 {
-	if (item)
-		matrix4_copy(transform, &item->box_transform);
+	if (!item)
+		return;
+	if (item->is_scene && item->bounds_type == OBS_BOUNDS_NONE) {
+		struct vec2 unused_scale;
+		recompute_box_for_scene_source(item, transform, &unused_scale);
+		return;
+	}
+	matrix4_copy(transform, &item->box_transform);
 }
 
 void obs_sceneitem_get_box_scale(const obs_sceneitem_t *item, struct vec2 *scale)
 {
-	if (item)
-		*scale = item->box_scale;
+	if (!item)
+		return;
+	if (item->is_scene && item->bounds_type == OBS_BOUNDS_NONE) {
+		struct matrix4 unused_transform;
+		recompute_box_for_scene_source(item, &unused_transform, scale);
+		return;
+	}
+	*scale = item->box_scale;
 }
 
 bool obs_sceneitem_visible(const obs_sceneitem_t *item)
@@ -3578,6 +3640,12 @@ void obs_sceneitem_set_crop(obs_sceneitem_t *item, const struct obs_sceneitem_cr
 		item->crop.top = 0;
 	if (item->crop.bottom < 0)
 		item->crop.bottom = 0;
+
+	/* Anchor crop_ref to caller's canvas; 0 defers the snap to first render. */
+	if (item->is_scene) {
+		item->crop_ref_width = obs_source_get_width(item->source);
+		item->crop_ref_height = obs_source_get_height(item->source);
+	}
 
 	os_atomic_set_bool(&item->update_transform, true);
 }
