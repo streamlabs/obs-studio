@@ -355,6 +355,45 @@ function(target_export target)
     )
   endif()
 
+  set(OBS_BUNDLED_DEPENDENCY_PREFIXES "")
+  get_target_property(obs_public_development_dependencies ${target} OBS_PUBLIC_DEVELOPMENT_DEPENDENCIES)
+
+  if(obs_public_development_dependencies)
+    foreach(dependency IN LISTS obs_public_development_dependencies)
+      if(dependency STREQUAL SIMDe)
+        if(NOT SIMDe_INCLUDE_DIR OR NOT EXISTS "${SIMDe_INCLUDE_DIR}/simde/simde-common.h")
+          message(
+            FATAL_ERROR
+            "libobs lists SIMDe as a public development dependency, but SIMDe_INCLUDE_DIR is not usable."
+          )
+        endif()
+
+        set(_obs_dependency_destination "deps/SIMDe")
+        list(APPEND OBS_BUNDLED_DEPENDENCY_PREFIXES "\${PACKAGE_PREFIX_DIR}/${_obs_dependency_destination}")
+
+        install(
+          DIRECTORY "${SIMDe_INCLUDE_DIR}/simde"
+          DESTINATION "${_obs_dependency_destination}/include"
+          COMPONENT Development
+          ${exclude_variant}
+        )
+
+        cmake_path(GET SIMDe_INCLUDE_DIR PARENT_PATH _obs_simde_prefix)
+        if(EXISTS "${_obs_simde_prefix}/licenses/simde")
+          install(
+            DIRECTORY "${_obs_simde_prefix}/licenses/simde"
+            DESTINATION "${_obs_dependency_destination}/licenses"
+            COMPONENT Development
+            ${exclude_variant}
+          )
+        endif()
+        unset(_obs_simde_prefix)
+      else()
+        message(FATAL_ERROR "Unsupported libobs public development dependency: ${dependency}")
+      endif()
+    endforeach()
+  endif()
+
   get_target_property(target_type ${target} TYPE)
 
   if(NOT target_type STREQUAL INTERFACE_LIBRARY)

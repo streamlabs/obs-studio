@@ -382,6 +382,13 @@ endif()
 
 set_property(TARGET libobs APPEND PROPERTY OBS_PUBLIC_HEADERS ${public_headers})
 
+# This list is part of libobs' installed Development package contract.
+# Entries here are public dependencies exposed by libobsConfig.cmake or by
+# installed libobs headers. Keep it explicit so OBS upgrades only bundle
+# dependencies downstream CMake consumers actually need to compile/link
+# against libobs. Runtime-only and private build dependencies do not belong here.
+set_property(TARGET libobs PROPERTY OBS_PUBLIC_DEVELOPMENT_DEPENDENCIES SIMDe)
+
 set_target_properties_obs(
   libobs
   PROPERTIES FOLDER core
