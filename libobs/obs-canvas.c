@@ -228,6 +228,9 @@ void obs_canvas_destroy(obs_canvas_t *canvas)
 
 	pthread_mutex_destroy(&canvas->sources_mutex);
 	obs_context_data_free(&canvas->context);
+
+	/* Null mixes referencing this view before freeing it (obs-audio.c:519). */
+	obs_view_remove(&canvas->view);
 	obs_view_free(&canvas->view);
 	bfree(canvas);
 }
