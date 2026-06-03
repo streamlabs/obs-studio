@@ -667,11 +667,14 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
     }
 
     swap->wi->surfaceID = 0;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSDictionary *surfaceAttributes = [[NSDictionary alloc]
         initWithObjectsAndKeys:[NSNumber numberWithBool:YES], (NSString *)kIOSurfaceIsGlobal,
                                [NSNumber numberWithUnsignedInteger:(NSUInteger)width], (NSString *)kIOSurfaceWidth,
                                [NSNumber numberWithUnsignedInteger:(NSUInteger)height], (NSString *)kIOSurfaceHeight,
                                [NSNumber numberWithUnsignedInteger:4U], (NSString *)kIOSurfaceBytesPerElement, nil];
+#pragma clang diagnostic pop
 
     IOSurfaceRef surfaceRef = IOSurfaceCreate((CFDictionaryRef)surfaceAttributes);
     if (surfaceRef) {
