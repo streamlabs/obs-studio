@@ -2111,9 +2111,12 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 				for (size_t canvas_idx = 0;
 				     canvas_idx < audio_output->outputs.num;
 				     canvas_idx++) {
-					if (item->canvas !=
-					    obs->video.canvases
-						    .array[canvas_idx]) {
+					/* NULL canvas = all canvases, as in
+					 * scene_video_render */
+					if (item->canvas &&
+					    item->canvas !=
+						    obs->video.canvases
+							    .array[canvas_idx]) {
 						continue;
 					}
 
