@@ -131,6 +131,46 @@ const char *obs_source_get_display_name(const char *id)
 	return (info != NULL) ? info->get_name(info->type_data) : NULL;
 }
 
+obs_module_t *obs_source_get_module(const char *id)
+{
+	obs_module_t *module = obs->first_module;
+	while (module) {
+		for (size_t i = 0; i < module->sources.num; i++) {
+			if (strcmp(module->sources.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	module = obs->first_disabled_module;
+	while (module) {
+		for (size_t i = 0; i < module->sources.num; i++) {
+			if (strcmp(module->sources.array[i], id) == 0) {
+				return module;
+			}
+		}
+		module = module->next;
+	}
+
+	return NULL;
+}
+
+enum obs_module_load_state obs_source_load_state(const char *id)
+{
+	if (!id)
+		return OBS_MODULE_INVALID;
+
+	if (obs_source_type_is_scene(id) || obs_source_type_is_group(id))
+		return OBS_MODULE_ENABLED;
+
+	obs_module_t *module = obs_source_get_module(id);
+	if (!module) {
+		return OBS_MODULE_MISSING;
+	}
+	return module->load_state;
+}
+
 static void allocate_audio_output_buffer(struct obs_source *source)
 {
 	size_t canvases = get_audio_outputs_reqired();
@@ -345,6 +385,71 @@ static void obs_source_init_audio_hotkeys(struct obs_source *source)
 							      obs_source_hotkey_push_to_talk, source);
 }
 
+void obs_source_audio_output_capture_device_activated(void *vptr, calldata_t *cd)
+{
+	UNUSED_PARAMETER(vptr);
+	obs_source_t *src = calldata_ptr(cd, "source");
+	if (!src)
+		return;
+
+	obs_data_t *settings = obs_source_get_settings(src);
+	const char *device_id = obs_data_get_string(settings, "device_id");
+	obs_source_audio_output_capture_device_changed(src, device_id);
+	obs_data_release(settings);
+}
+
+extern bool devices_match(const char *id1, const char *id2);
+void obs_source_audio_output_capture_device_changed(obs_source_t *src, const char *device_id)
+{
+	struct obs_core_audio *audio = &obs->audio;
+
+	if (!audio->monitoring_device_name)
+		return;
+
+	if (!(src->info.output_flags & OBS_SOURCE_DO_NOT_SELF_MONITOR))
+		return;
+
+	const char *mon_id = audio->monitoring_device_id;
+	bool id_match = false;
+
+#ifdef __APPLE__
+	extern void get_desktop_default_id(char **p_id);
+	if (device_id && strcmp(device_id, "default") == 0) {
+		char *def_id = NULL;
+		get_desktop_default_id(&def_id);
+		id_match = devices_match(def_id, mon_id);
+		if (def_id)
+			bfree(def_id);
+	} else {
+		id_match = devices_match(device_id, mon_id);
+	}
+#else
+	id_match = devices_match(device_id, mon_id);
+#endif
+	struct calldata cd;
+	uint8_t stack[128];
+	calldata_init_fixed(&cd, stack, sizeof(stack));
+
+	if (id_match) {
+		calldata_set_ptr(&cd, "source", src);
+		signal_handler_signal(obs->signals, "deduplication_changed", &cd);
+		signal_handler_connect(src->context.signals, "activate",
+				       obs_source_audio_output_capture_device_activated, NULL);
+		blog(LOG_INFO,
+		     "Device for 'Audio Output Capture' source %s is also used for audio monitoring."
+		     "\nDeduplication logic is being applied to all monitored sources.",
+		     src->context.name);
+	} else {
+		if (src == audio->monitoring_duplicating_source) {
+			calldata_set_ptr(&cd, "source", NULL);
+			signal_handler_disconnect(src->context.signals, "activate",
+						  obs_source_audio_output_capture_device_activated, NULL);
+			signal_handler_signal(obs->signals, "deduplication_changed", &cd);
+			blog(LOG_INFO, "Deduplication logic stopped.");
+		}
+	}
+}
+
 static obs_source_t *obs_source_create_internal(const char *id, const char *name, const char *uuid,
 						obs_data_t *settings, obs_data_t *hotkey_data, bool is_private,
 						uint32_t last_obs_ver, obs_canvas_t *canvas)
@@ -415,6 +520,9 @@ static obs_source_t *obs_source_create_internal(const char *id, const char *name
 
 	source->flags = source->default_flags;
 	source->enabled = true;
+
+	/* audio deduplication initialization */
+	source->audio_is_duplicated = false;
 
 	obs_source_init_finalize(source, canvas);
 	if (!is_private) {
@@ -5625,6 +5733,9 @@ void obs_source_audio_render(obs_source_t *source, uint32_t mixers, size_t chann
 bool obs_source_audio_pending(const obs_source_t *source)
 {
 	if (!obs_source_valid(source, "obs_source_audio_pending"))
+		return true;
+
+	if (obs_source_removed(source))
 		return true;
 
 	return (is_composite_source(source) || is_audio_source(source)) ? source->audio_pending : true;

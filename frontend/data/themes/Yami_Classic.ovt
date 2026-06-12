@@ -72,7 +72,7 @@
     --tab_border_focus: var(--grey1);
     --tab_border_selected: var(--primary);
 
-    --scrollbar: var(--grey4);
+    --scrollbar_handle: var(--grey4);
     --scrollbar_hover: var(--grey3);
     --scrollbar_down: var(--grey8);
     --scrollbar_border: var(--grey2);
@@ -108,11 +108,6 @@ QDockWidget > QWidget {
 
 #transitionsFrame {
     padding: var(--padding_xlarge);
-}
-
-SceneTree::item,
-SourceTreeItem {
-    border-width: 0px;
 }
 
 QMenu::item {
@@ -206,7 +201,7 @@ OBSBasicSettings QListWidget::item {
 }
 
 QPushButton:checked {
-  border-color: var(--primary);
+    border-color: var(--primary);
 }
 
 QToolButton,
@@ -217,22 +212,6 @@ QPushButton[toolButton="true"] {
 
 #stackedMixerArea QScrollArea {
   background: var(--bg_base);
-}
-
-#stackedMixerArea QPushButton {
-    min-width: var(--icon_base);
-    padding: var(--padding_large) var(--padding_large);
-    icon-size: var(--icon_base);
-}
-
-#stackedMixerArea QPushButton:!hover {
-    background-color: var(--bg_base);
-    border: none;
-}
-
-#stackedMixerArea QPushButton:hover {
-    background-color: var(--bg_base);
-    border: none;
 }
 
 #hMixerScrollArea VolControl {
@@ -283,13 +262,6 @@ QPushButton[toolButton="true"] {
 
 #contextContainer {
   background-color: var(--bg_window);
-}
-
-#stackedMixerArea QPushButton,
-#stackedMixerArea QPushButton:!hover {
-    width: var(--icon_base_mixer);
-    height: var(--icon_base_mixer);
-    padding: var(--spacing_base);
 }
 
 VolumeMeter {

@@ -8,7 +8,7 @@
 #import "OBSAVCapture.h"
 #import "AVCaptureDeviceFormat+OBSListable.h"
 
-/// Tthe maximum number of frame rate ranges to show complete information for before providing a more generic description of the supported frame rates inside of a device format description.
+/// The maximum number of frame rate ranges to show complete information for before providing a more generic description of the supported frame rates inside of a device format description.
 static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 @implementation OBSAVCapture
@@ -774,14 +774,12 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             effectsCount++;
         }
     }
-#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000
     if (@available(macOS 15.0, *)) {
         if (device.backgroundReplacementActive) {
             effectWarning = @"Warning.Effect.BackgroundReplacement";
             effectsCount++;
         }
     }
-#endif
     if (effectsCount > 1) {
         effectWarning = @"Warning.Effect.Multiple";
     }

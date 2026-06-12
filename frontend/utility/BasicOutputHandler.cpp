@@ -228,14 +228,17 @@ BasicOutputHandler::BasicOutputHandler(OBSBasic *main_) : main(main_)
 		deactivateVirtualCam.Connect(signal, "deactivate", OBSDeactivateVirtualCam, this);
 	}
 
-	auto multitrack_enabled = config_get_bool(main->Config(), "Stream1", "EnableMultitrackVideo");
-	if (!config_has_user_value(main->Config(), "Stream1", "EnableMultitrackVideo")) {
-		auto service = main_->GetService();
-		OBSDataAutoRelease settings = obs_service_get_settings(service);
-		multitrack_enabled = obs_data_has_user_value(settings, "multitrack_video_configuration_url");
-	}
+	auto service = main_->GetService();
+	OBSDataAutoRelease settings = obs_service_get_settings(service);
+	auto multitrack_enabled = config_get_bool(main->Config(), "Stream1", "EnableMultitrackVideo") &&
+				  (obs_data_has_user_value(settings, "multitrack_video_configuration_url") ||
+				   strcmp(obs_service_get_id(service), "rtmp_custom") == 0);
+
 	if (multitrack_enabled)
 		multitrackVideo = make_unique<MultitrackVideoOutput>();
+
+	if (config_get_int(main->Config(), "Stream1", "WHIPSimulcastTotalLayers") > 1)
+		whipSimulcastEncoders = make_unique<WHIPSimulcastEncoders>();
 }
 
 extern void log_vcam_changed(const VCamConfig &config, bool starting);
@@ -529,7 +532,7 @@ std::shared_future<void> BasicOutputHandler::SetupMultitrackVideo(obs_service_t 
 		return continuation(true);
 	};
 
-	QThreadPool::globalInstance()->start([=, multitrackVideo = multitrackVideo.get(),
+	QThreadPool::globalInstance()->start([=, main = main, multitrackVideo = multitrackVideo.get(),
 					      service_name = std::string{service_name}, service = OBSService{service},
 					      stream_dump_config = OBSData{stream_dump_config},
 					      start_streaming_guard = start_streaming_guard]() mutable {

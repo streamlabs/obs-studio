@@ -198,7 +198,7 @@ Vertex components can have the following semantics:
 - **POSITION**       - Position value (*float4*).
 - **NORMAL**         - Normal value (*float4*).
 - **TANGENT**        - Tangent value (*float4*).
-- **TEXCOORD[0..7]** - Texture cooordinate value (*float2*, *float3*, or
+- **TEXCOORD[0..7]** - Texture coordinate value (*float2*, *float3*, or
   *float4*).
 
 Here is an example of a vertex semantic structure:
@@ -265,8 +265,8 @@ would be used:
    uniform texture2d image;
 
    struct VertInOut {
-           float4 my_position : POSITION;
-           float2 my_texcoord : TEXCOORD0;
+           float4 pos : POSITION;
+           float2 uv : TEXCOORD0;
    };
 
    VertInOut MyVertexShaderFunc(VertInOut vert_in)
