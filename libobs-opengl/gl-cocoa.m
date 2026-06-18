@@ -18,6 +18,10 @@
 #include "gl-subsystem.h"
 #include <OpenGL/OpenGL.h>
 
+#if defined(DEBUG_WRITE_IOSURFACE)
+#include "IOSurfaceHelper.h"
+#endif
+
 #import <Cocoa/Cocoa.h>
 #import <AppKit/AppKit.h>
 
@@ -27,6 +31,7 @@ struct gl_windowinfo {
     gs_texture_t *texture;
     GLuint fbo;
     uint32_t surfaceID;
+    IOSurfaceRef surfaceRef;
 };
 
 struct gl_platform {
@@ -210,6 +215,10 @@ void gl_platform_cleanup_swapchain(struct gs_swap_chain *swap)
         swap->wi->fbo = 0;
         swap->wi->texture = NULL;
         swap->wi->context = nil;
+        if (swap->wi->surfaceRef) {
+            CFRelease(swap->wi->surfaceRef);
+            swap->wi->surfaceRef = NULL;
+        }
     }
 }
 
@@ -242,7 +251,10 @@ void gl_windowinfo_destroy(struct gl_windowinfo *windowInfo)
 {
     if (!windowInfo)
         return;
-
+    if (windowInfo->surfaceRef) {
+        CFRelease(windowInfo->surfaceRef);
+        windowInfo->surfaceRef = NULL;
+    }
     windowInfo->view = nil;
     bfree(windowInfo);
 }
@@ -389,7 +401,7 @@ void *device_get_device_obj(gs_device_t *device)
 
 void device_load_swapchain(gs_device_t *device, gs_swapchain_t *swap)
 {
-    if (device->cur_swap == swap)
+    if (device->cur_swap == swap && (swap == NULL || device->cur_render_target == swap->wi->texture))
         return;
 
     device->cur_swap = swap;
@@ -401,11 +413,12 @@ void device_load_swapchain(gs_device_t *device, gs_swapchain_t *swap)
 static void write_iosurface(gs_device_t *device)
 {
     gs_swapchain_t *swap = device->cur_swap;
-    if (!swap || !swap->wi || !swap->wi->surfaceID)
+    if (!swap || !swap->wi || !swap->wi->surfaceRef)
         return;
 
-    IOSurfaceRef surface = IOSurfaceLookup((IOSurfaceID)swap->wi->surfaceID);
-    if (!surface)
+    IOSurfaceRef surface = swap->wi->surfaceRef;
+
+    if (!gl_bind_framebuffer(GL_READ_FRAMEBUFFER, swap->wi->fbo))
         return;
 
     IOSurfaceLock(surface, 0, NULL);
@@ -414,21 +427,38 @@ static void write_iosurface(gs_device_t *device)
     if (!data) {
         blog(LOG_ERROR, "gl-cocoa: failed to write in the IOSurface");
         IOSurfaceUnlock(surface, 0, NULL);
-        CFRelease(surface);
+        gl_bind_framebuffer(GL_READ_FRAMEBUFFER, 0);
         return;
     }
 
-    glReadPixels(0, 0, IOSurfaceGetBytesPerRow(surface) / 4, IOSurfaceGetHeight(surface), GL_BGRA,
+    GLint prevPackRowLength = 0;
+    glGetIntegerv(GL_PACK_ROW_LENGTH, &prevPackRowLength);
+    glPixelStorei(GL_PACK_ROW_LENGTH, (GLint) (IOSurfaceGetBytesPerRow(surface) / 4));
+    glReadPixels(0, 0, (GLsizei) IOSurfaceGetWidth(surface), (GLsizei) IOSurfaceGetHeight(surface), GL_BGRA,
                  GL_UNSIGNED_INT_8_8_8_8_REV, data);
+    glPixelStorei(GL_PACK_ROW_LENGTH, prevPackRowLength);
     gl_success("glReadPixels");
-
+#if defined(DEBUG_WRITE_IOSURFACE)
+    static int imageIndex = 0;
+    const int max_images = 10;
+    NSString *myString = [NSString stringWithFormat:@"test_frame%d.png", imageIndex];
+    writeIOSurfaceContents(surface, myString);
+    imageIndex++;
+    if (imageIndex >= max_images) {
+        imageIndex = 0;
+    }
+#endif
     IOSurfaceUnlock(surface, 0, NULL);
-    CFRelease(surface);
+    gl_bind_framebuffer(GL_READ_FRAMEBUFFER, 0);
 }
 
-bool device_is_present_ready(gs_device_t *device __unused)
+bool device_is_present_ready(gs_device_t *device)
 {
-    return true;
+    if (!device || !device->cur_swap || !device->cur_swap->wi)
+        return false;
+
+    gs_texture_t *tex = device->cur_swap->wi->texture;
+    return tex != NULL && gs_texture_get_width(tex) > 0 && gs_texture_get_height(tex) > 0;
 }
 
 void device_present(gs_device_t *device)
@@ -666,21 +696,23 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
         return 0;
     }
 
-    swap->wi->surfaceID = 0;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     NSDictionary *surfaceAttributes = [[NSDictionary alloc]
-        initWithObjectsAndKeys:[NSNumber numberWithBool:YES], (NSString *)kIOSurfaceIsGlobal,
-                               [NSNumber numberWithUnsignedInteger:(NSUInteger)width], (NSString *)kIOSurfaceWidth,
-                               [NSNumber numberWithUnsignedInteger:(NSUInteger)height], (NSString *)kIOSurfaceHeight,
-                               [NSNumber numberWithUnsignedInteger:4U], (NSString *)kIOSurfaceBytesPerElement, nil];
+        initWithObjectsAndKeys:[NSNumber numberWithBool:YES], (NSString *) kIOSurfaceIsGlobal,
+                               [NSNumber numberWithUnsignedInteger:(NSUInteger) width], (NSString *) kIOSurfaceWidth,
+                               [NSNumber numberWithUnsignedInteger:(NSUInteger) height], (NSString *) kIOSurfaceHeight,
+                               [NSNumber numberWithUnsignedInteger:4U], (NSString *) kIOSurfaceBytesPerElement, nil];
 #pragma clang diagnostic pop
-
-    IOSurfaceRef surfaceRef = IOSurfaceCreate((CFDictionaryRef)surfaceAttributes);
+    IOSurfaceRef surfaceRef = IOSurfaceCreate((CFDictionaryRef) surfaceAttributes);
     if (surfaceRef) {
         swap->wi->surfaceID = IOSurfaceGetID(surfaceRef);
-        CFRelease(surfaceRef);
+        if (swap->wi->surfaceRef) {
+            CFRelease(swap->wi->surfaceRef);
+        }
+        swap->wi->surfaceRef = surfaceRef;
     } else {
+        swap->wi->surfaceID = 0;
         blog(LOG_ERROR, "create_iosurface IOSurfaceCreate failed");
     }
 
