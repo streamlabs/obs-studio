@@ -109,11 +109,6 @@ static bool is_excluded_module(const char *path)
 
 int obs_open_module(obs_module_t **module, const char *path, const char *data_path)
 {
-	if (is_excluded_module(path)) {
-		blog(LOG_INFO, "Excluding %s from openmodule ", path);
-		return MODULE_SUCCESS;
-	}
-
 	struct obs_module mod = {0};
 	int errorcode;
 
