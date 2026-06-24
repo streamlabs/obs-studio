@@ -370,6 +370,7 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 
 	if (!is_obs_plugin) {
 		blog(LOG_WARNING, "Skipping module '%s', not an OBS plugin", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_NOT_OBS_PLUGIN", "Module is not an OBS plugin");
 		return;
 	}
 
@@ -390,9 +391,11 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	switch (code) {
 	case MODULE_MISSING_EXPORTS:
 		blog(LOG_DEBUG, "Failed to load module file '%s', not an OBS plugin", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_MISSING_EXPORTS", "Module is missing OBS exports");
 		return;
 	case MODULE_FILE_NOT_FOUND:
 		blog(LOG_DEBUG, "Failed to load module file '%s', file not found", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_FILE_NOT_FOUND", "Module file not found");
 		return;
 	case MODULE_ERROR:
 		blog(LOG_DEBUG, "Failed to load module file '%s'", info->bin_path);
