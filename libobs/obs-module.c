@@ -98,10 +98,15 @@ extern void reset_win32_symbol_paths(void);
  * plugins themselves. Skipping them by name avoids inspecting/loading them. */
 static bool is_excluded_module(const char *path)
 {
-	static const char *excluded_patterns[] = {"libEGL",     "libGLES", "obs-browser-page",
-						  "chrome_elf", "libcef",  "Spout"};
-	for (size_t idx = 0; idx < sizeof(excluded_patterns) / sizeof(*excluded_patterns); idx++) {
-		if (strstr(path, excluded_patterns[idx]))
+	static const char *excluded_modules[] = {"libEGL", "libGLESv2", "chrome_elf",   "libcef",
+						 "Spout",  "SpoutDX",   "SpoutLibrary", "obs-browser-page"};
+
+	const char *file = strrchr(path, '/');
+	file = file ? file + 1 : path;
+
+	for (size_t idx = 0; idx < sizeof(excluded_modules) / sizeof(*excluded_modules); idx++) {
+		size_t len = strlen(excluded_modules[idx]);
+		if (astrcmpi_n(file, excluded_modules[idx], len) == 0 && file[len] == '.')
 			return true;
 	}
 	return false;
@@ -398,12 +403,12 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	int code = obs_open_module(&module, info->bin_path, info->data_path);
 	switch (code) {
 	case MODULE_MISSING_EXPORTS:
-		blog(LOG_DEBUG, "Failed to load module file '%s', not an OBS plugin", info->bin_path);
+		blog(LOG_DEBUG, "Failed to load module file '%s', missing OBS exports", info->bin_path);
 		add_module_failure(fail_info, info->name, "MODULE_MISSING_EXPORTS", "Module is missing OBS exports");
 		return;
 	case MODULE_FILE_NOT_FOUND:
-		blog(LOG_DEBUG, "Failed to load module file '%s', file not found", info->bin_path);
-		add_module_failure(fail_info, info->name, "MODULE_FILE_NOT_FOUND", "Module file not found");
+		blog(LOG_DEBUG, "Failed to load module file '%s', could not be loaded", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_FILE_NOT_FOUND", "Module could not be loaded");
 		return;
 	case MODULE_ERROR:
 		blog(LOG_DEBUG, "Failed to load module file '%s'", info->bin_path);
@@ -421,8 +426,6 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 		add_module_failure(fail_info, info->name, module->load_error_code, module->load_error_message);
 		free_module(module);
 	}
-
-	UNUSED_PARAMETER(param);
 }
 
 static const char *obs_load_all_modules_name = "obs_load_all_modules";
