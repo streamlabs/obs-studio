@@ -94,17 +94,24 @@ static inline char *get_module_name(const char *file)
 extern void reset_win32_symbol_paths(void);
 #endif
 
+/* DLLs that ship in the plugin directory as plugin dependencies, not as OBS
+ * plugins themselves. Skipping them by name avoids inspecting/loading them. */
+static bool is_excluded_module(const char *path)
+{
+	static const char *excluded_patterns[] = {"libEGL",     "libGLES", "obs-browser-page",
+						  "chrome_elf", "libcef",  "Spout"};
+	for (size_t idx = 0; idx < sizeof(excluded_patterns) / sizeof(*excluded_patterns); idx++) {
+		if (strstr(path, excluded_patterns[idx]))
+			return true;
+	}
+	return false;
+}
+
 int obs_open_module(obs_module_t **module, const char *path, const char *data_path)
 {
-	static char *excluded_patterns[] = {"libEGL", "libGLES",
-					    "obs-browser-page", "chrome_elf",
-					    "libcef"};
-	for (size_t idx = 0; idx < sizeof(excluded_patterns) / sizeof(char *);
-	     idx++) {
-		if (strstr(path, excluded_patterns[idx])) {
-			blog(LOG_INFO, "Excluding %s from openmodule ", path);
-			return MODULE_SUCCESS;
-		}
+	if (is_excluded_module(path)) {
+		blog(LOG_INFO, "Excluding %s from openmodule ", path);
+		return MODULE_SUCCESS;
 	}
 
 	struct obs_module mod = {0};
@@ -365,6 +372,11 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 
 	bool is_obs_plugin;
 	bool can_load_obs_plugin;
+
+	if (is_excluded_module(info->bin_path)) {
+		blog(LOG_DEBUG, "Skipping module '%s', excluded dependency", info->bin_path);
+		return;
+	}
 
 	get_plugin_info(info->bin_path, &is_obs_plugin, &can_load_obs_plugin);
 
