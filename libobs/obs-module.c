@@ -384,7 +384,8 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 		     "Skipping module '%s' due to possible "
 		     "import conflicts",
 		     info->bin_path);
-		goto load_failure;
+		add_module_failure(fail_info, info->name, "MODULE_IMPORT_CONFLICT", "Possible import conflicts");
+		return;
 	}
 
 	int code = obs_open_module(&module, info->bin_path, info->data_path);
@@ -399,10 +400,12 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 		return;
 	case MODULE_ERROR:
 		blog(LOG_DEBUG, "Failed to load module file '%s'", info->bin_path);
-		goto load_failure;
+		add_module_failure(fail_info, info->name, "MODULE_ERROR", "Module failed to load");
+		return;
 	case MODULE_INCOMPATIBLE_VER:
 		blog(LOG_DEBUG, "Failed to load module file '%s', incompatible version", info->bin_path);
-		goto load_failure;
+		add_module_failure(fail_info, info->name, "MODULE_INCOMPATIBLE_VER", "Incompatible module version");
+		return;
 	case MODULE_HARDCODED_SKIP:
 		return;
 	}
@@ -413,10 +416,6 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	}
 
 	UNUSED_PARAMETER(param);
-	return;
-
-load_failure:
-	add_module_failure(fail_info, info->name, NULL, NULL);
 }
 
 static const char *obs_load_all_modules_name = "obs_load_all_modules";
