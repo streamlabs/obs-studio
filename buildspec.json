@@ -28,12 +28,12 @@
             "hashes": {
                 "macos-x86_64": "37bf7571a48c5dfa8519817e4a90a3503a0eb30f9eadd68f4c3e783e363f272a",
                 "macos-arm64": "429b50e74f6c174dcfe2f14d8204b54add497eaafe117f7b69ce6bb2354d2626",
-                "windows-x64": "922efbda1f2f8be9e5b2754d878a14d90afc81f04e94fc9101a7513e2b5cecc1"
+                "windows-x64": "110452488fb043761f5dbe0aeb1f84e2f0c8ecfbe187abb8632f5877f0bbb5d6"
             },
             "revision": {
                 "macos-x86_64": 5,
                 "macos-arm64": 5,
-                "windows-x64": 2
+                "windows-x64": 3
             }
         },
         "vlc": {
