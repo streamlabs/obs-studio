@@ -53,23 +53,23 @@
             }
         },
         "libmediasoupclient": {
-            "version": "3.4.3",
+            "version": "3.5.0",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "libmediasoupclient",
             "hashes": {
                 "macos-x86_64": "D06CF8593EBFA2DAE3AB6A59EA889A931C1EE77586D76EB890AF93DB936D18C5",
                 "macos-arm64": "DC4424D32A86306172C57E9D8D7EDD2CB3897C364A56F46318DEE5395B68474B",
-                "windows-x64": "03E25130EDF6B49009404B6FE4B75D5DDC92885F1DAD2DF3ED0FB3068D98C682"
+                "windows-x64": "E7DFF3BCEF39C56247A76619062061E0A20EDCCE814AE203941C2AC552E4609B"
             }
         },
         "webrtc": {
-            "version": "m120",
+            "version": "m140",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "webrtc",
             "hashes": {
                 "macos-x86_64": "5FAD4805BC81256BD3B7E06EE75FFF9BD2A8983DCCD5F31C1F500A214A3B08B2",
                 "macos-arm64": "5D9FA128386DA4ADA0FF0AD2D092C2F9DD2B93A93FD85A50EE04358855680473",
-                "windows-x64": "0FCE7305A5C1D2A026157B2BEFFFABA25A4202CE403614F6A98965CECA15E2B0"
+                "windows-x64": "DF7B54AC6709938CDEE6F37EE1D9E991CF438554F33E6C0EF49FEC79EAD55E44"
             }
         },
         "grpc": {
