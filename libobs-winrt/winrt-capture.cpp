@@ -301,13 +301,22 @@ static void winrt_capture_device_loss_rebuild(void *device_void, void *data)
 		return;
 
 	ID3D11Device *const d3d_device = (ID3D11Device *)device_void;
+	if (!d3d_device || FAILED(d3d_device->GetDeviceRemovedReason())) {
+		blog(LOG_WARNING, "Skipping WinRT capture rebuild; graphics device unavailable or removed");
+		return;
+	}
+
 	ComPtr<IDXGIDevice> dxgi_device;
-	if (FAILED(d3d_device->QueryInterface(&dxgi_device)))
+	if (FAILED(d3d_device->QueryInterface(&dxgi_device))) {
 		blog(LOG_ERROR, "Failed to get DXGI device");
+		return;
+	}
 
 	winrt::com_ptr<IInspectable> inspectable;
-	if (FAILED(CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(), inspectable.put())))
+	if (FAILED(CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(), inspectable.put()))) {
 		blog(LOG_ERROR, "Failed to get WinRT device");
+		return;
+	}
 
 	const winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice device =
 		inspectable.as<winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
@@ -349,6 +358,11 @@ static struct winrt_capture *winrt_capture_init_internal(BOOL cursor, HWND windo
 							 HMONITOR monitor)
 try {
 	ID3D11Device *const d3d_device = (ID3D11Device *)gs_get_device_obj();
+	if (!d3d_device || FAILED(d3d_device->GetDeviceRemovedReason())) {
+		blog(LOG_WARNING, "Skipping WinRT capture init; graphics device unavailable or removed");
+		return nullptr;
+	}
+
 	ComPtr<IDXGIDevice> dxgi_device;
 
 	HRESULT hr = d3d_device->QueryInterface(&dxgi_device);

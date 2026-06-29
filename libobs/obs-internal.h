@@ -113,6 +113,8 @@ struct obs_module {
 	char *data_path;
 	void *module;
 	bool loaded;
+	char *load_error_code;
+	char *load_error_message;
 
 	bool (*load)(void);
 	void (*unload)(void);
