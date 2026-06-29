@@ -2,8 +2,6 @@
 
 #include <OpenGL/OpenGL.h>
 
-#include <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-
 #import <AppKit/AppKit.h>
 
 void saveCGImageToFile(CGImageRef image, NSString *filePath, CFStringRef fileType)
@@ -79,7 +77,7 @@ void writeIOSurfaceContents(IOSurfaceRef surface, NSString *filePath)
                                      kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little, provider, NULL,
                                      false, kCGRenderingIntentDefault);
 
-    saveCGImageToFile(image, filePath, (__bridge CFStringRef)UTTypePNG.identifier);
+    saveCGImageToFile(image, filePath, CFSTR("public.png"));
 
     CGDataProviderRelease(provider);
     CGColorSpaceRelease(colorSpace);
@@ -89,4 +87,3 @@ void writeIOSurfaceContents(IOSurfaceRef surface, NSString *filePath)
 
     NSLog(@"Completed examining IOSurface.");
 }
-
