@@ -690,6 +690,11 @@ uint32_t create_iosurface(gs_device_t *device, uint32_t width, uint32_t height)
         return 0;
     }
 
+    if (width == 0 || height == 0) {
+        blog(LOG_WARNING, "create_iosurface was sent an empty width/height");
+        return 0;
+    }
+
     gs_swapchain_t *swap = device->cur_swap;
     if (!swap || !swap->wi) {
         blog(LOG_ERROR, "create_iosurface failed to acquire swap chain");
