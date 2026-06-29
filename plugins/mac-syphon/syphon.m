@@ -623,9 +623,12 @@ static void syphon_video_tick(void *data, float seconds)
     if (s->crop)
         crop = &s->crop_rect;
 
+    float source_width = (float)s->width;
+    float source_height = (float)s->height;
+
     obs_enter_graphics();
     build_sprite_rect(gs_vertexbuffer_get_data(s->vertbuffer), (float) crop->origin.x,
-                      s->height - (float) crop->origin.y, s->width - (float) crop->size.width,
+                      source_height - (float) crop->origin.y, source_width - (float) crop->size.width,
                       (float) crop->size.height);
     obs_leave_graphics();
 }

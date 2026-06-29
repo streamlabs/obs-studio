@@ -74,10 +74,12 @@ void writeIOSurfaceContents(IOSurfaceRef surface, NSString *filePath)
     }*/
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, baseAddress, height * bytesPerRow, NULL);
+    CGBitmapInfo bitmapInfo =
+        (CGBitmapInfo)((uint32_t)kCGImageAlphaPremultipliedFirst | (uint32_t)kCGBitmapByteOrder32Little);
 
-    CGImageRef image = CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace,
-                                     kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little, provider, NULL,
-                                     false, kCGRenderingIntentDefault);
+    CGImageRef image =
+        CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace, bitmapInfo, provider, NULL, false,
+                      kCGRenderingIntentDefault);
 
     saveCGImageToFile(image, filePath, (__bridge CFStringRef)UTTypePNG.identifier);
 
@@ -89,4 +91,3 @@ void writeIOSurfaceContents(IOSurfaceRef surface, NSString *filePath)
 
     NSLog(@"Completed examining IOSurface.");
 }
-
