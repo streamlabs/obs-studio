@@ -144,6 +144,45 @@ struct virtualcam_data {
 
 @end
 
+// Returns a dictionary of extension key/value pairs for CMVideoFormatDescriptionCreate(). Caller should release after use.
+static CFMutableDictionaryRef create_colorspace_format_extensions(const enum video_colorspace colorspace)
+{
+    CFStringRef colorPrimaries = kCVImageBufferColorPrimaries_ITU_R_709_2;
+    CFStringRef transferFunction = kCVImageBufferTransferFunction_ITU_R_709_2;
+    CFStringRef ycbcrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2;
+
+    switch (colorspace) {
+        case VIDEO_CS_601:
+            colorPrimaries = kCVImageBufferColorPrimaries_SMPTE_C;
+            transferFunction = kCVImageBufferTransferFunction_ITU_R_709_2;
+            ycbcrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_601_4;
+            break;
+        case VIDEO_CS_SRGB:
+            colorPrimaries = kCVImageBufferColorPrimaries_ITU_R_709_2;
+            transferFunction = kCVImageBufferTransferFunction_sRGB;
+            ycbcrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2;
+            break;
+        case VIDEO_CS_2100_PQ:
+            colorPrimaries = kCVImageBufferColorPrimaries_ITU_R_2020;
+            transferFunction = kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ;
+            ycbcrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
+            break;
+        case VIDEO_CS_2100_HLG:
+            colorPrimaries = kCVImageBufferColorPrimaries_ITU_R_2020;
+            transferFunction = kCVImageBufferTransferFunction_ITU_R_2100_HLG;
+            ycbcrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_2020;
+            break;
+        default:  // VIDEO_CS_709, VIDEO_CS_DEFAULT
+            break;
+    }
+    CFMutableDictionaryRef extensions = CFDictionaryCreateMutable(
+        kCFAllocatorDefault, 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionarySetValue(extensions, kCMFormatDescriptionExtension_ColorPrimaries, colorPrimaries);
+    CFDictionarySetValue(extensions, kCMFormatDescriptionExtension_TransferFunction, transferFunction);
+    CFDictionarySetValue(extensions, kCMFormatDescriptionExtension_YCbCrMatrix, ycbcrMatrix);
+    return extensions;
+}
+
 static void install_cmio_system_extension(struct virtualcam_data *vcam)
 {
     OSSystemExtensionRequest *request = [OSSystemExtensionRequest
@@ -453,8 +492,15 @@ static bool virtualcam_output_start(void *data)
         CMIOStreamCopyBufferQueue(
             vcam->streamID, [](CMIOStreamID, void *, void *) {
             }, NULL, &vcam->queue);
-        CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
-                                       vcam->videoInfo.output_height, NULL, &vcam->formatDescription);
+        CFDictionaryRef extensions = create_colorspace_format_extensions(vcam->videoInfo.colorspace);
+        if (CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
+                                           vcam->videoInfo.output_height, extensions,
+                                           &vcam->formatDescription) != noErr) {
+            blog(LOG_WARNING, "Could not initialize virtualcam_output with create_colorspace_format_extensions");
+            CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
+                                           vcam->videoInfo.output_height, NULL, &vcam->formatDescription);
+        }
+        CFRelease(extensions);
 
         OSStatus result = CMIODeviceStartStream(vcam->deviceID, vcam->streamID);
 
