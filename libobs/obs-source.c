@@ -4484,11 +4484,21 @@ bool obs_source_process_filter_begin_with_color_space(obs_source_t *filter, enum
 		if (need_recreate) {
 			gs_texrender_destroy(filter->filter_texrender);
 			filter->filter_texrender = NULL;
+			filter->filter_texrender_canvas = NULL;
 		}
 	}
 
 	if (!filter->filter_texrender) {
 		filter->filter_texrender = gs_texrender_create(format, GS_ZS_NONE);
+	}
+
+	struct obs_video_info *cur_canvas =
+		obs && obs->video_rendering_mix
+			? obs->video_rendering_mix->canvas_ovi
+			: NULL;
+	if (filter->filter_texrender_canvas != cur_canvas) {
+		gs_texrender_reset(filter->filter_texrender);
+		filter->filter_texrender_canvas = cur_canvas;
 	}
 
 	if (gs_texrender_begin_with_color_space(filter->filter_texrender, cx, cy, space)) {
