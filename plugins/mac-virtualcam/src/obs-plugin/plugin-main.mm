@@ -15,7 +15,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 NSString *const OBSDalDestination = @"/Library/CoreMediaIO/Plug-Ins/DAL";
 
-static const char *VIRTUAL_CAM_CONNECTED = "activate"; // Indicates this plugin is now active.
+static const char *VIRTUAL_CAM_CONNECTED = "activate";  // Indicates this plugin is now active.
 static const char *VIRTUAL_CAM_FAILED = "deactivate";
 
 static bool cmio_extension_supported()
@@ -493,16 +493,18 @@ static bool virtualcam_output_start(void *data)
             vcam->streamID, [](CMIOStreamID, void *, void *) {
             }, NULL, &vcam->queue);
         CFDictionaryRef extensions = create_colorspace_format_extensions(vcam->videoInfo.colorspace);
+        OSStatus result = noErr;
         if (CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
                                            vcam->videoInfo.output_height, extensions,
                                            &vcam->formatDescription) != noErr) {
             blog(LOG_WARNING, "Could not initialize virtualcam_output with create_colorspace_format_extensions");
-            CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
-                                           vcam->videoInfo.output_height, NULL, &vcam->formatDescription);
+            result = CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
+                                                    vcam->videoInfo.output_height, NULL, &vcam->formatDescription);
         }
         CFRelease(extensions);
 
-        OSStatus result = CMIODeviceStartStream(vcam->deviceID, vcam->streamID);
+        if (result == noErr)
+            result = CMIODeviceStartStream(vcam->deviceID, vcam->streamID);
 
         if (result != noErr) {
             obs_output_set_last_error(vcam->output, obs_module_text("Error.SystemExtension.CameraNotStarted"));
