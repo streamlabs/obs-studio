@@ -291,8 +291,8 @@ void obs_module_set_load_error(obs_module_t *module, const char *code, const cha
 		return;
 
 	clear_module_load_error(module);
-	module->load_error_code = bstrdup(code ? code : "");
-	module->load_error_message = bstrdup(message ? message : "");
+	module->load_error_code = (code && *code) ? bstrdup(code) : NULL;
+	module->load_error_message = (message && *message) ? bstrdup(message) : NULL;
 }
 
 void obs_log_loaded_modules(void)
