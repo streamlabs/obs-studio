@@ -500,6 +500,9 @@ static bool virtualcam_output_start(void *data)
             blog(LOG_WARNING, "Could not initialize virtualcam_output with create_colorspace_format_extensions");
             result = CMVideoFormatDescriptionCreate(kCFAllocatorDefault, video_format, vcam->videoInfo.output_width,
                                                     vcam->videoInfo.output_height, NULL, &vcam->formatDescription);
+            if (result != noErr) {
+                blog(LOG_ERROR, "Could not create a format description for the video media stream");
+            }
         }
         CFRelease(extensions);
 
