@@ -113,6 +113,8 @@ struct obs_module {
 	char *data_path;
 	void *module;
 	bool loaded;
+	char *load_error_code;
+	char *load_error_message;
 
 	enum obs_module_load_state load_state;
 
@@ -988,6 +990,8 @@ struct obs_source {
 	DARRAY(struct obs_source *) filters;
 	pthread_mutex_t filter_mutex;
 	gs_texrender_t *filter_texrender;
+	struct obs_video_info *filter_texrender_canvas;
+	enum obs_video_rendering_mode filter_texrender_mode;
 	enum obs_allow_direct_render allow_direct;
 	bool rendering_filter;
 	bool filter_bypass_active;

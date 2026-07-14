@@ -418,7 +418,7 @@ static void volmeter_process_peak(obs_volmeter_t *volmeter, const struct audio_d
 {
 	int nr_samples = data->frames;
 	int channel_nr = 0;
-	for (int plane_nr = 0; channel_nr < nr_channels; plane_nr++) {
+	for (int plane_nr = 0; channel_nr < nr_channels && plane_nr < MAX_AV_PLANES; plane_nr++) {
 		float *samples = (float *)data->data[plane_nr];
 		if (!samples) {
 			continue;
@@ -466,7 +466,7 @@ static void volmeter_process_magnitude(obs_volmeter_t *volmeter, const struct au
 	size_t nr_samples = data->frames;
 
 	int channel_nr = 0;
-	for (int plane_nr = 0; channel_nr < nr_channels; plane_nr++) {
+	for (int plane_nr = 0; channel_nr < nr_channels && plane_nr < MAX_AV_PLANES; plane_nr++) {
 		float *samples = (float *)data->data[plane_nr];
 		if (!samples) {
 			continue;
