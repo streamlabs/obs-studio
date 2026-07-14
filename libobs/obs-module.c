@@ -609,6 +609,7 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 		add_module_failure(fail_info, info->name, module->load_error_code, module->load_error_message);
 		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
 					   OBS_MODULE_FAILED_TO_INITIALIZE);
+		free_module(module);
 	}
 
 	UNUSED_PARAMETER(param);
