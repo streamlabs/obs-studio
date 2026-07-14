@@ -264,15 +264,11 @@ bool obs_init_module(obs_module_t *module)
 		profile_store_name(obs_get_profiler_name_store(), "obs_init_module(%s)", module->file);
 	profile_start(profile_name);
 
+	clear_module_load_error(module);
 	loadingModule = module;
 	module->loaded = module->load();
 	loadingModule = NULL;
 
-	if (!module->loaded)
-		blog(LOG_WARNING, "Failed to initialize module '%s'", module->file);
-
-	clear_module_load_error(module);
-	module->loaded = module->load();
 	if (!module->loaded) {
 		if (module->load_error_code && module->load_error_message) {
 			blog(LOG_WARNING, "Failed to initialize module '%s': %s (%s)", module->file,
