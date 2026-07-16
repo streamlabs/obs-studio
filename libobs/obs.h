@@ -589,13 +589,21 @@ EXPORT void obs_add_safe_module(const char *name);
 /** Automatically loads all modules from module paths (convenience function) */
 EXPORT void obs_load_all_modules(void);
 
+struct obs_module_load_failure {
+	char *module;
+	char *code;
+	char *message;
+};
+
 struct obs_module_failure_info {
 	char **failed_modules;
 	size_t count;
+	struct obs_module_load_failure *failures;
 };
 
 EXPORT void obs_module_failure_info_free(struct obs_module_failure_info *mfi);
 EXPORT void obs_load_all_modules2(struct obs_module_failure_info *mfi);
+EXPORT void obs_module_set_load_error(obs_module_t *module, const char *code, const char *message);
 
 /** Notifies modules that all modules have been loaded.  This function should
  * be called after all modules have been loaded. */
