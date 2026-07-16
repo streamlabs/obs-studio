@@ -13,7 +13,7 @@
 [submodule "plugins/obs-ndi"]
 	path = plugins/obs-ndi
 	url = https://github.com/streamlabs/obs-ndi.git
-	branch = streamlabs-obs
+	branch = streamlabs
 [submodule "plugins/slobs-virtual-cam"]
 	path = plugins/slobs-virtual-cam
 	url = https://github.com/streamlabs/slobs-virtual-cam.git
