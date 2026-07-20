@@ -215,6 +215,18 @@ int obs_open_module(obs_module_t **module, const char *path, const char *data_pa
 	return MODULE_SUCCESS;
 }
 
+static void clear_module_load_error(obs_module_t *module)
+{
+	if (!module)
+		return;
+
+	bfree(module->load_error_code);
+	module->load_error_code = NULL;
+
+	bfree(module->load_error_message);
+	module->load_error_message = NULL;
+}
+
 bool obs_create_disabled_module(obs_module_t **module, const char *path, const char *data_path,
 				enum obs_module_load_state state)
 {
@@ -239,18 +251,6 @@ bool obs_create_disabled_module(obs_module_t **module, const char *path, const c
 	obs->first_disabled_module = (*module);
 	
 	return true;
-}
-
-static void clear_module_load_error(obs_module_t *module)
-{
-	if (!module)
-		return;
-
-	bfree(module->load_error_code);
-	module->load_error_code = NULL;
-
-	bfree(module->load_error_message);
-	module->load_error_message = NULL;
 }
 
 bool obs_init_module(obs_module_t *module)
