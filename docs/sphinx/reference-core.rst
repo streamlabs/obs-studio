@@ -332,7 +332,7 @@ Libobs Objects
    enumeration.
 
    Use :c:func:`obs_canvas_get_ref()` or
-   :c:func:`obs_canvas_get_weak_encoder()` if you want to retain a
+   :c:func:`obs_canvas_get_weak_canvas()` if you want to retain a
    reference after obs_enum_canvases finishes.
 
 ---------------------
@@ -944,16 +944,6 @@ Views
 .. function:: obs_source_t *obs_view_get_source(obs_view_t *view, uint32_t channel)
 
    :return: The source currently in use for this view context
-
----------------------
-
-.. function:: bool obs_view_get_video_info(obs_view_t *view, struct obs_video_info *ovi)
-
-   Gets the video settings of the first matching mix currently in use for this view context.
-
-   :return: *false* if no video
-
-   .. deprecated:: 3X.X
 
 ---------------------
 

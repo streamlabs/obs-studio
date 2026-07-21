@@ -162,6 +162,7 @@ static obs_canvas_t *obs_canvas_create_internal(const char *name, const char *uu
 	/* A canvas can be created without a mix. */
 	if (ovi) {
 		canvas->ovi = *ovi;
+		canvas->has_video_info = true;
 		canvas->mix = obs_create_video_mix(ovi);
 		if (canvas->mix) {
 			canvas->mix->view = &canvas->view;
@@ -206,6 +207,9 @@ obs_canvas_t *obs_canvas_create_private(const char *name, struct obs_video_info 
 void obs_canvas_destroy(obs_canvas_t *canvas)
 {
 	canvas_dosignal(canvas, "canvas_destroy", "destroy");
+
+	if (obs->video.graphics)
+		obs_view_remove(&canvas->view);
 
 	obs_canvas_clear_mix(canvas);
 
@@ -308,11 +312,14 @@ void obs_free_canvas_mixes(void)
 
 bool obs_canvas_reset_video_internal(obs_canvas_t *canvas, struct obs_video_info *ovi)
 {
-	obs_canvas_clear_mix(canvas);
-
-	if (ovi)
+	if (ovi) {
 		canvas->ovi = *ovi;
+		canvas->has_video_info = true;
+	} else if (!canvas->has_video_info) {
+		return true;
+	}
 
+	obs_canvas_clear_mix(canvas);
 	canvas->mix = obs_create_video_mix(&canvas->ovi);
 	if (canvas->mix) {
 		canvas->mix->view = &canvas->view;
