@@ -24,6 +24,8 @@
 
 extern const char *get_module_extension(void);
 
+obs_module_t *loadingModule = NULL;
+
 static inline int req_func_not_found(const char *name, const char *path)
 {
 	blog(LOG_DEBUG,
@@ -94,6 +96,47 @@ static inline char *get_module_name(const char *file)
 extern void reset_win32_symbol_paths(void);
 #endif
 
+int obs_module_load_metadata(struct obs_module *mod)
+{
+	struct obs_module_metadata *md = NULL;
+
+	/* Check if the metadata file exists */
+	struct dstr path = {0};
+
+	dstr_copy(&path, mod->data_path);
+	if (!dstr_is_empty(&path) && dstr_end(&path) != '/') {
+		dstr_cat_ch(&path, '/');
+	}
+	dstr_cat(&path, "manifest.json");
+
+	if (os_file_exists(path.array)) {
+		/* If we find a metadata file, allocate a new metadata. */
+		md = bmalloc(sizeof(obs_module_metadata_t));
+		obs_data_t *metadata = obs_data_create_from_json_file(path.array);
+
+		md->display_name = bstrdup(obs_data_get_string(metadata, "display_name"));
+		md->id = bstrdup(obs_data_get_string(metadata, "id"));
+		md->version = bstrdup(obs_data_get_string(metadata, "version"));
+		md->os_arch = bstrdup(obs_data_get_string(metadata, "os_arch"));
+		md->name = bstrdup(obs_data_get_string(metadata, "name"));
+		md->description = bstrdup(obs_data_get_string(metadata, "description"));
+		md->long_description = bstrdup(obs_data_get_string(metadata, "long_description"));
+
+		obs_data_t *urls = obs_data_get_obj(metadata, "urls");
+		md->repository_url = bstrdup(obs_data_get_string(urls, "repository"));
+		md->website_url = bstrdup(obs_data_get_string(urls, "website"));
+		md->support_url = bstrdup(obs_data_get_string(urls, "support"));
+		obs_data_release(urls);
+
+		md->has_banner = obs_data_get_bool(metadata, "has_banner");
+		md->has_icon = obs_data_get_bool(metadata, "has_icon");
+		obs_data_release(metadata);
+	}
+	dstr_free(&path);
+	mod->metadata = md;
+	return MODULE_SUCCESS;
+}
+
 int obs_open_module(obs_module_t **module, const char *path, const char *data_path)
 {
 	static char *excluded_patterns[] = {"libEGL", "libGLES",
@@ -128,12 +171,20 @@ int obs_open_module(obs_module_t **module, const char *path, const char *data_pa
 	mod.module = os_dlopen(path);
 	if (!mod.module) {
 		blog(LOG_WARNING, "Module '%s' not loaded", path);
-		return MODULE_FILE_NOT_FOUND;
+		return MODULE_FAILED_TO_OPEN;
 	}
 
 	errorcode = load_module_exports(&mod, path);
 	if (errorcode != MODULE_SUCCESS)
 		return errorcode;
+
+	/* Reject plugins compiled with a newer libobs. Patch version (lower 16-bit) is ignored. */
+	uint32_t ver = mod.ver ? mod.ver() & 0xFFFF0000 : 0;
+	if (ver > LIBOBS_API_VER) {
+		blog(LOG_WARNING, "Module '%s' compiled with newer libobs %d.%d", path, (ver >> 24) & 0xFF,
+		     (ver >> 16) & 0xFF);
+		return MODULE_INCOMPATIBLE_VER;
+	}
 
 	mod.bin_path = bstrdup(path);
 	mod.file = strrchr(mod.bin_path, '/');
@@ -141,10 +192,18 @@ int obs_open_module(obs_module_t **module, const char *path, const char *data_pa
 	mod.mod_name = get_module_name(mod.file);
 	mod.data_path = bstrdup(data_path);
 	mod.next = obs->first_module;
+	mod.load_state = OBS_MODULE_ENABLED;
+
+	da_init(mod.sources);
+	da_init(mod.outputs);
+	da_init(mod.encoders);
+	da_init(mod.services);
 
 	if (mod.file) {
 		blog(LOG_DEBUG, "Loading module: %s", mod.file);
 	}
+
+	obs_module_load_metadata(&mod);
 
 	*module = bmemdup(&mod, sizeof(mod));
 	obs->first_module = (*module);
@@ -154,6 +213,44 @@ int obs_open_module(obs_module_t **module, const char *path, const char *data_pa
 		mod.set_locale(obs->locale);
 
 	return MODULE_SUCCESS;
+}
+
+static void clear_module_load_error(obs_module_t *module)
+{
+	if (!module)
+		return;
+
+	bfree(module->load_error_code);
+	module->load_error_code = NULL;
+
+	bfree(module->load_error_message);
+	module->load_error_message = NULL;
+}
+
+bool obs_create_disabled_module(obs_module_t **module, const char *path, const char *data_path,
+				enum obs_module_load_state state)
+{
+	struct obs_module mod = {0};
+	
+	mod.bin_path = bstrdup(path);
+	mod.file = strrchr(mod.bin_path, '/');
+	mod.file = (!mod.file) ? mod.bin_path : (mod.file + 1);
+	mod.mod_name = get_module_name(mod.file);
+	mod.data_path = bstrdup(data_path);
+	mod.next = obs->first_disabled_module;
+	mod.load_state = state;
+	
+	da_init(mod.sources);
+	da_init(mod.outputs);
+	da_init(mod.encoders);
+	da_init(mod.services);
+	
+	obs_module_load_metadata(&mod);
+	
+	*module = bmemdup(&mod, sizeof(mod));
+	obs->first_disabled_module = (*module);
+	
+	return true;
 }
 
 bool obs_init_module(obs_module_t *module)
@@ -167,12 +264,35 @@ bool obs_init_module(obs_module_t *module)
 		profile_store_name(obs_get_profiler_name_store(), "obs_init_module(%s)", module->file);
 	profile_start(profile_name);
 
+	clear_module_load_error(module);
+	loadingModule = module;
 	module->loaded = module->load();
-	if (!module->loaded)
-		blog(LOG_WARNING, "Failed to initialize module '%s'", module->file);
+	loadingModule = NULL;
+
+	if (!module->loaded) {
+		if (module->load_error_code && module->load_error_message) {
+			blog(LOG_WARNING, "Failed to initialize module '%s': %s (%s)", module->file,
+			     module->load_error_message, module->load_error_code);
+		} else if (module->load_error_code) {
+			blog(LOG_WARNING, "Failed to initialize module '%s': %s", module->file,
+			     module->load_error_code);
+		} else {
+			blog(LOG_WARNING, "Failed to initialize module '%s'", module->file);
+		}
+	}
 
 	profile_end(profile_name);
 	return module->loaded;
+}
+
+void obs_module_set_load_error(obs_module_t *module, const char *code, const char *message)
+{
+	if (!module)
+		return;
+
+	clear_module_load_error(module);
+	module->load_error_code = (code && *code) ? bstrdup(code) : NULL;
+	module->load_error_message = (message && *message) ? bstrdup(message) : NULL;
 }
 
 void obs_log_loaded_modules(void)
@@ -190,6 +310,10 @@ const char *obs_get_module_file_name(obs_module_t *module)
 
 const char *obs_get_module_name(obs_module_t *module)
 {
+	if (module && module->metadata && module->metadata->display_name) {
+		return module->metadata->display_name;
+	}
+
 	return (module && module->name) ? module->name() : NULL;
 }
 
@@ -213,9 +337,65 @@ const char *obs_get_module_data_path(obs_module_t *module)
 	return module ? module->data_path : NULL;
 }
 
+const char *obs_get_module_id(obs_module_t *module)
+{
+	return module && module->metadata ? module->metadata->id : NULL;
+}
+
+const char *obs_get_module_version(obs_module_t *module)
+{
+	return module && module->metadata ? module->metadata->version : NULL;
+}
+
+void obs_module_add_source(obs_module_t *module, const char *id)
+{
+	char *source_id = bstrdup(id);
+	if (module) {
+		da_push_back(module->sources, &source_id);
+	}
+}
+
+void obs_module_add_output(obs_module_t *module, const char *id)
+{
+	char *output_id = bstrdup(id);
+	if (module) {
+		da_push_back(module->outputs, &output_id);
+	}
+}
+
+void obs_module_add_encoder(obs_module_t *module, const char *id)
+{
+	char *encoder_id = bstrdup(id);
+	if (module) {
+		da_push_back(module->encoders, &encoder_id);
+	}
+}
+
+void obs_module_add_service(obs_module_t *module, const char *id)
+{
+	char *service_id = bstrdup(id);
+	if (module) {
+		da_push_back(module->services, &service_id);
+	}
+}
+
 obs_module_t *obs_get_module(const char *name)
 {
 	obs_module_t *module = obs->first_module;
+	while (module) {
+		if (strcmp(module->mod_name, name) == 0) {
+			return module;
+		}
+
+		module = module->next;
+	}
+
+	return NULL;
+}
+
+obs_module_t *obs_get_disabled_module(const char *name)
+{
+	obs_module_t *module = obs->first_disabled_module;
 	while (module) {
 		if (strcmp(module->mod_name, name) == 0) {
 			return module;
@@ -290,12 +470,46 @@ void obs_add_safe_module(const char *name)
 	da_push_back(obs->safe_modules, &item);
 }
 
-extern void get_plugin_info(const char *path, bool *is_obs_plugin, bool *can_load);
+void obs_add_core_module(const char *name)
+{
+	if (!obs || !name)
+		return;
+
+	char *item = bstrdup(name);
+	da_push_back(obs->core_modules, &item);
+}
+
+void obs_add_disabled_module(const char *name)
+{
+	if (!obs || !name)
+		return;
+
+	char *item = bstrdup(name);
+	da_push_back(obs->disabled_modules, &item);
+}
+
+extern void get_plugin_info(const char *path, bool *is_obs_plugin);
 
 struct fail_info {
 	struct dstr fail_modules;
-	size_t fail_count;
+	DARRAY(struct obs_module_load_failure) failures;
 };
+
+static void add_module_failure(struct fail_info *fail_info, const char *module, const char *code, const char *message)
+{
+	if (!fail_info)
+		return;
+
+	struct obs_module_load_failure failure = {
+		bstrdup(module ? module : ""),
+		bstrdup((code && *code) ? code : "MODULE_LOAD_FAILED"),
+		bstrdup((message && *message) ? message : "Module failed to load."),
+	};
+
+	dstr_cat(&fail_info->fail_modules, failure.module);
+	dstr_cat(&fail_info->fail_modules, ";");
+	da_push_back(fail_info->failures, &failure);
+}
 
 static bool is_safe_module(const char *name)
 {
@@ -310,15 +524,43 @@ static bool is_safe_module(const char *name)
 	return false;
 }
 
+static bool is_core_module(const char *name)
+{
+	for (size_t i = 0; i < obs->core_modules.num; i++) {
+		if (strcmp(name, obs->core_modules.array[i]) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+static bool is_disabled_module(const char *name)
+{
+	if (obs->disabled_modules.num == 0)
+		return false;
+
+	for (size_t i = 0; i < obs->disabled_modules.num; i++) {
+		if (strcmp(name, obs->disabled_modules.array[i]) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+bool obs_get_module_allow_disable(const char *name)
+{
+	return !is_core_module(name);
+}
+
 static void load_all_callback(void *param, const struct obs_module_info2 *info)
 {
 	struct fail_info *fail_info = param;
 	obs_module_t *module = NULL;
+	obs_module_t *disabled_module = NULL;
 
 	bool is_obs_plugin;
-	bool can_load_obs_plugin;
 
-	get_plugin_info(info->bin_path, &is_obs_plugin, &can_load_obs_plugin);
+	get_plugin_info(info->bin_path, &is_obs_plugin);
 
 	if (!is_obs_plugin) {
 		blog(LOG_WARNING, "Skipping module '%s', not an OBS plugin", info->bin_path);
@@ -326,16 +568,15 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	}
 
 	if (!is_safe_module(info->name)) {
+		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path, OBS_MODULE_DISABLED_SAFE);
 		blog(LOG_WARNING, "Skipping module '%s', not on safe list", info->name);
 		return;
 	}
 
-	if (!can_load_obs_plugin) {
-		blog(LOG_WARNING,
-		     "Skipping module '%s' due to possible "
-		     "import conflicts",
-		     info->bin_path);
-		goto load_failure;
+	if (is_disabled_module(info->name)) {
+		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path, OBS_MODULE_DISABLED);
+		blog(LOG_WARNING, "Skipping module '%s', is disabled", info->name);
+		return;
 	}
 
 	int code = obs_open_module(&module, info->bin_path, info->data_path);
@@ -343,31 +584,35 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	case MODULE_MISSING_EXPORTS:
 		blog(LOG_DEBUG, "Failed to load module file '%s', not an OBS plugin", info->bin_path);
 		return;
-	case MODULE_FILE_NOT_FOUND:
-		blog(LOG_DEBUG, "Failed to load module file '%s', file not found", info->bin_path);
-		return;
+	case MODULE_FAILED_TO_OPEN:
+		blog(LOG_DEBUG, "Failed to load module file '%s', module failed to open", info->bin_path);
+		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
+					   OBS_MODULE_FAILED_TO_OPEN);
+		goto load_failure;
 	case MODULE_ERROR:
-		blog(LOG_DEBUG, "Failed to load module file '%s'", info->bin_path);
+		blog(LOG_DEBUG, "Failed to load module file '%s' (unknown error)", info->bin_path);
 		goto load_failure;
 	case MODULE_INCOMPATIBLE_VER:
 		blog(LOG_DEBUG, "Failed to load module file '%s', incompatible version", info->bin_path);
+		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
+					   OBS_MODULE_FAILED_TO_OPEN);
 		goto load_failure;
 	case MODULE_HARDCODED_SKIP:
 		return;
 	}
 
-	if (!obs_init_module(module))
+	if (!obs_init_module(module)) {
+		add_module_failure(fail_info, info->name, module->load_error_code, module->load_error_message);
+		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
+					   OBS_MODULE_FAILED_TO_INITIALIZE);
 		free_module(module);
+	}
 
 	UNUSED_PARAMETER(param);
 	return;
 
 load_failure:
-	if (fail_info) {
-		dstr_cat(&fail_info->fail_modules, info->name);
-		dstr_cat(&fail_info->fail_modules, ";");
-		fail_info->fail_count++;
-	}
+	add_module_failure(fail_info, info->name, NULL, NULL);
 }
 
 static const char *obs_load_all_modules_name = "obs_load_all_modules";
@@ -403,7 +648,8 @@ void obs_load_all_modules2(struct obs_module_failure_info *mfi)
 #endif
 	profile_end(obs_load_all_modules2_name);
 
-	mfi->count = fail_info.fail_count;
+	mfi->count = fail_info.failures.num;
+	mfi->failures = fail_info.failures.array;
 	mfi->failed_modules = strlist_split(fail_info.fail_modules.array, ';', false);
 	dstr_free(&fail_info.fail_modules);
 }
@@ -414,6 +660,19 @@ void obs_module_failure_info_free(struct obs_module_failure_info *mfi)
 		bfree(mfi->failed_modules);
 		mfi->failed_modules = NULL;
 	}
+
+	if (mfi->failures) {
+		for (size_t i = 0; i < mfi->count; i++) {
+			bfree(mfi->failures[i].module);
+			bfree(mfi->failures[i].code);
+			bfree(mfi->failures[i].message);
+		}
+
+		bfree(mfi->failures);
+		mfi->failures = NULL;
+	}
+
+	mfi->count = 0;
 }
 
 void obs_post_load_modules(void)
@@ -608,19 +867,59 @@ void free_module(struct obs_module *mod)
 		/* os_dlclose(mod->module); */
 	}
 
-	for (obs_module_t *m = obs->first_module; !!m; m = m->next) {
-		if (m->next == mod) {
-			m->next = mod->next;
-			break;
+	/* Is this module an active / loaded module, or a disabled module? */
+	if (mod->load_state == OBS_MODULE_ENABLED) {
+		for (obs_module_t *m = obs->first_module; !!m; m = m->next) {
+			if (m->next == mod) {
+				m->next = mod->next;
+				break;
+			}
 		}
-	}
 
-	if (obs->first_module == mod)
-		obs->first_module = mod->next;
+		if (obs->first_module == mod)
+			obs->first_module = mod->next;
+	} else {
+		for (obs_module_t *m = obs->first_disabled_module; !!m; m = m->next) {
+			if (m->next == mod) {
+				m->next = mod->next;
+				break;
+			}
+		}
+
+		if (obs->first_disabled_module == mod)
+			obs->first_disabled_module = mod->next;
+	}
 
 	bfree(mod->mod_name);
 	bfree(mod->bin_path);
 	bfree(mod->data_path);
+	bfree(mod->load_error_code);
+	bfree(mod->load_error_message);
+
+	for (size_t i = 0; i < mod->sources.num; i++) {
+		bfree(mod->sources.array[i]);
+	}
+	da_free(mod->sources);
+
+	for (size_t i = 0; i < mod->outputs.num; i++) {
+		bfree(mod->outputs.array[i]);
+	}
+	da_free(mod->outputs);
+
+	for (size_t i = 0; i < mod->encoders.num; i++) {
+		bfree(mod->encoders.array[i]);
+	}
+	da_free(mod->encoders);
+
+	for (size_t i = 0; i < mod->services.num; i++) {
+		bfree(mod->services.array[i]);
+	}
+	da_free(mod->services);
+
+	if (mod->metadata) {
+		free_module_metadata(mod->metadata);
+		bfree(mod->metadata);
+	}
 	bfree(mod);
 }
 
@@ -760,6 +1059,12 @@ void obs_register_source_s(const struct obs_source_info *info, size_t size)
 		goto error;
 	}
 
+	/* NOTE: The assignment of data.module must occur before memcpy! */
+	if (loadingModule) {
+		char *source_id = bstrdup(info->id);
+		da_push_back(loadingModule->sources, &source_id);
+	}
+
 	memcpy(&data, info, size);
 
 	/* mark audio-only filters as an async filter categorically */
@@ -881,6 +1186,12 @@ void obs_register_output_s(const struct obs_output_info *info, size_t size)
 		}
 		strlist_free(protocols);
 	}
+
+	if (loadingModule) {
+		char *output_id = bstrdup(info->id);
+		da_push_back(loadingModule->outputs, &output_id);
+	}
+
 	return;
 
 error:
@@ -917,6 +1228,12 @@ void obs_register_encoder_s(const struct obs_encoder_info *info, size_t size)
 #undef CHECK_REQUIRED_VAL_
 
 	REGISTER_OBS_DEF(size, obs_encoder_info, obs->encoder_types, info);
+
+	if (loadingModule) {
+		char *encoder_id = bstrdup(info->id);
+		da_push_back(loadingModule->encoders, &encoder_id);
+	}
+
 	return;
 
 error:
@@ -940,6 +1257,12 @@ void obs_register_service_s(const struct obs_service_info *info, size_t size)
 #undef CHECK_REQUIRED_VAL_
 
 	REGISTER_OBS_DEF(size, obs_service_info, obs->service_types, info);
+
+	if (loadingModule) {
+		char *service_id = bstrdup(info->id);
+		da_push_back(loadingModule->services, &service_id);
+	}
+
 	return;
 
 error:

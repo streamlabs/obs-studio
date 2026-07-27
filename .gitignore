@@ -24,7 +24,6 @@
 !.mailmap
 !.swift-format
 !AUTHORS
-!buildspec.json
 !CMakeLists.txt
 !CMakePresets.json
 !COC.rst
