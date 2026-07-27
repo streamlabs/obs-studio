@@ -33,7 +33,7 @@
 #include <qt-wrappers.hpp>
 #include <plain-text-edit.hpp>
 #include <slider-ignorewheel.hpp>
-#include <icon-label.hpp>
+#include <IconLabel.hpp>
 #include <cstdlib>
 #include <initializer_list>
 #include <obs-data.h>
@@ -333,7 +333,7 @@ QWidget *OBSPropertiesView::AddText(obs_property_t *prop, QFormLayout *layout, Q
 
 		WidgetInfo *info = new WidgetInfo(this, prop, edit);
 		connect(show, &QAbstractButton::toggled, info, &WidgetInfo::TogglePasswordText);
-		connect(show, &QAbstractButton::toggled,
+		connect(show, &QAbstractButton::toggled, show,
 			[=](bool hide) { show->setText(hide ? tr("Hide") : tr("Show")); });
 		children.emplace_back(info);
 
@@ -583,6 +583,8 @@ template<long long get_int(obs_data_t *, const char *), double get_double(obs_da
 	 const char *get_string(obs_data_t *, const char *), bool get_bool(obs_data_t *, const char *)>
 static QVariant from_obs_data(obs_data_t *data, const char *name, obs_combo_format format)
 {
+	PRAGMA_WARN_PUSH
+	PRAGMA_DISABLE_DEPRECATION
 	switch (format) {
 	case OBS_COMBO_FORMAT_INT:
 		return QVariant::fromValue(get_int(data, name));
@@ -595,6 +597,7 @@ static QVariant from_obs_data(obs_data_t *data, const char *name, obs_combo_form
 	default:
 		return QVariant();
 	}
+	PRAGMA_WARN_POP
 }
 
 static QVariant from_obs_data(obs_data_t *data, const char *name, obs_combo_format format)
@@ -605,8 +608,11 @@ static QVariant from_obs_data(obs_data_t *data, const char *name, obs_combo_form
 
 static QVariant from_obs_data_autoselect(obs_data_t *data, const char *name, obs_combo_format format)
 {
+	PRAGMA_WARN_PUSH
+	PRAGMA_DISABLE_DEPRECATION
 	return from_obs_data<obs_data_get_autoselect_int, obs_data_get_autoselect_double,
 			     obs_data_get_autoselect_string, obs_data_get_autoselect_bool>(data, name, format);
+	PRAGMA_WARN_POP
 }
 
 QWidget *OBSPropertiesView::AddList(obs_property_t *prop, bool &warning)
@@ -662,8 +668,11 @@ QWidget *OBSPropertiesView::AddList(obs_property_t *prop, bool &warning)
 	if (idx != -1)
 		combo->setCurrentIndex(idx);
 
+	PRAGMA_WARN_PUSH
+	PRAGMA_DISABLE_DEPRECATION
 	if (obs_data_has_autoselect_value(settings, name)) {
 		QVariant autoselect = from_obs_data_autoselect(settings, name, format);
+		PRAGMA_WARN_POP
 		int id = combo->findData(autoselect);
 
 		if (id != -1 && id != idx) {
@@ -724,7 +733,7 @@ void OBSPropertiesView::AddEditableList(obs_property_t *prop, QFormLayout *layou
 		/* for backwards compatibility */
 		if (uuid.isEmpty()) {
 			uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-			obs_data_set_string(item, "uuid", uuid.toUtf8());
+			obs_data_set_string(item, "uuid", QT_TO_UTF8(uuid));
 		}
 		list_item->setData(Qt::UserRole, uuid);
 	}
@@ -732,7 +741,7 @@ void OBSPropertiesView::AddEditableList(obs_property_t *prop, QFormLayout *layou
 	WidgetInfo *info = new WidgetInfo(this, prop, list);
 
 	list->setDragDropMode(QAbstractItemView::InternalMove);
-	connect(list->model(), &QAbstractItemModel::rowsMoved, [info]() { info->EditableListChanged(); });
+	connect(list->model(), &QAbstractItemModel::rowsMoved, info, [info]() { info->EditableListChanged(); });
 
 	QVBoxLayout *sideLayout = new QVBoxLayout();
 	NewButton(sideLayout, info, "icon-plus", &WidgetInfo::EditListAdd);
@@ -1302,9 +1311,12 @@ static void UpdateFPSLabels(OBSFrameRatePropertyWidget *w)
 
 	media_frames_per_second fps{};
 	media_frames_per_second *valid_fps = nullptr;
+	PRAGMA_WARN_PUSH
+	PRAGMA_DISABLE_DEPRECATION
 	if (obs_data_item_get_autoselect_frames_per_second(obj.get(), &fps, nullptr) ||
 	    obs_data_item_get_frames_per_second(obj.get(), &fps, nullptr))
 		valid_fps = &fps;
+	PRAGMA_WARN_POP
 
 	const char *option = nullptr;
 	obs_data_item_get_frames_per_second(obj.get(), nullptr, &option);
@@ -1396,14 +1408,14 @@ void OBSPropertiesView::AddFrameRate(obs_property_t *prop, bool &warning, QFormL
 		emit info->ControlChanged();
 	});
 
-	connect(widget->simpleFPS, comboIndexChanged, [=](int) {
+	connect(widget->simpleFPS, comboIndexChanged, info, [=](int) {
 		if (widget->updating)
 			return;
 
 		emit info->ControlChanged();
 	});
 
-	connect(widget->fpsRange, comboIndexChanged, [=](int) {
+	connect(widget->fpsRange, comboIndexChanged, info, [=](int) {
 		if (widget->updating)
 			return;
 
@@ -1411,14 +1423,14 @@ void OBSPropertiesView::AddFrameRate(obs_property_t *prop, bool &warning, QFormL
 	});
 
 	auto sbValueChanged = static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged);
-	connect(widget->numEdit, sbValueChanged, [=](int) {
+	connect(widget->numEdit, sbValueChanged, info, [=](int) {
 		if (widget->updating)
 			return;
 
 		emit info->ControlChanged();
 	});
 
-	connect(widget->denEdit, sbValueChanged, [=](int) {
+	connect(widget->denEdit, sbValueChanged, info, [=](int) {
 		if (widget->updating)
 			return;
 
@@ -2013,7 +2025,7 @@ void WidgetInfo::ControlChanged()
 	if (!recently_updated) {
 		recently_updated = true;
 		update_timer = new QTimer;
-		connect(update_timer, &QTimer::timeout, [this, &ru = recently_updated]() {
+		connect(update_timer, &QTimer::timeout, this, [this, &ru = recently_updated]() {
 			OBSObject strongObj = view->GetObject();
 			void *obj = strongObj ? strongObj.Get() : view->rawObj;
 			if (obj && view->callback && !view->deferUpdate) {
@@ -2022,7 +2034,7 @@ void WidgetInfo::ControlChanged()
 
 			ru = false;
 		});
-		connect(update_timer, &QTimer::timeout, &QTimer::deleteLater);
+		connect(update_timer, &QTimer::timeout, update_timer, &QTimer::deleteLater);
 		update_timer->setSingleShot(true);
 	}
 

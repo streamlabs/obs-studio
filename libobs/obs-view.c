@@ -140,17 +140,6 @@ void obs_view_render(obs_view_t *view)
 	pthread_mutex_unlock(&view->channels_mutex);
 }
 
-static inline size_t find_mix_for_view(obs_view_t *view)
-{
-	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
-		if (obs->video.mixes.array[i]->view == view &&
-		    !obs->video.mixes.array[i]->encoder_only_mix)
-			return i;
-	}
-
-	return DARRAY_INVALID;
-}
-
 video_t *obs_view_add(obs_view_t *view)
 {
 	if (!obs->data.main_canvas->mix)
@@ -247,23 +236,4 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 	}
 
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
-}
-
-bool obs_view_get_video_info(obs_view_t *view, struct obs_video_info *ovi)
-{
-	if (!view)
-		return false;
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-
-	size_t idx = find_mix_for_view(view);
-	if (idx != DARRAY_INVALID) {
-		*ovi = obs->video.mixes.array[idx]->ovi;
-		pthread_mutex_unlock(&obs->video.mixes_mutex);
-		return true;
-	}
-
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-
-	return false;
 }

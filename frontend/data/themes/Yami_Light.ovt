@@ -25,7 +25,6 @@
     --bg_preview: var(--grey8);
 
     --text: var(--black1);
-    --text_light: var(--black3);
     --text_muted: var(--black4);
 
     --text_disabled: var(--text_muted);
@@ -38,22 +37,90 @@
 
     --separator_hover: var(--black1);
 
-    --scrollbar_handle: var(--grey7);
+    --scrollbar_handle: var(--grey3);
     --scrollbar_hover: var(--grey6);
     --scrollbar_down: var(--grey8);
     --scrollbar_border: var(--grey7);
 }
 
+/* Mute Button */
+
+.btn-mute {
+    qproperty-icon: url(theme:Light/settings/audio.svg);
+}
+
+.btn-mute.checked {
+    qproperty-icon: url(theme:Light/mute.svg);
+}
+
+/* Monitor Button */
+
+.btn-monitor {
+    qproperty-icon: url(theme:Light/headphones-off.svg);
+}
+
+.btn-monitor.checked {
+    color: var(--text_light);
+    qproperty-icon: url(theme:Light/headphones.svg);
+}
+
+VolumeControl.volume-inactive,
+VolumeControl.volume-inactive VolumeMeter {
+    background: var(--grey8);
+}
+
 VolumeMeter {
-    qproperty-backgroundNominalColor: rgb(66,112,24);
-    qproperty-backgroundWarningColor: rgb(112,91,28);
-    qproperty-backgroundErrorColor: rgb(112,39,53);
-    qproperty-foregroundNominalColor: rgb(115,189,49);
-    qproperty-foregroundWarningColor: rgb(189,144,9);
-    qproperty-foregroundErrorColor: rgb(189,47,73);
+    qproperty-backgroundNominalColor: var(--green4);
+    qproperty-backgroundWarningColor: var(--yellow4);
+    qproperty-backgroundErrorColor: var(--red4);
+    qproperty-foregroundNominalColor: var(--green1);
+    qproperty-foregroundWarningColor: var(--yellow1);
+    qproperty-foregroundErrorColor: var(--red1);
     qproperty-magnitudeColor: rgb(0,0,0);
-    qproperty-majorTickColor: palette(text);
-    qproperty-minorTickColor: palette(light);
+    qproperty-majorTickColor: var(--black1);
+    qproperty-minorTickColor: var(--black5);
+
+    qproperty-backgroundNominalColorDisabled: var(--black3);
+    qproperty-backgroundWarningColorDisabled: var(--black4);
+    qproperty-backgroundErrorColorDisabled: var(--black3);
+    qproperty-foregroundNominalColorDisabled: var(--black5);
+    qproperty-foregroundWarningColorDisabled: var(--white5);
+    qproperty-foregroundErrorColorDisabled: var(--white4);
+}
+
+.toggle-hidden:checked {
+    background: var(--purple1);
+    border-color: var(--purple5);
+    color: var(--purple6);
+}
+
+VolumeControl .mixer-category {
+    background: var(--blue1);
+    color: var(--text_light);
+}
+
+VolumeControl.volume-pinned .mixer-category {
+    background: var(--blue2);    
+}
+
+VolumeControl.volume-hidden .mixer-category {
+    background: var(--purple1);
+    color: var(--purple6);
+}
+
+VolumeControl.volume-unassigned .mixer-category {
+    background: var(--yellow1);
+    color: var(--yellow6);
+}
+
+VolumeControl.volume-inactive .mixer-category {
+    background: var(--grey8);
+    color: var(--text_muted);
+}
+
+VolumeControl.volume-preview .mixer-category {
+    background: var(--green3);
+    color: var(--text_light);
 }
 
 QMenu::right-arrow {
@@ -127,6 +194,14 @@ QPushButton#sourceFiltersButton {
 
 .icon-close {
     qproperty-icon: url(theme:Light/close.svg);
+}
+
+.icon-layout-vertical {
+    qproperty-icon: url(theme:Light/layout-vertical.svg);
+}
+
+.icon-layout-horizontal {
+    qproperty-icon: url(theme:Light/layout-horizontal.svg);
 }
 
 QToolBarExtension {
@@ -323,4 +398,34 @@ QCalendarWidget #qt_calendar_prevmonth {
 
 QCalendarWidget #qt_calendar_nextmonth {
     qproperty-icon: url(theme:Light/right.svg);
+}
+
+/* Idian Widgets */
+idian--ToggleSwitch {
+    qproperty-background: var(--grey8);
+    qproperty-background_hover: var(--grey7);
+    qproperty-background_checked: var(--primary);
+    qproperty-background_checked_hover: var(--primary_light);
+}
+
+idian--Row QComboBox::down-arrow {
+    image: url(theme:Light/collapse.svg);
+}
+
+idian--CheckBox.keyFocus::indicator,
+idian--Row.hover > idian--CheckBox.row-buddy::indicator {
+    image: url(theme:Light/checkbox_unchecked_focus.svg);
+}
+
+idian--CheckBox.keyFocus.checked::indicator,
+idian--Row.hover > idian--CheckBox.row-buddy.checked::indicator {
+    image: url(theme:Light/checkbox_checked_focus.svg);
+}
+
+idian--ExpandButton::indicator {
+    image: url(theme:Light/down.svg);
+}
+
+idian--ExpandButton::indicator:checked {
+    image: url(theme:Light/up.svg);
 }

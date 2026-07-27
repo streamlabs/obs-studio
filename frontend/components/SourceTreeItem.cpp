@@ -9,6 +9,13 @@
 #include <QLineEdit>
 #include <QPainter>
 
+#include "plugin-manager/PluginManager.hpp"
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #include "moc_SourceTreeItem.cpp"
 
 static inline OBSScene GetCurrentScene()
@@ -84,6 +91,16 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_) : tre
 	label->setAttribute(Qt::WA_TranslucentBackground);
 	label->setEnabled(sourceVisible);
 
+	const char *sourceId = obs_source_get_unversioned_id(source);
+	switch (obs_source_load_state(sourceId)) {
+	case OBS_MODULE_DISABLED:
+	case OBS_MODULE_MISSING:
+		label->setStyleSheet("QLabel {color: #CC0000;}");
+		break;
+	default:
+		break;
+	}
+
 #ifdef __APPLE__
 	vis->setAttribute(Qt::WA_LayoutUsesWidgetRect);
 	lock->setAttribute(Qt::WA_LayoutUsesWidgetRect);
@@ -139,8 +156,8 @@ SourceTreeItem::SourceTreeItem(SourceTree *tree_, OBSSceneItem sceneitem_) : tre
 		obs_sceneitem_set_locked(sceneitem, checked);
 	};
 
-	connect(vis, &QAbstractButton::clicked, setItemVisible);
-	connect(lock, &QAbstractButton::clicked, setItemLocked);
+	connect(vis, &QAbstractButton::clicked, this, setItemVisible);
+	connect(lock, &QAbstractButton::clicked, this, setItemLocked);
 }
 
 void SourceTreeItem::paintEvent(QPaintEvent *event)
@@ -268,7 +285,22 @@ void SourceTreeItem::mouseDoubleClickEvent(QMouseEvent *event)
 		obs_source_t *source = obs_sceneitem_get_source(sceneitem);
 		OBSBasic *main = OBSBasic::Get();
 		if (obs_source_configurable(source)) {
+#if defined(_WIN32)
+			/* This timer works around a bug introduced around Qt 6.8.3 that causes
+			 * the application to hang when double clicking the sources list and the
+			 * Windows setting 'Snap mouse to default button in dialog boxes' is enabled.
+			 */
+			BOOL snapEnabled = FALSE;
+			SystemParametersInfo(SPI_GETSNAPTODEFBUTTON, 0, &snapEnabled, 0);
+
+			if (snapEnabled) {
+				QTimer::singleShot(200, this, [=]() { main->CreatePropertiesWindow(source); });
+			} else {
+				main->CreatePropertiesWindow(source);
+			}
+#else
 			main->CreatePropertiesWindow(source);
+#endif
 		}
 	}
 }
