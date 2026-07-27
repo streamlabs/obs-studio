@@ -96,6 +96,24 @@ static inline char *get_module_name(const char *file)
 extern void reset_win32_symbol_paths(void);
 #endif
 
+/* DLLs that ship in the plugin directory as plugin dependencies, not as OBS
+ * plugins themselves. Skipping them by name avoids inspecting/loading them. */
+static bool is_excluded_module(const char *path)
+{
+	static const char *excluded_modules[] = {"libEGL", "libGLESv2", "chrome_elf",   "libcef",
+						 "Spout",  "SpoutDX",   "SpoutLibrary", "obs-browser-page"};
+
+	const char *file = strrchr(path, '/');
+	file = file ? file + 1 : path;
+
+	for (size_t idx = 0; idx < sizeof(excluded_modules) / sizeof(*excluded_modules); idx++) {
+		size_t len = strlen(excluded_modules[idx]);
+		if (astrcmpi_n(file, excluded_modules[idx], len) == 0 && file[len] == '.')
+			return true;
+	}
+	return false;
+}
+
 int obs_module_load_metadata(struct obs_module *mod)
 {
 	struct obs_module_metadata *md = NULL;
@@ -139,17 +157,6 @@ int obs_module_load_metadata(struct obs_module *mod)
 
 int obs_open_module(obs_module_t **module, const char *path, const char *data_path)
 {
-	static char *excluded_patterns[] = {"libEGL", "libGLES",
-					    "obs-browser-page", "chrome_elf",
-					    "libcef"};
-	for (size_t idx = 0; idx < sizeof(excluded_patterns) / sizeof(char *);
-	     idx++) {
-		if (strstr(path, excluded_patterns[idx])) {
-			blog(LOG_INFO, "Excluding %s from openmodule ", path);
-			return MODULE_SUCCESS;
-		}
-	}
-
 	struct obs_module mod = {0};
 	int errorcode;
 
@@ -560,10 +567,16 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 
 	bool is_obs_plugin;
 
+	if (is_excluded_module(info->bin_path)) {
+		blog(LOG_DEBUG, "Skipping module '%s', excluded dependency", info->bin_path);
+		return;
+	}
+
 	get_plugin_info(info->bin_path, &is_obs_plugin);
 
 	if (!is_obs_plugin) {
 		blog(LOG_WARNING, "Skipping module '%s', not an OBS plugin", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_NOT_OBS_PLUGIN", "Module is not an OBS plugin");
 		return;
 	}
 
@@ -582,21 +595,25 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 	int code = obs_open_module(&module, info->bin_path, info->data_path);
 	switch (code) {
 	case MODULE_MISSING_EXPORTS:
-		blog(LOG_DEBUG, "Failed to load module file '%s', not an OBS plugin", info->bin_path);
+		blog(LOG_DEBUG, "Failed to load module file '%s', missing OBS exports", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_MISSING_EXPORTS", "Module is missing OBS exports");
 		return;
 	case MODULE_FAILED_TO_OPEN:
 		blog(LOG_DEBUG, "Failed to load module file '%s', module failed to open", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_FAILED_TO_OPEN", "Module failed to open");
 		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
 					   OBS_MODULE_FAILED_TO_OPEN);
-		goto load_failure;
+		return;
 	case MODULE_ERROR:
 		blog(LOG_DEBUG, "Failed to load module file '%s' (unknown error)", info->bin_path);
-		goto load_failure;
+		add_module_failure(fail_info, info->name, "MODULE_ERROR", "Module failed to load");
+		return;
 	case MODULE_INCOMPATIBLE_VER:
 		blog(LOG_DEBUG, "Failed to load module file '%s', incompatible version", info->bin_path);
+		add_module_failure(fail_info, info->name, "MODULE_INCOMPATIBLE_VER", "Incompatible module version");
 		obs_create_disabled_module(&disabled_module, info->bin_path, info->data_path,
 					   OBS_MODULE_FAILED_TO_OPEN);
-		goto load_failure;
+		return;
 	case MODULE_HARDCODED_SKIP:
 		return;
 	}
@@ -607,12 +624,6 @@ static void load_all_callback(void *param, const struct obs_module_info2 *info)
 					   OBS_MODULE_FAILED_TO_INITIALIZE);
 		free_module(module);
 	}
-
-	UNUSED_PARAMETER(param);
-	return;
-
-load_failure:
-	add_module_failure(fail_info, info->name, NULL, NULL);
 }
 
 static const char *obs_load_all_modules_name = "obs_load_all_modules";
