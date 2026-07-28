@@ -27,6 +27,15 @@ jobs:
     permissions:
       contents: read
 
+  streamlabs-windows-release:
+    name: Streamlabs Windows Release 📦
+    if: github.ref_type == 'tag'
+    needs: build-project
+    uses: ./.github/workflows/streamlabs-windows-release.yaml
+    secrets: inherit
+    permissions:
+      contents: read
+
   compatibility-validation:
     name: Validate Compatibility 🕵️
     if: github.ref_name == 'master'

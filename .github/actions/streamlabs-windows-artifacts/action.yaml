@@ -1,0 +1,110 @@
+name: Package Streamlabs Windows artifacts
+description: Packs the libobs install tree and this build's debug symbols for the release jobs to pick up
+
+inputs:
+  target:
+    description: "Build target architecture."
+    required: false
+    default: x64
+  packageName:
+    description: "Base name of the published libobs archive."
+    required: false
+    default: libobs
+  osTag:
+    description: "Platform tag used in the published libobs archive name."
+    required: false
+    default: windows64
+  releaseName:
+    description: "Release channel used in the published libobs archive name."
+    required: false
+    default: release
+  retentionDays:
+    description: "How long to keep the intermediate artifacts."
+    required: false
+    default: "7"
+
+runs:
+  using: composite
+  steps:
+    - name: Get the version
+      id: version
+      shell: pwsh
+      run: |
+        $version = "${{ github.ref }}".Replace("refs/tags/", "")
+        "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Package OBS lib 🗜️
+      shell: pwsh
+      run: |
+        # obs-studio-node consumes this by name, with install/ as the archive root
+        cd "build_${{ inputs.target }}"
+        7z a -r "../${{ inputs.packageName }}-${{ inputs.osTag }}-${{ inputs.releaseName }}-${{ steps.version.outputs.version }}.7z" install
+        if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
+        cd ..
+
+    - name: Collect debug symbols 🪲
+      shell: pwsh
+      run: |
+        # Qt's host tools and examples never ship, vc140-vc143.pdb are per-object compiler pdb's
+        # that no binary's debug directory points at, and foo/boo come from CMake's LTO probe in
+        # CMakeFiles/_CMakeLTOTest-CXX. None can appear in a crash report, so keeping them out
+        # shrinks both this archive and the work the symbol server job does.
+        $exclude = @(
+          'vc1??.pdb', 'moc.pdb', 'rcc.pdb', 'uic.pdb', 'qlalr.pdb', 'qsb.pdb', 'syncqt.pdb',
+          'tracegen.pdb', 'tracepointgen.pdb', 'qvkgen.pdb', 'qtpaths.pdb', 'designer.pdb',
+          'cmake_automoc_parser.pdb', 'Qt6ExampleIcons*.pdb', 'Qt6ExamplesAssetDownloader.pdb',
+          'webrtc-testlibs.pdb', 'foo.pdb', 'boo.pdb'
+        )
+
+        $staging = Join-Path $env:RUNNER_TEMP 'obs-pdbs'
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $staging -Force | Out-Null
+
+        $kept = 0
+        $skipped = 0
+
+        # The relative layout is preserved so the symbol server job can still report which pdb's
+        # share a file name when it flattens them
+        foreach ($searchPath in @("build_${{ inputs.target }}", '.deps')) {
+          if (-Not (Test-Path -LiteralPath $searchPath)) { continue }
+          $root = (Resolve-Path -LiteralPath $searchPath).Path
+
+          foreach ($pdb in (Get-ChildItem -LiteralPath $searchPath -Filter *.pdb -Recurse -File -ErrorAction SilentlyContinue)) {
+            $drop = $false
+            foreach ($pattern in $exclude) {
+              if ($pdb.Name -like $pattern) { $drop = $true; break }
+            }
+            if ($drop) { $skipped++; continue }
+
+            $relative = $pdb.FullName.Substring($root.Length).TrimStart('\')
+            $destination = Join-Path (Join-Path $staging $searchPath) $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath $pdb.FullName -Destination $destination -Force
+            $kept++
+          }
+        }
+
+        $megabytes = [math]::Round((Get-ChildItem -LiteralPath $staging -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
+        Write-Host "Collected $kept pdb's ($megabytes MB), skipped $skipped that can never be looked up"
+
+        # -mx1 keeps this to a minute or two; pdb's compress well even at the fastest setting
+        7z a -mx1 -mmt=on "$env:GITHUB_WORKSPACE\obs-pdbs.7z" "$staging\*"
+        if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
+
+    - name: Upload libobs archive 📡
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: streamlabs-libobs-${{ inputs.osTag }}
+        path: ${{ github.workspace }}/${{ inputs.packageName }}-${{ inputs.osTag }}-${{ inputs.releaseName }}-*.7z
+        compression-level: 0
+        retention-days: ${{ inputs.retentionDays }}
+        if-no-files-found: error
+
+    - name: Upload debug symbols 🪲
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: streamlabs-pdbs-${{ inputs.osTag }}
+        path: ${{ github.workspace }}/obs-pdbs.7z
+        compression-level: 0
+        retention-days: ${{ inputs.retentionDays }}
+        if-no-files-found: error

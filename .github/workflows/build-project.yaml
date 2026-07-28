@@ -438,13 +438,6 @@ jobs:
         architecture: [x64]
     runs-on: windows-2022
     needs: check-event
-    env:
-      PACKAGE_NAME: libobs
-      OS_TAG: windows64
-      InstallDir: "install"
-      BuildDir: "build_x64"
-      RELEASE_BUCKET: "obsstudios3.streamlabs.com"
-      ReleaseName: release
     defaults:
       run:
         shell: pwsh
@@ -473,18 +466,6 @@ jobs:
           target: ${{ matrix.architecture }}
           config: ${{ needs.check-event.outputs.config }}
 
-      - name: Symbol Server and Sentry Integration 🪲
-        uses: ./.github/actions/upload-debug-symbols
-        with:
-          githubWorkspace: ${{ github.workspace }}
-          repoUserId: stream-labs
-          repoName: obs-studio
-          repoBranch: ${{ github.sha }}
-          buildConfig: RelWithDebInfo
-          awsSymbAccessKeyId: ${{ secrets.AWS_SYMB_ACCESS_KEY_ID }}
-          awsSymbSecretAccessKey: ${{ secrets.AWS_SYMB_SECRET_ACCESS_KEY }}
-          sentryAuthToken: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
       - name: Package OBS Studio 📀
         if: github.repository == 'obsproject/obs-studio'
         uses: ./.github/actions/package-obs
@@ -500,30 +481,10 @@ jobs:
           name: obs-studio-windows-${{ matrix.architecture }}-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/build_${{ matrix.architecture }}/obs-studio-*-windows-${{ matrix.architecture }}.zip
 
-      - name: Get the version
-        id: get_version
-        run: |
-          $version = "${{ github.ref }}".Replace("refs/tags/", "")
-          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Package OBS lib 🗜️
-        run: |
-          cd ${{ env.BuildDir }}
-          7z a -r ../${{ env.TARGET_ARTIFACT }}.7z ${{ env.InstallDir }}
-          cd ..
-        env:
-          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
-
-      - name: Configure AWS credentials
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: aws-actions/configure-aws-credentials@v2
+      # Publishing and symbol upload happen in streamlabs-windows-release.yaml, off the artifacts
+      # this produces, so either can be re-run without rebuilding
+      - name: Package Streamlabs artifacts 📦
+        if: github.ref_type == 'tag'
+        uses: ./.github/actions/streamlabs-windows-artifacts
         with:
-          aws-access-key-id: ${{ secrets.AWS_RELEASE_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_RELEASE_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
-
-      - name: Deploy
-        if: startsWith(github.ref, 'refs/tags/')
-        run: aws s3 cp ${{ env.TARGET_ARTIFACT }}.7z s3://${{ env.RELEASE_BUCKET }} --acl public-read
-        env:
-          TARGET_ARTIFACT: ${{ env.PACKAGE_NAME }}-${{ env.OS_TAG }}-${{ env.ReleaseName }}-${{ steps.get_version.outputs.VERSION }}
+          target: ${{ matrix.architecture }}
