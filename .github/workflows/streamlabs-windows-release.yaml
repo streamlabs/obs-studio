@@ -93,6 +93,7 @@ jobs:
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           pdbPaths: ${{ env.PDB_PATH }}
+          symsrvRef: ${{ inputs.symsrvRef }}
           forceUpload: ${{ inputs.forceUpload }}
           symsrvDebug: ${{ inputs.symsrvDebug }}
           awsSymbAccessKeyId: ${{ secrets.AWS_SYMB_ACCESS_KEY_ID }}

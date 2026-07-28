@@ -39,6 +39,7 @@ runs:
         # obs-studio-node consumes this by name, with install/ as the archive root
         cd "build_${{ inputs.target }}"
         7z a -r "../${{ inputs.packageName }}-${{ inputs.osTag }}-${{ inputs.releaseName }}-${{ steps.version.outputs.version }}.7z" install
+        if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
         cd ..
 
     - name: Collect debug symbols 🪲
@@ -88,6 +89,7 @@ runs:
 
         # -mx1 keeps this to a minute or two; pdb's compress well even at the fastest setting
         7z a -mx1 -mmt=on "$env:GITHUB_WORKSPACE\obs-pdbs.7z" "$staging\*"
+        if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
 
     - name: Upload libobs archive 📡
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

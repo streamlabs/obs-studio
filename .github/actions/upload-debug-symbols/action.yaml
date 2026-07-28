@@ -49,7 +49,7 @@ runs:
   steps:
     - name: Fetch symsrv-scripts
       if: runner.os != 'macOS'
-      uses: actions/checkout@v3
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       with:
         fetch-depth: 2
         repository: ${{ inputs.repoUserId }}/symsrv-scripts
