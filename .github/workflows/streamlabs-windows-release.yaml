@@ -12,6 +12,13 @@ on:
         required: false
         type: boolean
         default: false
+      symsrvRef:
+        description: "Ref of symsrv-scripts to run. Empty uses its default branch."
+        required: false
+        type: string
+        # TEMPORARY: revert to "" once streamlabs/symsrv-scripts#3 is merged.
+        # Until then this workflow needs the unreleased -forceUpload and store lookup handling.
+        default: "ci/skip-existing-symbols"
 
 # Both jobs run off the artifacts windows-build produced, so neither needs a rebuild and either
 # can be re-run on its own. They do not depend on each other.

@@ -39,6 +39,10 @@ inputs:
     description: "Verbose symbol scripts and aws --debug."
     required: false
     default: "false"
+  symsrvRef:
+    description: "Ref of symsrv-scripts to run. Empty uses its default branch."
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -49,6 +53,7 @@ runs:
       with:
         fetch-depth: 2
         repository: ${{ inputs.repoUserId }}/symsrv-scripts
+        ref: ${{ inputs.symsrvRef }}
         path: symsrv-scripts
 
     - name: Run symbol server scripts
