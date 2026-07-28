@@ -1,0 +1,93 @@
+name: Streamlabs Windows Release
+on:
+  workflow_call:
+    inputs:
+      symsrvDebug:
+        description: "Verbose symbol scripts and aws --debug."
+        required: false
+        type: boolean
+        default: false
+      forceUpload:
+        description: "Upload every pdb instead of skipping the ones the symbol store already has."
+        required: false
+        type: boolean
+        default: false
+
+# Both jobs run off the artifacts windows-build produced, so neither needs a rebuild and either
+# can be re-run on its own. They do not depend on each other.
+jobs:
+  windows-publish:
+    name: Publish libobs 📦
+    runs-on: windows-2022
+    env:
+      RELEASE_BUCKET: obsstudios3.streamlabs.com
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Download libobs archive 📥
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: streamlabs-libobs-windows64
+          path: ${{ github.workspace }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_RELEASE_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_RELEASE_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Deploy
+        run: |
+          $archive = Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Filter 'libobs-windows64-release-*.7z' | Select-Object -First 1
+          if (-Not $archive) { throw "No libobs archive in the downloaded artifact" }
+
+          Write-Host "Publishing $($archive.Name) ($([math]::Round($archive.Length / 1MB)) MB)"
+          aws s3 cp $archive.FullName "s3://${{ env.RELEASE_BUCKET }}" --acl public-read
+          if ($LASTEXITCODE -ne 0) { throw "aws s3 cp failed with exit code $LASTEXITCODE" }
+
+  windows-symbols:
+    name: Upload debug symbols 🪲
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # Source indexing rewrites the absolute paths baked into each pdb, so the tree has to be
+      # checked out at the same commit and land on the same runner path the build used
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Download debug symbols 📥
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: streamlabs-pdbs-windows64
+          path: ${{ runner.temp }}
+
+      - name: Unpack debug symbols
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'pdbs'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          7z x "$env:RUNNER_TEMP\obs-pdbs.7z" "-o$target" -y
+          if ($LASTEXITCODE -ne 0) { throw "7z extraction failed with exit code $LASTEXITCODE" }
+
+          $count = @(Get-ChildItem -LiteralPath $target -Filter *.pdb -Recurse -File).Count
+          Write-Host "Unpacked $count pdb's"
+          "PDB_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Symbol Server Integration 🪲
+        uses: ./.github/actions/upload-debug-symbols
+        with:
+          githubWorkspace: ${{ github.workspace }}
+          repoUserId: stream-labs
+          repoName: obs-studio
+          repoBranch: ${{ github.sha }}
+          pdbPaths: ${{ env.PDB_PATH }}
+          forceUpload: ${{ inputs.forceUpload }}
+          symsrvDebug: ${{ inputs.symsrvDebug }}
+          awsSymbAccessKeyId: ${{ secrets.AWS_SYMB_ACCESS_KEY_ID }}
+          awsSymbSecretAccessKey: ${{ secrets.AWS_SYMB_SECRET_ACCESS_KEY }}

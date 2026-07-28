@@ -1,3 +1,6 @@
+name: Upload debug symbols
+description: Indexes pdb's against their source and uploads them to the Streamlabs symbol server
+
 inputs:
   githubWorkspace:
     description: "GitHub workspace path."
@@ -24,6 +27,18 @@ inputs:
   sentryAuthToken:
     description: "Auth token used for Sentry symbol uploads."
     required: false
+  pdbPaths:
+    description: "Comma separated folders to search for pdb's. Defaults to the whole workspace."
+    required: false
+    default: ""
+  forceUpload:
+    description: "Upload every pdb instead of skipping the ones the symbol store already has."
+    required: false
+    default: "false"
+  symsrvDebug:
+    description: "Verbose symbol scripts and aws --debug."
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -39,10 +54,11 @@ runs:
     - name: Run symbol server scripts
       if: runner.os != 'macOS'
       shell: powershell
-      run: ./symsrv-scripts/main.bat "${{ inputs.githubWorkspace }}/symsrv-scripts" ".\main.ps1 -localSourceDir '${{ inputs.githubWorkspace }}' -repo_userId '${{ inputs.repoUserId }}' -repo_name '${{ inputs.repoName }}' -repo_branch '${{ inputs.repoBranch }}' -subModules 'plugins/mediasoup-connector,stream-labs,mediasoup-connector,streamlabs;plugins/enc-amf,stream-labs,obs-amd-encoder,streamlabs;plugins/motion-effect,stream-labs,motion-effect,master;plugins/obs-browser,stream-labs,obs-browser,streamlabs;plugins/obs-ndi,stream-labs,obs-ndi,streamlabs;plugins/obs-ndi,stream-labs,obs-amd-encoder,streamlabs;plugins/obs-openvr,stream-labs,OBS-OpenVR-Input-Plugin,master;plugins/sl-vst,stream-labs,sl-vst,streamlabs;plugins/slobs-virtual-cam,stream-labs,slobs-virtual-cam,streamlabs;plugins/win-dshow/libdshowcapture,stream-labs,libdshowcapture,streamlabs'"
+      run: ./symsrv-scripts/main.bat "${{ inputs.githubWorkspace }}/symsrv-scripts" ".\main.ps1 -localSourceDir '${{ inputs.githubWorkspace }}' -repo_userId '${{ inputs.repoUserId }}' -repo_name '${{ inputs.repoName }}' -repo_branch '${{ inputs.repoBranch }}'${{ inputs.pdbPaths != '' && format(' -pdbPaths ''{0}''', inputs.pdbPaths) || '' }}${{ fromJSON(inputs.forceUpload) && ' -forceUpload' || '' }} -subModules 'plugins/mediasoup-connector,stream-labs,mediasoup-connector,streamlabs;plugins/enc-amf,stream-labs,obs-amd-encoder,streamlabs;plugins/motion-effect,stream-labs,motion-effect,master;plugins/obs-browser,stream-labs,obs-browser,streamlabs;plugins/obs-ndi,stream-labs,obs-ndi,streamlabs;plugins/obs-ndi,stream-labs,obs-amd-encoder,streamlabs;plugins/obs-openvr,stream-labs,OBS-OpenVR-Input-Plugin,master;plugins/sl-vst,stream-labs,sl-vst,streamlabs;plugins/slobs-virtual-cam,stream-labs,slobs-virtual-cam,streamlabs;plugins/win-dshow/libdshowcapture,stream-labs,libdshowcapture,streamlabs'"
       env:
         AWS_SYMB_ACCESS_KEY_ID: ${{ inputs.awsSymbAccessKeyId }}
         AWS_SYMB_SECRET_ACCESS_KEY: ${{ inputs.awsSymbSecretAccessKey }}
+        SYMSRV_DEBUG: ${{ fromJSON(inputs.symsrvDebug) && '1' || '' }}
 
     - name: Upload debug files to Sentry (macOS only)
       if: runner.os == 'macOS'
