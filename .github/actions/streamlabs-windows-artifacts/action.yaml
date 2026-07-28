@@ -44,14 +44,15 @@ runs:
     - name: Collect debug symbols 🪲
       shell: pwsh
       run: |
-        # Qt's host tools and examples never ship, and vc140-vc143.pdb are per-object compiler
-        # pdb's that no binary's debug directory points at. Neither can appear in a crash report,
-        # so keeping them out shrinks both this archive and the work the symbol server job does.
+        # Qt's host tools and examples never ship, vc140-vc143.pdb are per-object compiler pdb's
+        # that no binary's debug directory points at, and foo/boo come from CMake's LTO probe in
+        # CMakeFiles/_CMakeLTOTest-CXX. None can appear in a crash report, so keeping them out
+        # shrinks both this archive and the work the symbol server job does.
         $exclude = @(
           'vc1??.pdb', 'moc.pdb', 'rcc.pdb', 'uic.pdb', 'qlalr.pdb', 'qsb.pdb', 'syncqt.pdb',
           'tracegen.pdb', 'tracepointgen.pdb', 'qvkgen.pdb', 'qtpaths.pdb', 'designer.pdb',
           'cmake_automoc_parser.pdb', 'Qt6ExampleIcons*.pdb', 'Qt6ExamplesAssetDownloader.pdb',
-          'webrtc-testlibs.pdb'
+          'webrtc-testlibs.pdb', 'foo.pdb', 'boo.pdb'
         )
 
         $staging = Join-Path $env:RUNNER_TEMP 'obs-pdbs'
