@@ -17,7 +17,7 @@ on:
         required: false
         type: string
         # Pinned so a push to symsrv-scripts cannot change this build without a PR here
-        default: "v1.1.1"
+        default: "v1.2.0"
 
 # Both jobs run off the artifacts windows-build produced, so neither needs a rebuild and either
 # can be re-run on its own. They do not depend on each other.
