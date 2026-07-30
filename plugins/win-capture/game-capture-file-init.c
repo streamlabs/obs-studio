@@ -138,7 +138,7 @@ static bool module_file_path(const char *name, wchar_t *out, size_t out_bytes)
 
 static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
 {
-	if (!CopyFileW(src, dst, false)) {
+	if (!hook_install_file(src, dst)) {
 		hook_warn("failed to install %ls: %lu", dst, GetLastError());
 		return false;
 	}

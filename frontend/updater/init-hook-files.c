@@ -52,7 +52,7 @@ static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
 {
 	/* Always reinstall rather than comparing versions: a hook planted while
 	 * the directory was writable is byte for byte as plausible as ours. */
-	return CopyFileW(src, dst, false) && hook_file_reset_acl(dst) && hook_path_is_trusted(dst);
+	return hook_install_file(src, dst) && hook_file_reset_acl(dst) && hook_path_is_trusted(dst);
 }
 
 static bool update_hook_file(bool b64)

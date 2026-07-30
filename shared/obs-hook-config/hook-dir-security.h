@@ -73,6 +73,12 @@ static inline bool hook_sid_is_trusted(PSID sid)
 	return false;
 }
 
+static inline bool hook_is_reparse_point(const wchar_t *path)
+{
+	DWORD attributes = GetFileAttributesW(path);
+	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+}
+
 /* True only if the object is owned by an administrative account and nothing
  * else can modify it. Anything else means a standard user is able to replace
  * the hook that we are about to load into another process. */
@@ -82,6 +88,11 @@ static inline bool hook_path_is_trusted(const wchar_t *path)
 	PSID owner = NULL;
 	PACL dacl = NULL;
 	bool trusted = false;
+
+	/* Every other check here follows the link, so it would describe the
+	 * target rather than the thing we are about to read or write. */
+	if (hook_is_reparse_point(path))
+		return false;
 
 	if (GetNamedSecurityInfoW(path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner,
 				  NULL, &dacl, NULL, &sd) != ERROR_SUCCESS) {
@@ -124,11 +135,19 @@ done:
 }
 
 /* Creates the directory with the descriptor already applied, so that it is
- * never briefly writable. Succeeds if it is already there. */
+ * never briefly writable. Succeeds if it is already there.
+ *
+ * A junction left behind by whoever owned the directory before us would make
+ * every later step - the DACL, the copies - land on its target instead, so
+ * drop the reparse point first. RemoveDirectoryW unlinks the junction itself
+ * and leaves whatever it pointed at alone. */
 static inline bool hook_dir_create(const wchar_t *dir)
 {
 	SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, false};
 	bool success = false;
+
+	if (hook_is_reparse_point(dir) && !RemoveDirectoryW(dir))
+		return false;
 
 	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(HOOK_DIR_SDDL, SDDL_REVISION_1,
 								  &sa.lpSecurityDescriptor, NULL)) {
@@ -138,7 +157,29 @@ static inline bool hook_dir_create(const wchar_t *dir)
 	success = CreateDirectoryW(dir, &sa) || GetLastError() == ERROR_ALREADY_EXISTS;
 
 	LocalFree(sa.lpSecurityDescriptor);
-	return success;
+	return success && !hook_is_reparse_point(dir);
+}
+
+/* Replaces dst with src without ever writing through an existing entry.
+ *
+ * A hard link planted at dst while the directory was writable shares its data
+ * with the file it was linked to, so copying onto it would put our bytes into
+ * that file - an arbitrary write, since we run elevated. Deleting removes the
+ * directory entry and not the link target, and refusing to overwrite means a
+ * re-created entry fails the copy instead of being followed. */
+static inline bool hook_install_file(const wchar_t *src, const wchar_t *dst)
+{
+	DWORD attributes = GetFileAttributesW(dst);
+
+	if (attributes != INVALID_FILE_ATTRIBUTES) {
+		if (attributes & FILE_ATTRIBUTE_READONLY)
+			SetFileAttributesW(dst, attributes & ~(DWORD)FILE_ATTRIBUTE_READONLY);
+
+		if (!DeleteFileW(dst) && GetLastError() != ERROR_FILE_NOT_FOUND)
+			return false;
+	}
+
+	return CopyFileW(src, dst, true);
 }
 
 /* Ownership is taken separately from, and before, the DACL: a directory left
