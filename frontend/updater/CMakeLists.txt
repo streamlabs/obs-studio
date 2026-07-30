@@ -24,7 +24,10 @@ target_sources(
 
 target_compile_definitions(updater PRIVATE "PSAPI_VERSION=2")
 
-target_include_directories(updater PRIVATE "${CMAKE_SOURCE_DIR}/libobs" "${CMAKE_SOURCE_DIR}/frontend/utility")
+target_include_directories(
+  updater
+  PRIVATE "${CMAKE_SOURCE_DIR}/libobs" "${CMAKE_SOURCE_DIR}/frontend/utility" "${CMAKE_SOURCE_DIR}/shared/obs-hook-config"
+)
 
 target_link_libraries(
   updater
