@@ -183,6 +183,15 @@ static bool update_hook_file(bool b64)
 	if (has_elevation()) {
 		DWORD s;
 
+		/* Whether the files were already out of reach of standard users
+		 * decides whether their version resource means anything. If
+		 * they were, an administrator put them there and the version
+		 * arbitration below is safe. If they were not, anyone could
+		 * have, along with whatever version they cared to stamp on it,
+		 * so nothing there survives. */
+		bool was_trusted = hook_path_is_trusted(dir) && hook_path_is_trusted(dst) &&
+				   hook_path_is_trusted(dst_json);
+
 		if (!hook_dir_create(dir)) {
 			hook_warn("failed to create the hook directory: %lu", GetLastError());
 			return false;
@@ -198,11 +207,7 @@ static bool update_hook_file(bool b64)
 			return false;
 		}
 
-		/* Always reinstall rather than comparing versions: a hook
-		 * planted while the directory was writable is byte for byte as
-		 * plausible as ours, and its version resource is whatever the
-		 * attacker wrote there. */
-		if (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst))
+		if (!was_trusted && (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst)))
 			return false;
 	} else if (!dir_exists(dir)) {
 		/* the shared directory is provisioned by the installer and the
@@ -219,23 +224,32 @@ static bool update_hook_file(bool b64)
 		return false;
 	}
 
-	if (!has_elevation()) {
-		struct win_version_info ver_src = {0};
-		struct win_version_info ver_dst = {0};
+	struct win_version_info ver_src = {0};
+	struct win_version_info ver_dst = {0};
 
-		if (!get_dll_ver(src, &ver_src) || !get_dll_ver(dst, &ver_dst))
+	if (!get_dll_ver(src, &ver_src) || !get_dll_ver(dst, &ver_dst))
+		return false;
+
+	/* This directory is shared with every other OBS derived application on
+	 * the machine, and the hook version is the protocol they agree on -
+	 * which is why forks are asked not to bump it independently. Newest
+	 * wins. Now that only administrators can write here, a version we read
+	 * is one an administrator installed, so it is worth honouring: do not
+	 * replace a newer hook that another one of them provisioned. */
+	if (win_version_compare(&ver_dst, &ver_src) < 0) {
+		/* an unelevated process cannot refresh the shared copy, so it
+		 * uses the one in the install directory instead */
+		if (!has_elevation())
 			return false;
 
-		/* we cannot refresh the shared copy, so it either matches or we
-		 * use the one in the install directory */
-		if (win_version_compare(&ver_dst, &ver_src) < 0)
-			return false;
-
-		/* do not use if major version incremented in target compared to
-		 * ours */
-		if (ver_dst.major > ver_src.major)
+		if (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst))
 			return false;
 	}
+
+	/* do not use if major version incremented in target compared to
+	 * ours */
+	if (ver_dst.major > ver_src.major)
+		return false;
 
 	return true;
 }

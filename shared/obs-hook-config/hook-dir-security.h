@@ -5,7 +5,37 @@
  * on the machine by way of the implicit layer.
  *
  * Header-only so the plugin and the updater share one definition of what
- * "correctly locked down" means. Callers do their own logging. */
+ * "correctly locked down" means. Callers do their own logging.
+ *
+ * On why this directory is shared rather than per-application, which looks
+ * like an obvious thing to fix when several OBS derived applications are
+ * installed side by side: the directory is not the shared part, it is the
+ * arbitration for it. The hook protocol is a machine-wide singleton several
+ * layers down.
+ *
+ *   - The hook's IPC objects are global names keyed by the *captured* process,
+ *     not by the capturing application: CaptureHook_HookInfo<pid>,
+ *     CaptureHook_TextureMutex1<pid>, and so on. Two applications capturing one
+ *     game already meet in the same shared memory.
+ *   - There is one vulkan layer name, VK_LAYER_OBS_HOOK, and implicit layers
+ *     are machine-wide. A second registered manifest means two hooks loaded
+ *     into every rendering process, not one each.
+ *   - HOOK_VER in graphics-hook-ver.h is the protocol version those parties
+ *     agree on, which is why forks are asked not to bump it on their own.
+ *
+ * Give each application its own directory and the sharing stays while the
+ * arbitration goes: differently versioned hooks meeting in the same shared
+ * memory, and doubled-up vulkan layers. Splitting it properly means forking
+ * the whole namespace - version, object names, layer name - which permanently
+ * de-interoperates and doubles the hooks on any machine with two of these
+ * installed.
+ *
+ * What the sharing does cost, and it is worth being clear about it: the old
+ * cooperative protocol relied on this directory being writable by everyone,
+ * which is the vulnerability. Once only administrators can write, the newest
+ * hook still wins, but only among writers that run elevated. Everyone else
+ * falls back to the copy in their own install directory, which serves game
+ * capture but not the vulkan layer. */
 
 #pragma once
 
