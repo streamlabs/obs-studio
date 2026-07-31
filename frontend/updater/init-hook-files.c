@@ -2,8 +2,68 @@
 #include <strsafe.h>
 #include <shlobj.h>
 #include <stdbool.h>
+#include <aclapi.h>
+#include <sddl.h>
 
-#include "hook-dir-security.h"
+static bool add_aap_perms(const wchar_t *dir)
+{
+	PSECURITY_DESCRIPTOR sd = NULL;
+	SID *aap_sid = NULL;
+	SID *bu_sid = NULL;
+	PACL new_dacl1 = NULL;
+	PACL new_dacl2 = NULL;
+	bool success = false;
+
+	PACL dacl;
+	if (GetNamedSecurityInfoW(dir, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, &dacl, NULL, &sd) !=
+	    ERROR_SUCCESS) {
+		goto fail;
+	}
+
+	EXPLICIT_ACCESSW ea = {0};
+	ea.grfAccessPermissions = GENERIC_READ | GENERIC_EXECUTE;
+	ea.grfAccessMode = GRANT_ACCESS;
+	ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+	ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+
+	/* ALL_APP_PACKAGES */
+	ConvertStringSidToSidW(L"S-1-15-2-1", &aap_sid);
+	ea.Trustee.ptstrName = (wchar_t *)aap_sid;
+
+	if (SetEntriesInAclW(1, &ea, dacl, &new_dacl1) != ERROR_SUCCESS) {
+		goto fail;
+	}
+
+	ea.grfAccessPermissions = GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE;
+
+	/* BUILTIN_USERS */
+	ConvertStringSidToSidW(L"S-1-5-32-545", &bu_sid);
+	ea.Trustee.ptstrName = (wchar_t *)bu_sid;
+
+	DWORD s = SetEntriesInAclW(1, &ea, new_dacl1, &new_dacl2);
+	if (s != ERROR_SUCCESS) {
+		goto fail;
+	}
+
+	if (SetNamedSecurityInfoW((wchar_t *)dir, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, new_dacl2,
+				  NULL) != ERROR_SUCCESS) {
+		goto fail;
+	}
+
+	success = true;
+fail:
+	if (sd)
+		LocalFree(sd);
+	if (new_dacl1)
+		LocalFree(new_dacl1);
+	if (new_dacl2)
+		LocalFree(new_dacl2);
+	if (aap_sid)
+		LocalFree(aap_sid);
+	if (bu_sid)
+		LocalFree(bu_sid);
+	return success;
+}
 
 static inline bool file_exists(const wchar_t *path)
 {
@@ -48,16 +108,9 @@ static LSTATUS get_reg(HKEY hkey, LPCWSTR sub_key, LPCWSTR value_name, bool b64)
 #define IMPLICIT_LAYERS L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers"
 #define HOOK_LOCATION L"\\data\\obs-plugins\\win-capture\\"
 
-static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
-{
-	/* Always reinstall rather than comparing versions: a hook planted while
-	 * the directory was writable is byte for byte as plausible as ours. */
-	return hook_install_file(src, dst) && hook_file_reset_acl(dst) && hook_path_is_trusted(dst);
-}
-
 static bool update_hook_file(bool b64)
 {
-	wchar_t dir[MAX_PATH];
+	wchar_t temp[MAX_PATH];
 	wchar_t src[MAX_PATH];
 	wchar_t dst[MAX_PATH];
 	wchar_t src_json[MAX_PATH];
@@ -71,33 +124,21 @@ static bool update_hook_file(bool b64)
 	StringCbCat(src, sizeof(src), HOOK_LOCATION);
 	make_filename(src, L"graphics-hook", L".dll");
 
-	get_programdata_path(dir, L"obs-studio-hook");
-
-	StringCbCopyW(dst, sizeof(dst), dir);
-	StringCbCatW(dst, sizeof(dst), L"\\");
-	make_filename(dst, L"graphics-hook", L".dll");
-
-	StringCbCopyW(dst_json, sizeof(dst_json), dir);
-	StringCbCatW(dst_json, sizeof(dst_json), L"\\");
+	get_programdata_path(temp, L"obs-studio-hook\\");
+	StringCbCopyW(dst_json, sizeof(dst_json), temp);
+	StringCbCopyW(dst, sizeof(dst), temp);
 	make_filename(dst_json, L"obs-vulkan", L".json");
+	make_filename(dst, L"graphics-hook", L".dll");
 
 	if (!file_exists(src)) {
 		return false;
 	}
 
-	if (!hook_dir_create(dir))
-		return false;
-
-	hook_dir_take_ownership(dir);
-	if (hook_dir_apply_dacl(dir) != ERROR_SUCCESS)
-		return false;
-
-	/* The caller registers an implicit vulkan layer pointing here, so every
-	 * step has to hold before we say yes. */
-	if (!install_hook_file(src, dst) || !install_hook_file(src_json, dst_json))
-		return false;
-
-	return hook_path_is_trusted(dir);
+	CreateDirectoryW(temp, NULL);
+	add_aap_perms(temp);
+	CopyFileW(src, dst, false);
+	CopyFileW(src_json, dst_json, false);
+	return true;
 }
 
 static void update_vulkan_registry(bool b64)
@@ -143,39 +184,10 @@ finish:
 		RegCloseKey(key);
 }
 
-/* Never leave a layer pointing at a directory we could not lock down: the
- * loader hands it to every vulkan process on the machine. */
-static void remove_vulkan_registry(bool b64, HKEY root)
-{
-	DWORD flags = b64 ? KEY_WOW64_64KEY : KEY_WOW64_32KEY;
-	wchar_t path[MAX_PATH];
-	HKEY key;
-
-	get_programdata_path(path, L"obs-studio-hook\\");
-	make_filename(path, L"obs-vulkan", L".json");
-
-	if (get_reg(root, IMPLICIT_LAYERS, path, b64) != ERROR_SUCCESS)
-		return;
-
-	if (RegOpenKeyEx(root, IMPLICIT_LAYERS, 0, KEY_WRITE | flags, &key) == ERROR_SUCCESS) {
-		RegDeleteValueW(key, path);
-		RegCloseKey(key);
-	}
-}
-
 void UpdateHookFiles(void)
 {
-	if (update_hook_file(true)) {
+	if (update_hook_file(true))
 		update_vulkan_registry(true);
-	} else {
-		remove_vulkan_registry(true, HKEY_LOCAL_MACHINE);
-		remove_vulkan_registry(true, HKEY_CURRENT_USER);
-	}
-
-	if (update_hook_file(false)) {
+	if (update_hook_file(false))
 		update_vulkan_registry(false);
-	} else {
-		remove_vulkan_registry(false, HKEY_LOCAL_MACHINE);
-		remove_vulkan_registry(false, HKEY_CURRENT_USER);
-	}
 }
