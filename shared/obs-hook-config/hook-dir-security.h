@@ -63,6 +63,13 @@
 	(FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | \
 	 DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL)
 
+/* For a directory somewhere above what we care about, the only rights that
+ * matter are the ones that let someone replace the child out from under us:
+ * deleting it, or rewriting its security so they can. Being able to create
+ * other entries alongside it is not interesting - which is just as well, since
+ * every drive root grants exactly that to Authenticated Users. */
+#define HOOK_ANCESTOR_WRITE_ACCESS (FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL)
+
 static inline bool hook_enable_privilege(const wchar_t *name)
 {
 	TOKEN_PRIVILEGES privileges = {0};
@@ -116,9 +123,8 @@ static inline bool hook_is_reparse_point(const wchar_t *path)
 }
 
 /* True only if the object is owned by an administrative account and nothing
- * else can modify it. Anything else means a standard user is able to replace
- * the hook that we are about to load into another process. */
-static inline bool hook_path_is_trusted(const wchar_t *path)
+ * else holds any of write_mask on it. */
+static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
 {
 	PSECURITY_DESCRIPTOR sd = NULL;
 	PSID owner = NULL;
@@ -157,7 +163,7 @@ static inline bool hook_path_is_trusted(const wchar_t *path)
 		 * their own right */
 		if (ace->Header.AceFlags & INHERIT_ONLY_ACE)
 			continue;
-		if ((ace->Mask & HOOK_WRITE_ACCESS) == 0)
+		if ((ace->Mask & write_mask) == 0)
 			continue;
 		if (!hook_sid_is_trusted((PSID)&ace->SidStart))
 			goto done;
@@ -168,6 +174,53 @@ done:
 	if (sd)
 		LocalFree(sd);
 	return trusted;
+}
+
+/* Anything a standard user is able to replace, we do not load into another
+ * process. */
+static inline bool hook_path_is_trusted(const wchar_t *path)
+{
+	return hook_object_is_trusted(path, HOOK_WRITE_ACCESS);
+}
+
+/* The object plus every directory above it, up to the drive root. Locking down
+ * a file means nothing if a standard user can rename one of its parents and
+ * present a different tree under the same path. */
+static inline bool hook_path_chain_is_trusted(const wchar_t *path)
+{
+	wchar_t buffer[MAX_PATH];
+	size_t length = wcslen(path);
+
+	if (length == 0 || length >= MAX_PATH)
+		return false;
+
+	memcpy(buffer, path, (length + 1) * sizeof(wchar_t));
+
+	/* a trailing separator would make the first step examine the object a
+	 * second time, as its own parent */
+	if (buffer[length - 1] == L'\\' && !(length == 3 && buffer[1] == L':'))
+		buffer[length - 1] = 0;
+
+	if (!hook_object_is_trusted(buffer, HOOK_WRITE_ACCESS))
+		return false;
+
+	for (;;) {
+		wchar_t *separator = wcsrchr(buffer, L'\\');
+
+		/* not a drive-letter path, so not one we can reason about */
+		if (!separator)
+			return false;
+
+		if (separator == buffer + 2 && buffer[1] == L':') {
+			separator[1] = 0; /* the root keeps its separator */
+			return hook_object_is_trusted(buffer, HOOK_ANCESTOR_WRITE_ACCESS);
+		}
+
+		*separator = 0;
+
+		if (!hook_object_is_trusted(buffer, HOOK_ANCESTOR_WRITE_ACCESS))
+			return false;
+	}
 }
 
 /* Creates the directory with the descriptor already applied, so that it is

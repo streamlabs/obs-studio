@@ -189,7 +189,7 @@ static bool update_hook_file(bool b64)
 		/* We are about to publish these bytes to a machine-wide
 		 * location, elevated. If our own copy is somewhere a standard
 		 * user can rewrite, there is nothing to publish. */
-		if (!hook_path_is_trusted(src) || !hook_path_is_trusted(src_json)) {
+		if (!hook_path_chain_is_trusted(src) || !hook_path_is_trusted(src_json)) {
 			hook_warn("the hook in the install directory is modifiable by non-administrators, "
 				  "not publishing it");
 			return false;
@@ -231,7 +231,7 @@ static bool update_hook_file(bool b64)
 		return false;
 	}
 
-	if (!hook_path_is_trusted(dir) || !hook_path_is_trusted(dst) || !hook_path_is_trusted(dst_json)) {
+	if (!hook_path_chain_is_trusted(dir) || !hook_path_is_trusted(dst) || !hook_path_is_trusted(dst_json)) {
 		hook_warn("the hook directory or its files are modifiable by non-administrators, ignoring them");
 		return false;
 	}
