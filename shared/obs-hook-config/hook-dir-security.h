@@ -47,9 +47,15 @@
 /* SYSTEM and Administrators get full control, everyone else read and execute.
  * "PAI" blocks inheritance: the CREATOR OWNER entry on %ProgramData% would
  * otherwise hand full control to whichever account creates the directory
- * first. AC (ALL APPLICATION PACKAGES) is required so that AppContainer
- * processes can load the hook. */
-#define HOOK_DIR_SDDL L"O:BA" L"D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)(A;OICI;FRFX;;;AC)"
+ * first.
+ *
+ * AC (ALL APPLICATION PACKAGES) and S-1-15-2-2 (ALL RESTRICTED APPLICATION
+ * PACKAGES) are both required for AppContainer capture targets to load the
+ * hook: %ProgramFiles% grants both, so the copy we ship is reachable from a
+ * less privileged AppContainer and the shared copy has to be as well. */
+#define HOOK_DIR_SDDL                                                                                    \
+	L"O:BA"                                                                                          \
+	L"D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)(A;OICI;FRFX;;;AC)(A;OICI;FRFX;;;S-1-15-2-2)"
 
 #define HOOK_ADMINISTRATORS_SID L"S-1-5-32-544"
 

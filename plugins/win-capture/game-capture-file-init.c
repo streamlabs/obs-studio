@@ -102,7 +102,10 @@ char *get_hook_path(bool b64)
 	get_programdata_path(path, L"obs-studio-hook\\");
 	make_filename(path, L"graphics-hook", L".dll");
 
-	if ((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) {
+	/* Checked again here rather than relying on what module load decided:
+	 * this is the value we are about to inject into another process, and it
+	 * is a long way from startup. */
+	if (((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) && hook_path_is_trusted(path)) {
 		char *path_utf8 = NULL;
 		os_wcs_to_utf8_ptr(path, 0, &path_utf8);
 		return path_utf8;
@@ -182,6 +185,15 @@ static bool update_hook_file(bool b64)
 
 	if (has_elevation()) {
 		DWORD s;
+
+		/* We are about to publish these bytes to a machine-wide
+		 * location, elevated. If our own copy is somewhere a standard
+		 * user can rewrite, there is nothing to publish. */
+		if (!hook_path_is_trusted(src) || !hook_path_is_trusted(src_json)) {
+			hook_warn("the hook in the install directory is modifiable by non-administrators, "
+				  "not publishing it");
+			return false;
+		}
 
 		/* Whether the files were already out of reach of standard users
 		 * decides whether their version resource means anything. If
