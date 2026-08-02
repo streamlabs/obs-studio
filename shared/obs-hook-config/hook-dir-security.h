@@ -205,6 +205,11 @@ static inline bool hook_dir_create(const wchar_t *dir)
  * re-created entry fails the copy instead of being followed. */
 static inline bool hook_install_file(const wchar_t *src, const wchar_t *dst)
 {
+	/* TODO: Authenticode-verify src here, and in the caller that decides to
+	 * keep an existing dst rather than replace it. Permissions establish who
+	 * could have written a file, not what is in it. The open question is
+	 * which publisher to accept: the hooks ship validly signed, but as "OBS
+	 * Project, LLC" rather than as us. */
 	DWORD attributes = GetFileAttributesW(dst);
 
 	if (attributes != INVALID_FILE_ATTRIBUTES) {
