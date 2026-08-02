@@ -43,6 +43,7 @@
 #include <aclapi.h>
 #include <sddl.h>
 #include <stdbool.h>
+#include <strsafe.h>
 
 /* SYSTEM and Administrators get full control, everyone else read and execute.
  * "PAI" blocks inheritance: the CREATOR OWNER entry on %ProgramData% would
@@ -223,29 +224,66 @@ static inline bool hook_path_chain_is_trusted(const wchar_t *path)
 	}
 }
 
+/* Moves an untrusted hook path aside rather than repairing it in place. ACL
+ * changes do not revoke handles that were opened before the change, so the
+ * creator could otherwise rename the hardened directory away after the final
+ * trust check and put an attacker-controlled Vulkan layer back at its name. */
+static inline bool hook_dir_quarantine(const wchar_t *dir)
+{
+	static const wchar_t *const names[] = {
+		L"graphics-hook32.dll",
+		L"graphics-hook64.dll",
+		L"obs-vulkan32.json",
+		L"obs-vulkan64.json",
+	};
+	wchar_t aside[MAX_PATH];
+	wchar_t leftover[MAX_PATH];
+	bool moved = false;
+
+	for (unsigned int suffix = 0; suffix < 10 && !moved; suffix++) {
+		if (FAILED(StringCchPrintfW(aside, _countof(aside), L"%s.quarantine%u", dir, suffix)))
+			return false;
+		moved = MoveFileExW(dir, aside, 0) != 0;
+	}
+
+	if (!moved)
+		return false;
+
+	/* Delete only names we own. Walking an attacker-created tree could cross
+	 * a junction and remove data outside the quarantine directory. */
+	for (size_t i = 0; i < _countof(names); i++) {
+		if (SUCCEEDED(StringCchPrintfW(leftover, _countof(leftover), L"%s\\%s", aside, names[i]))) {
+			MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+			if (SUCCEEDED(StringCchCatW(leftover, _countof(leftover), L".new")))
+				MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+		}
+	}
+	MoveFileExW(aside, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+	return true;
+}
+
 /* Creates the directory with the descriptor already applied, so that it is
- * never briefly writable. Succeeds if it is already there.
- *
- * A junction left behind by whoever owned the directory before us would make
- * every later step - the DACL, the copies - land on its target instead, so
- * drop the reparse point first. RemoveDirectoryW unlinks the junction itself
- * and leaves whatever it pointed at alone. */
+ * never briefly writable. Only a directory created by this call is accepted:
+ * ERROR_ALREADY_EXISTS means somebody won the name after quarantine, and
+ * hardening that object would preserve their already-open handles. */
 static inline bool hook_dir_create(const wchar_t *dir)
 {
 	SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, false};
+	DWORD error = ERROR_SUCCESS;
 	bool success = false;
-
-	if (hook_is_reparse_point(dir) && !RemoveDirectoryW(dir))
-		return false;
 
 	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(HOOK_DIR_SDDL, SDDL_REVISION_1,
 								  &sa.lpSecurityDescriptor, NULL)) {
 		return false;
 	}
 
-	success = CreateDirectoryW(dir, &sa) || GetLastError() == ERROR_ALREADY_EXISTS;
+	success = CreateDirectoryW(dir, &sa) != 0;
+	if (!success)
+		error = GetLastError();
 
 	LocalFree(sa.lpSecurityDescriptor);
+	if (!success)
+		SetLastError(error);
 	return success && !hook_is_reparse_point(dir);
 }
 

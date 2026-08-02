@@ -201,12 +201,21 @@ static bool update_hook_file(bool b64)
 		 * arbitration below is safe. If they were not, anyone could
 		 * have, along with whatever version they cared to stamp on it,
 		 * so nothing there survives. */
-		bool was_trusted = hook_path_is_trusted(dir) && hook_path_is_trusted(dst) &&
-				   hook_path_is_trusted(dst_json);
+		bool dir_was_trusted = dir_exists(dir) && hook_path_chain_is_trusted(dir);
+		bool was_trusted = dir_was_trusted && hook_path_is_trusted(dst) && hook_path_is_trusted(dst_json);
 
-		if (!hook_dir_create(dir)) {
-			hook_warn("failed to create the hook directory: %lu", GetLastError());
-			return false;
+		if (!dir_was_trusted) {
+			DWORD attributes = GetFileAttributesW(dir);
+
+			if (attributes != INVALID_FILE_ATTRIBUTES && !hook_dir_quarantine(dir)) {
+				hook_warn("failed to move the untrusted hook directory aside: %lu", GetLastError());
+				return false;
+			}
+
+			if (!hook_dir_create(dir)) {
+				hook_warn("failed to create a new hook directory: %lu", GetLastError());
+				return false;
+			}
 		}
 
 		s = hook_dir_take_ownership(dir);
