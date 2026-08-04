@@ -102,9 +102,8 @@ char *get_hook_path(bool b64)
 	get_programdata_path(path, L"obs-studio-hook\\");
 	make_filename(path, L"graphics-hook", L".dll");
 
-	/* Checked again here rather than relying on what module load decided:
-	 * this is the value we are about to inject into another process, and it
-	 * is a long way from startup. */
+	/* Checked again rather than relying on what module load decided: this is
+	 * the value we are about to inject into another process. */
 	if (((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) && hook_path_is_trusted(path)) {
 		char *path_utf8 = NULL;
 		os_wcs_to_utf8_ptr(path, 0, &path_utf8);
@@ -119,7 +118,7 @@ char *get_hook_path(bool b64)
 
 #define IMPLICIT_LAYERS L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers"
 
-/* Resolves against the module's data directory rather than the current working
+/* Resolves against the module's data directory, not the current working
  * directory, which is not ours to rely on. */
 static bool module_file_path(const char *name, wchar_t *out, size_t out_bytes)
 {
@@ -146,8 +145,7 @@ static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
 		return false;
 	}
 
-	/* a file that predates the lockdown carries explicit entries of its
-	 * own, and a fresh copy is owned by whoever ran us */
+	/* a fresh copy is owned by whoever ran us */
 	if (!hook_file_reset_acl(dst)) {
 		hook_warn("failed to reset permissions on %ls", dst);
 		return false;
@@ -186,21 +184,19 @@ static bool update_hook_file(bool b64)
 	if (has_elevation()) {
 		DWORD s;
 
-		/* We are about to publish these bytes to a machine-wide
-		 * location, elevated. If our own copy is somewhere a standard
-		 * user can rewrite, there is nothing to publish. */
+		/* We are about to publish these bytes machine-wide, elevated. If
+		 * our own copy sits somewhere a standard user can rewrite, there
+		 * is nothing here worth publishing. */
 		if (!hook_path_chain_is_trusted(src) || !hook_path_is_trusted(src_json)) {
 			hook_warn("the hook in the install directory is modifiable by non-administrators, "
 				  "not publishing it");
 			return false;
 		}
 
-		/* Whether the files were already out of reach of standard users
-		 * decides whether their version resource means anything. If
-		 * they were, an administrator put them there and the version
-		 * arbitration below is safe. If they were not, anyone could
-		 * have, along with whatever version they cared to stamp on it,
-		 * so nothing there survives. */
+		/* Read before we touch anything: the version arbitration below
+		 * only means something if standard users could not have written
+		 * these files. Hardening propagates to children, so afterwards
+		 * the answer would always be yes. */
 		bool dir_was_trusted = dir_exists(dir) && hook_path_chain_is_trusted(dir);
 		bool was_trusted = dir_was_trusted && hook_path_is_trusted(dst) && hook_path_is_trusted(dst_json);
 
@@ -231,9 +227,8 @@ static bool update_hook_file(bool b64)
 		if (!was_trusted && (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst)))
 			return false;
 	} else if (!dir_exists(dir)) {
-		/* the shared directory is provisioned by the installer and the
-		 * updater, both of which run elevated; without it, callers fall
-		 * back to the hook in the install directory */
+		/* provisioned by the installer and the updater, both elevated;
+		 * without it, callers fall back to the install directory */
 		return false;
 	} else if (!file_exists(dst) || !file_exists(dst_json)) {
 		hook_warn("hook files are missing and only an elevated process may install them");
@@ -251,12 +246,10 @@ static bool update_hook_file(bool b64)
 	if (!get_dll_ver(src, &ver_src) || !get_dll_ver(dst, &ver_dst))
 		return false;
 
-	/* This directory is shared with every other OBS derived application on
-	 * the machine, and the hook version is the protocol they agree on -
-	 * which is why forks are asked not to bump it independently. Newest
-	 * wins. Now that only administrators can write here, a version we read
-	 * is one an administrator installed, so it is worth honouring: do not
-	 * replace a newer hook that another one of them provisioned. */
+	/* Newest wins: the directory is shared with every other OBS derived
+	 * application on the machine and the hook version is the protocol they
+	 * agree on. Only trustworthy because only administrators can write
+	 * here, so the version we read is one an administrator installed. */
 	if (win_version_compare(&ver_dst, &ver_src) < 0) {
 		/* an unelevated process cannot refresh the shared copy, so it
 		 * uses the one in the install directory instead */
@@ -355,9 +348,7 @@ static void remove_vulkan_registry(bool b64, HKEY root)
 }
 
 /* A layer entry outlives the directory it points at, and the loader hands that
- * directory to every vulkan process on the machine — including elevated ones.
- * Leaving one behind for a directory we just refused would be worse than the
- * capture path we are declining to use. */
+ * directory to every vulkan process on the machine, elevated ones included. */
 static void disable_vulkan_layer(bool b64)
 {
 	wchar_t path[MAX_PATH];

@@ -7,35 +7,11 @@
  * Header-only so the plugin and the updater share one definition of what
  * "correctly locked down" means. Callers do their own logging.
  *
- * On why this directory is shared rather than per-application, which looks
- * like an obvious thing to fix when several OBS derived applications are
- * installed side by side: the directory is not the shared part, it is the
- * arbitration for it. The hook protocol is a machine-wide singleton several
- * layers down.
- *
- *   - The hook's IPC objects are global names keyed by the *captured* process,
- *     not by the capturing application: CaptureHook_HookInfo<pid>,
- *     CaptureHook_TextureMutex1<pid>, and so on. Two applications capturing one
- *     game already meet in the same shared memory.
- *   - There is one vulkan layer name, VK_LAYER_OBS_HOOK, and implicit layers
- *     are machine-wide. A second registered manifest means two hooks loaded
- *     into every rendering process, not one each.
- *   - HOOK_VER in graphics-hook-ver.h is the protocol version those parties
- *     agree on, which is why forks are asked not to bump it on their own.
- *
- * Give each application its own directory and the sharing stays while the
- * arbitration goes: differently versioned hooks meeting in the same shared
- * memory, and doubled-up vulkan layers. Splitting it properly means forking
- * the whole namespace - version, object names, layer name - which permanently
- * de-interoperates and doubles the hooks on any machine with two of these
- * installed.
- *
- * What the sharing does cost, and it is worth being clear about it: the old
- * cooperative protocol relied on this directory being writable by everyone,
- * which is the vulnerability. Once only administrators can write, the newest
- * hook still wins, but only among writers that run elevated. Everyone else
- * falls back to the copy in their own install directory, which serves game
- * capture but not the vulkan layer. */
+ * Do not split this directory per-application. It is the arbitration point for
+ * a machine-wide singleton: the hook's IPC object names are keyed by the
+ * captured process, there is one implicit vulkan layer name, and HOOK_VER is
+ * the protocol version every OBS derived application on the box agrees on.
+ * Separate directories would keep the sharing and lose the arbitration. */
 
 #pragma once
 
@@ -46,14 +22,10 @@
 #include <strsafe.h>
 
 /* SYSTEM and Administrators get full control, everyone else read and execute.
- * "PAI" blocks inheritance: the CREATOR OWNER entry on %ProgramData% would
- * otherwise hand full control to whichever account creates the directory
- * first.
- *
- * AC (ALL APPLICATION PACKAGES) and S-1-15-2-2 (ALL RESTRICTED APPLICATION
- * PACKAGES) are both required for AppContainer capture targets to load the
- * hook: %ProgramFiles% grants both, so the copy we ship is reachable from a
- * less privileged AppContainer and the shared copy has to be as well. */
+ * PAI blocks inheritance, which is what stops the CREATOR OWNER entry on
+ * %ProgramData% handing full control to whoever creates the directory first.
+ * AC and S-1-15-2-2 (ALL [RESTRICTED] APPLICATION PACKAGES) are what let an
+ * AppContainer capture target load the hook. */
 #define HOOK_DIR_SDDL                                                                                    \
 	L"O:BA"                                                                                          \
 	L"D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)(A;OICI;FRFX;;;AC)(A;OICI;FRFX;;;S-1-15-2-2)"
@@ -64,10 +36,8 @@
 	(FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | \
 	 DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL)
 
-/* For a directory somewhere above what we care about, the only rights that
- * matter are the ones that let someone replace the child out from under us:
- * deleting it, or rewriting its security so they can. Being able to create
- * other entries alongside it is not interesting - which is just as well, since
+/* Above the object itself, only rights that let someone swap the child out
+ * matter. Creating entries alongside it does not, and must not be checked for:
  * every drive root grants exactly that to Authenticated Users. */
 #define HOOK_ANCESTOR_WRITE_ACCESS (FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL)
 
@@ -123,8 +93,7 @@ static inline bool hook_is_reparse_point(const wchar_t *path)
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-/* True only if the object is owned by an administrative account and nothing
- * else holds any of write_mask on it. */
+/* Owned by an administrative account, with nobody else holding write_mask. */
 static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
 {
 	PSECURITY_DESCRIPTOR sd = NULL;
@@ -132,8 +101,7 @@ static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
 	PACL dacl = NULL;
 	bool trusted = false;
 
-	/* Every other check here follows the link, so it would describe the
-	 * target rather than the thing we are about to read or write. */
+	/* every other check here follows the link */
 	if (hook_is_reparse_point(path))
 		return false;
 
@@ -154,14 +122,10 @@ static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
 			goto done;
 		if (ace->Header.AceType == ACCESS_DENIED_ACE_TYPE)
 			continue;
-		/* anything other than a plain allow or deny entry is not worth
-		 * reasoning about */
 		if (ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE)
 			goto done;
-		/* an inherit-only entry, such as the CREATOR OWNER one that
-		 * %ProgramData% and %ProgramFiles% both carry, grants nothing
-		 * on this object; the files it would apply to are checked in
-		 * their own right */
+		/* inherit-only, such as the CREATOR OWNER entry %ProgramData% and
+		 * %ProgramFiles% both carry, grants nothing on this object */
 		if (ace->Header.AceFlags & INHERIT_ONLY_ACE)
 			continue;
 		if ((ace->Mask & write_mask) == 0)
@@ -177,16 +141,14 @@ done:
 	return trusted;
 }
 
-/* Anything a standard user is able to replace, we do not load into another
- * process. */
 static inline bool hook_path_is_trusted(const wchar_t *path)
 {
 	return hook_object_is_trusted(path, HOOK_WRITE_ACCESS);
 }
 
-/* The object plus every directory above it, up to the drive root. Locking down
- * a file means nothing if a standard user can rename one of its parents and
- * present a different tree under the same path. */
+/* The object plus every directory above it. Locking down a file means nothing
+ * if a standard user can rename one of its parents and present a different
+ * tree under the same path. */
 static inline bool hook_path_chain_is_trusted(const wchar_t *path)
 {
 	wchar_t buffer[MAX_PATH];
@@ -224,10 +186,9 @@ static inline bool hook_path_chain_is_trusted(const wchar_t *path)
 	}
 }
 
-/* Moves an untrusted hook path aside rather than repairing it in place. ACL
- * changes do not revoke handles that were opened before the change, so the
- * creator could otherwise rename the hardened directory away after the final
- * trust check and put an attacker-controlled Vulkan layer back at its name. */
+/* Moves an untrusted hook path aside rather than repairing it in place: an ACL
+ * change does not revoke handles opened before it, so the creator could rename
+ * the hardened directory away after our final check and put their own back. */
 static inline bool hook_dir_quarantine(const wchar_t *dir)
 {
 	static const wchar_t *const names[] = {
@@ -249,8 +210,8 @@ static inline bool hook_dir_quarantine(const wchar_t *dir)
 	if (!moved)
 		return false;
 
-	/* Delete only names we own. Walking an attacker-created tree could cross
-	 * a junction and remove data outside the quarantine directory. */
+	/* Only names we own: walking an attacker-created tree could cross a
+	 * junction and remove data outside the quarantine directory. */
 	for (size_t i = 0; i < _countof(names); i++) {
 		if (SUCCEEDED(StringCchPrintfW(leftover, _countof(leftover), L"%s\\%s", aside, names[i]))) {
 			MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
@@ -262,10 +223,10 @@ static inline bool hook_dir_quarantine(const wchar_t *dir)
 	return true;
 }
 
-/* Creates the directory with the descriptor already applied, so that it is
- * never briefly writable. Only a directory created by this call is accepted:
- * ERROR_ALREADY_EXISTS means somebody won the name after quarantine, and
- * hardening that object would preserve their already-open handles. */
+/* The descriptor goes on at creation, so the directory is never briefly
+ * writable. ERROR_ALREADY_EXISTS is a failure and not a success: it means
+ * somebody won the name after quarantine, and hardening their directory in
+ * place would leave the handles they already opened alive. */
 static inline bool hook_dir_create(const wchar_t *dir)
 {
 	SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, false};
@@ -287,20 +248,15 @@ static inline bool hook_dir_create(const wchar_t *dir)
 	return success && !hook_is_reparse_point(dir);
 }
 
-/* Replaces dst with src without ever writing through an existing entry.
- *
- * A hard link planted at dst while the directory was writable shares its data
- * with the file it was linked to, so copying onto it would put our bytes into
- * that file - an arbitrary write, since we run elevated. Deleting removes the
- * directory entry and not the link target, and refusing to overwrite means a
- * re-created entry fails the copy instead of being followed. */
+/* Delete first, then copy without overwrite. An entry planted at dst while the
+ * directory was writable may be a hard link, and writing through it would put
+ * our bytes into the link target - an arbitrary write, since we run elevated. */
 static inline bool hook_install_file(const wchar_t *src, const wchar_t *dst)
 {
-	/* TODO: Authenticode-verify src here, and in the caller that decides to
-	 * keep an existing dst rather than replace it. Permissions establish who
-	 * could have written a file, not what is in it. The open question is
-	 * which publisher to accept: the hooks ship validly signed, but as "OBS
-	 * Project, LLC" rather than as us. */
+	/* TODO: Authenticode-verify src, and in the caller that keeps an
+	 * existing dst rather than replacing it. Permissions establish who could
+	 * have written a file, not what is in it. Open question is which
+	 * publisher to accept: the hooks are signed as "OBS Project, LLC". */
 	DWORD attributes = GetFileAttributesW(dst);
 
 	if (attributes != INVALID_FILE_ATTRIBUTES) {
@@ -314,14 +270,9 @@ static inline bool hook_install_file(const wchar_t *src, const wchar_t *dst)
 	return CopyFileW(src, dst, true);
 }
 
-/* Ownership is taken separately from, and before, the DACL: a directory left
- * behind by an earlier release can be owned by a standard user, and only the
- * owner may rewrite the DACL. Both require elevation and return a win32 error
- * so the caller can say which step failed.
- *
- * Taking ownership is allowed to fail on its own — we may already hold
- * WRITE_DAC — but hook_path_is_trusted() will then reject the directory, so a
- * failure here is worth logging. */
+/* Before the DACL, and separately from it: a directory left behind by an
+ * earlier release can be owned by a standard user, and only the owner may
+ * rewrite the DACL. */
 static inline DWORD hook_dir_take_ownership(const wchar_t *dir)
 {
 	PSECURITY_DESCRIPTOR sd = NULL;
@@ -372,9 +323,9 @@ done:
 	return s;
 }
 
-/* Drops explicit entries a file picked up while the directory was writable, so
- * that it inherits the descriptor above instead, and hands it to the
- * administrators group rather than the account that ran the copy. */
+/* Only ever for a file we just wrote. On one we merely found, this would hand
+ * somebody else's file to the administrators group and make it pass the trust
+ * check above. */
 static inline bool hook_file_reset_acl(const wchar_t *path)
 {
 	ACL empty_dacl;
