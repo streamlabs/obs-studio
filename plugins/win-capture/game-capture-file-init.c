@@ -102,9 +102,11 @@ char *get_hook_path(bool b64)
 	get_programdata_path(path, L"obs-studio-hook\\");
 	make_filename(path, L"graphics-hook", L".dll");
 
-	/* Checked again rather than relying on what module load decided: this is
-	 * the value we are about to inject into another process. */
-	if (((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) && hook_path_is_trusted(path)) {
+	/* The whole chain, re-checked rather than relying on what module load
+	 * decided: this is the value we are about to inject into another
+	 * process, and startup was a long time ago. */
+	if (((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) &&
+	    hook_path_chain_is_trusted(path)) {
 		char *path_utf8 = NULL;
 		os_wcs_to_utf8_ptr(path, 0, &path_utf8);
 		return path_utf8;
