@@ -1565,7 +1565,7 @@ FILE *os_fopen_write_nofollow(const char *path)
 	for (size_t attempt = 0; attempt < 3; attempt++) {
 		DWORD error;
 
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 		if (handle != INVALID_HANDLE_VALUE)
 			break;
@@ -1576,7 +1576,7 @@ FILE *os_fopen_write_nofollow(const char *path)
 			goto cleanup;
 		}
 
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_NEW,
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_NEW,
 				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 		if (handle != INVALID_HANDLE_VALUE)
 			break;
@@ -1603,8 +1603,8 @@ FILE *os_fopen_write_nofollow(const char *path)
 			goto cleanup;
 		}
 		CloseHandle(handle);
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
-				     NULL);
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+				     FILE_ATTRIBUTE_NORMAL, NULL);
 		if (handle == INVALID_HANDLE_VALUE) {
 			set_errno_from_win32(GetLastError());
 			goto cleanup;

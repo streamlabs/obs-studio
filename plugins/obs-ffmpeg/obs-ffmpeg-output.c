@@ -381,12 +381,13 @@ static inline bool init_streams(struct ffmpeg_data *data)
 	return true;
 }
 
+#ifdef _WIN32
 static int file_write_packet(void *opaque, const uint8_t *buffer, int size)
 {
 	FILE *file = opaque;
 	size_t written = fwrite(buffer, 1, (size_t)size, file);
 
-	if (!written && ferror(file))
+	if (written != (size_t)size)
 		return AVERROR(errno ? errno : EIO);
 	return (int)written;
 }
@@ -411,28 +412,20 @@ static bool is_native_file_path(const char *url)
 	const char *protocol = avio_find_protocol_name(url);
 	if ((protocol && strcmp(protocol, "file") == 0) || astrcmpi_n(url, "file:", 5) == 0)
 		return true;
-
-#ifdef _WIN32
 	const bool drive_path = ((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) &&
 				url[1] == ':';
 	const bool unc_path = (url[0] == '\\' && url[1] == '\\') || (url[0] == '/' && url[1] == '/');
 	return drive_path || unc_path;
-#else
-	return false;
-#endif
 }
 
 static const char *get_native_file_path(const char *url)
 {
 	const char *path = astrcmpi_n(url, "file:", 5) == 0 ? url + 5 : url;
-
-#ifdef _WIN32
 	/* Convert file:/C:/... and file:///C:/... to native drive paths. */
 	if (path[0] == '/' && path[1] && path[2] == ':')
 		path++;
 	else if (path[0] == '/' && path[1] == '/' && path[2] == '/' && path[3] && path[4] == ':')
 		path += 3;
-#endif
 	return path;
 }
 
@@ -465,6 +458,7 @@ static int open_native_output_file(struct ffmpeg_data *data)
 	data->output->flags |= AVFMT_FLAG_CUSTOM_IO;
 	return 0;
 }
+#endif
 
 static inline bool open_output_file(struct ffmpeg_data *data)
 {
@@ -492,9 +486,11 @@ static inline bool open_output_file(struct ffmpeg_data *data)
 	}
 
 	if ((format->flags & AVFMT_NOFILE) == 0) {
+#ifdef _WIN32
 		if (is_native_file_path(data->config.url))
 			ret = open_native_output_file(data);
 		else
+#endif
 			ret = avio_open2(&data->output->pb, data->config.url, AVIO_FLAG_WRITE, NULL, &dict);
 		if (ret < 0) {
 			ffmpeg_log_error(LOG_WARNING, data, "Couldn't open '%s', %s", data->config.url,
