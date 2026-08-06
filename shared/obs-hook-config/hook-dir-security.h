@@ -219,15 +219,28 @@ static inline bool hook_dir_quarantine(const wchar_t *dir)
 	if (!moved)
 		return false;
 
-	/* Only names we own: walking an attacker-created tree could cross a
-	 * junction and remove data outside the quarantine directory. */
-	for (size_t i = 0; i < _countof(names); i++) {
-		if (SUCCEEDED(StringCchPrintfW(leftover, _countof(leftover), L"%s\\%s", aside, names[i]))) {
-			MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
-			if (SUCCEEDED(StringCchCatW(leftover, _countof(leftover), L".new")))
+	/* A junction is still a junction once renamed, and it is a junction we
+	 * were handed rather than one we made: every child path below would
+	 * resolve through it and schedule a deletion in somebody else's
+	 * directory, performed at reboot by the session manager as SYSTEM. The
+	 * reparse point itself is all there is to remove.
+	 *
+	 * Tested here and not before the rename, where it would only describe
+	 * what the path used to be: anyone who can put a junction there can put
+	 * one there again between the check and the move. */
+	if (!hook_is_reparse_point(aside)) {
+		/* Only names we own: walking an attacker-created tree could
+		 * cross a junction and remove data outside the quarantine
+		 * directory. */
+		for (size_t i = 0; i < _countof(names); i++) {
+			if (SUCCEEDED(StringCchPrintfW(leftover, _countof(leftover), L"%s\\%s", aside, names[i]))) {
 				MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+				if (SUCCEEDED(StringCchCatW(leftover, _countof(leftover), L".new")))
+					MoveFileExW(leftover, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+			}
 		}
 	}
+
 	MoveFileExW(aside, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
 	return true;
 }
