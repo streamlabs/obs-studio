@@ -32,6 +32,10 @@ extern "C" {
 
 EXPORT FILE *os_wfopen(const wchar_t *path, const char *mode);
 EXPORT FILE *os_fopen(const char *path, const char *mode);
+/* Opens a file for binary writing without following Windows name-surrogate reparse points. */
+EXPORT FILE *os_fopen_write_nofollow(const char *path);
+/* Best-effort preflight; write-time enforcement is os_fopen_write_nofollow. */
+EXPORT bool os_is_path_safe(const char *path);
 EXPORT int64_t os_fgetsize(FILE *file);
 
 #ifdef _WIN32

@@ -1003,7 +1003,7 @@ static inline int open_output_file(struct ffmpeg_mux *ffm)
 			// stalls when recording.
 
 			// We're in charge of managing the actual file now
-			ffm->io.output_file = os_fopen(ffm->params.file, "wb");
+			ffm->io.output_file = os_fopen_write_nofollow(ffm->params.file);
 			if (!ffm->io.output_file) {
 				fprintf(stderr, "Couldn't open '%s', %s\n", ffm->params.printable_file.array,
 					strerror(errno));

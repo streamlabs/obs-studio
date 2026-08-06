@@ -22,6 +22,8 @@
 #include <psapi.h>
 #include <math.h>
 #include <rpc.h>
+#include <fcntl.h>
+#include <io.h>
 
 #include "base.h"
 #include "platform.h"
@@ -1369,4 +1371,302 @@ char *os_generate_uuid(void)
 		    uuid.Data4[6], uuid.Data4[7]);
 
 	return uuid_str.array;
+}
+
+static void set_errno_from_win32(DWORD error)
+{
+	switch (error) {
+	case ERROR_FILE_NOT_FOUND:
+	case ERROR_PATH_NOT_FOUND:
+		errno = ENOENT;
+		break;
+	case ERROR_FILE_EXISTS:
+	case ERROR_ALREADY_EXISTS:
+		errno = EEXIST;
+		break;
+	case ERROR_INVALID_NAME:
+	case ERROR_BAD_PATHNAME:
+		errno = EINVAL;
+		break;
+	default:
+		errno = EACCES;
+		break;
+	}
+}
+
+static size_t get_path_root_length(const wchar_t *path)
+{
+	const size_t length = wcslen(path);
+	const wchar_t *first;
+	const wchar_t *second;
+
+	if (length >= 3 && path[1] == L':' && path[2] == L'\\')
+		return 3;
+
+	if (length < 5 || path[0] != L'\\' || path[1] != L'\\')
+		return 0;
+
+	if (path[2] == L'?' && path[3] == L'\\') {
+		if (length >= 7 && path[5] == L':' && path[6] == L'\\')
+			return 7;
+		if (length < 9 || _wcsnicmp(path + 4, L"UNC\\", 4) != 0)
+			return 0;
+		first = wcschr(path + 8, L'\\');
+	} else {
+		if (path[2] == L'.' && path[3] == L'\\')
+			return 0;
+		first = wcschr(path + 2, L'\\');
+	}
+
+	if (!first || !first[1])
+		return 0;
+	second = wcschr(first + 1, L'\\');
+	return second ? (size_t)(second - path + 1) : wcslen(path);
+}
+
+static wchar_t *get_absolute_path(const wchar_t *path)
+{
+	DWORD size;
+	DWORD length;
+	wchar_t *absolute;
+
+	if (!path || !*path)
+		return NULL;
+
+	size = GetFullPathNameW(path, 0, NULL, NULL);
+	if (!size)
+		return NULL;
+
+	absolute = bmalloc((size_t)size * sizeof(*absolute));
+	length = GetFullPathNameW(path, size, absolute, NULL);
+	if (!length || length >= size) {
+		bfree(absolute);
+		return NULL;
+	}
+
+	for (DWORD i = 0; i < length; i++) {
+		if (absolute[i] == L'/')
+			absolute[i] = L'\\';
+	}
+
+	if (!get_path_root_length(absolute)) {
+		bfree(absolute);
+		return NULL;
+	}
+
+	return absolute;
+}
+
+static void close_handles(HANDLE *handles, size_t count)
+{
+	while (count)
+		CloseHandle(handles[--count]);
+	bfree(handles);
+}
+
+static bool is_safe_path_handle(HANDLE handle, bool require_directory, bool *is_reparse)
+{
+	FILE_ATTRIBUTE_TAG_INFO info;
+
+	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)))
+		return false;
+	const bool reparse = (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+	if (is_reparse)
+		*is_reparse = reparse;
+	/* Cloud placeholders are reparse points but not name surrogates. */
+	if (reparse && IsReparseTagNameSurrogate(info.ReparseTag))
+		return false;
+	return !require_directory || (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **handles_out, size_t *count_out)
+{
+	const size_t length = wcslen(path);
+	const size_t root_length = get_path_root_length(path);
+	HANDLE *handles = bmalloc((length + 1) * sizeof(*handles));
+	size_t count = 0;
+	size_t component = root_length;
+
+	while (component < length) {
+		size_t end;
+		bool final;
+		wchar_t saved;
+		HANDLE handle;
+
+		while (component < length && path[component] == L'\\')
+			component++;
+		if (component == length)
+			break;
+
+		end = component;
+		while (end < length && path[end] != L'\\')
+			end++;
+		final = end == length;
+		if (final && !include_final)
+			break;
+
+		saved = path[end];
+		path[end] = 0;
+		/* Denying write/delete sharing prevents rename or reparse mutation until the final handle is secured. */
+		handle = CreateFileW(path, 0, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+				     FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+		path[end] = saved;
+
+		if (handle == INVALID_HANDLE_VALUE) {
+			DWORD error = GetLastError();
+			close_handles(handles, count);
+			set_errno_from_win32(error);
+			return false;
+		}
+
+		if (!is_safe_path_handle(handle, !final || include_final, NULL)) {
+			CloseHandle(handle);
+			close_handles(handles, count);
+			errno = EACCES;
+			return false;
+		}
+
+		handles[count++] = handle;
+		component = end + 1;
+	}
+
+	*handles_out = handles;
+	*count_out = count;
+	return true;
+}
+
+FILE *os_fopen_write_nofollow(const char *path)
+{
+	wchar_t *wide_path = NULL;
+	wchar_t *absolute = NULL;
+	HANDLE *parent_handles = NULL;
+	size_t parent_count = 0;
+	HANDLE handle = INVALID_HANDLE_VALUE;
+	FILE *file = NULL;
+	bool reparse = false;
+	BY_HANDLE_FILE_INFORMATION reparse_info;
+
+	if (!path || !*path) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	os_utf8_to_wcs_ptr(path, 0, &wide_path);
+	absolute = get_absolute_path(wide_path);
+	bfree(wide_path);
+	if (!absolute) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (!lock_safe_components(absolute, false, &parent_handles, &parent_count))
+		goto cleanup;
+
+	for (size_t attempt = 0; attempt < 3; attempt++) {
+		DWORD error;
+
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+		if (handle != INVALID_HANDLE_VALUE)
+			break;
+
+		error = GetLastError();
+		if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+			set_errno_from_win32(error);
+			goto cleanup;
+		}
+
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_NEW,
+				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+		if (handle != INVALID_HANDLE_VALUE)
+			break;
+		error = GetLastError();
+		if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
+			set_errno_from_win32(error);
+			goto cleanup;
+		}
+	}
+
+	if (handle == INVALID_HANDLE_VALUE) {
+		errno = EACCES;
+		goto cleanup;
+	}
+
+	if (!is_safe_path_handle(handle, false, &reparse)) {
+		errno = EACCES;
+		goto cleanup;
+	}
+
+	if (reparse) {
+		if (!GetFileInformationByHandle(handle, &reparse_info)) {
+			set_errno_from_win32(GetLastError());
+			goto cleanup;
+		}
+		CloseHandle(handle);
+		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+				     NULL);
+		if (handle == INVALID_HANDLE_VALUE) {
+			set_errno_from_win32(GetLastError());
+			goto cleanup;
+		}
+
+		BY_HANDLE_FILE_INFORMATION data_info;
+		if (!GetFileInformationByHandle(handle, &data_info)) {
+			set_errno_from_win32(GetLastError());
+			goto cleanup;
+		}
+		if (data_info.dwVolumeSerialNumber != reparse_info.dwVolumeSerialNumber ||
+		    data_info.nFileIndexHigh != reparse_info.nFileIndexHigh ||
+		    data_info.nFileIndexLow != reparse_info.nFileIndexLow) {
+			errno = EACCES;
+			goto cleanup;
+		}
+	}
+
+	LARGE_INTEGER zero = {0};
+	if (!SetFilePointerEx(handle, zero, NULL, FILE_BEGIN) || !SetEndOfFile(handle)) {
+		set_errno_from_win32(GetLastError());
+		goto cleanup;
+	}
+
+	int fd = _open_osfhandle((intptr_t)handle, _O_WRONLY | _O_BINARY | _O_NOINHERIT);
+	if (fd == -1)
+		goto cleanup;
+	handle = INVALID_HANDLE_VALUE;
+	file = _fdopen(fd, "wb");
+	if (!file)
+		_close(fd);
+
+cleanup:
+	if (handle != INVALID_HANDLE_VALUE)
+		CloseHandle(handle);
+	close_handles(parent_handles, parent_count);
+	bfree(absolute);
+	return file;
+}
+
+bool os_is_path_safe(const char *path)
+{
+	wchar_t *wide_path = NULL;
+	wchar_t *absolute = NULL;
+	HANDLE *handles = NULL;
+	size_t count = 0;
+	bool safe = false;
+
+	if (!path || !*path)
+		return false;
+
+	os_utf8_to_wcs_ptr(path, 0, &wide_path);
+	absolute = get_absolute_path(wide_path);
+	bfree(wide_path);
+	if (!absolute)
+		return false;
+
+	while (wcslen(absolute) > get_path_root_length(absolute) && absolute[wcslen(absolute) - 1] == L'\\')
+		absolute[wcslen(absolute) - 1] = 0;
+
+	safe = lock_safe_components(absolute, true, &handles, &count);
+	close_handles(handles, count);
+	bfree(absolute);
+	return safe;
 }

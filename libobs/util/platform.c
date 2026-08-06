@@ -70,6 +70,18 @@ FILE *os_fopen(const char *path, const char *mode)
 #endif
 }
 
+#ifndef _WIN32
+FILE *os_fopen_write_nofollow(const char *path)
+{
+	return os_fopen(path, "wb");
+}
+
+bool os_is_path_safe(const char *path)
+{
+	return path && *path;
+}
+#endif
+
 int64_t os_fgetsize(FILE *file)
 {
 	int64_t cur_offset = os_ftelli64(file);
