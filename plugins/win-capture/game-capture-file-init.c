@@ -156,7 +156,25 @@ static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
 	return true;
 }
 
-static bool update_hook_file(bool b64)
+/* Whether the shared copy is usable, and if not, whether the implicit vulkan
+ * layer may go on pointing at it.
+ *
+ * Unusable is our problem: a source we do not have, no elevation to refresh
+ * with, a protocol version we do not speak. It says nothing about the shared
+ * directory, which may belong to another OBS derived application that is using
+ * it perfectly happily - and since the layer registration is machine-wide,
+ * removing it over our own trouble breaks their capture, not ours.
+ *
+ * Unsafe is the directory's problem: untrusted, or holding files we cannot
+ * vouch for, or gone. The loader hands that directory to every vulkan process
+ * on the machine, elevated ones included, so the entry has to go. */
+enum hook_shared_state {
+	HOOK_SHARED_OK,
+	HOOK_SHARED_UNUSABLE,
+	HOOK_SHARED_UNSAFE,
+};
+
+static enum hook_shared_state update_hook_file(bool b64)
 {
 	wchar_t dir[MAX_PATH];
 	wchar_t src[MAX_PATH];
@@ -166,11 +184,11 @@ static bool update_hook_file(bool b64)
 
 	if (!module_file_path(b64 ? "graphics-hook64.dll" : "graphics-hook32.dll", src, sizeof(src))) {
 		hook_warn("source graphics-hook%s.dll missing", b64 ? "64" : "32");
-		return false;
+		return HOOK_SHARED_UNUSABLE;
 	}
 	if (!module_file_path(b64 ? "obs-vulkan64.json" : "obs-vulkan32.json", src_json, sizeof(src_json))) {
 		hook_warn("source obs-vulkan%s.json missing", b64 ? "64" : "32");
-		return false;
+		return HOOK_SHARED_UNUSABLE;
 	}
 
 	get_programdata_path(dir, L"obs-studio-hook");
@@ -192,7 +210,8 @@ static bool update_hook_file(bool b64)
 		if (!hook_path_chain_is_trusted(src) || !hook_path_is_trusted(src_json)) {
 			hook_warn("the hook in the install directory is modifiable by non-administrators, "
 				  "not publishing it");
-			return false;
+			/* our copy, not the shared one - it may be sound */
+			return HOOK_SHARED_UNUSABLE;
 		}
 
 		/* Read before we touch anything: the version arbitration below
@@ -207,12 +226,12 @@ static bool update_hook_file(bool b64)
 
 			if (attributes != INVALID_FILE_ATTRIBUTES && !hook_dir_quarantine(dir)) {
 				hook_warn("failed to move the untrusted hook directory aside: %lu", GetLastError());
-				return false;
+				return HOOK_SHARED_UNSAFE;
 			}
 
 			if (!hook_dir_create(dir)) {
 				hook_warn("failed to create a new hook directory: %lu", GetLastError());
-				return false;
+				return HOOK_SHARED_UNSAFE;
 			}
 		}
 
@@ -223,30 +242,37 @@ static bool update_hook_file(bool b64)
 		s = hook_dir_apply_dacl(dir);
 		if (s != ERROR_SUCCESS) {
 			hook_warn("failed to secure the hook directory: %lu", s);
-			return false;
+			return HOOK_SHARED_UNSAFE;
 		}
 
+		/* the directory was just quarantined or recreated, so a failure
+		 * here leaves the layer pointing at a manifest we did not write */
 		if (!was_trusted && (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst)))
-			return false;
+			return HOOK_SHARED_UNSAFE;
 	} else if (!dir_exists(dir)) {
 		/* provisioned by the installer and the updater, both elevated;
 		 * without it, callers fall back to the install directory */
-		return false;
+		return HOOK_SHARED_UNSAFE;
 	} else if (!file_exists(dst) || !file_exists(dst_json)) {
 		hook_warn("hook files are missing and only an elevated process may install them");
-		return false;
+		return HOOK_SHARED_UNSAFE;
 	}
 
 	if (!hook_path_chain_is_trusted(dir) || !hook_path_is_trusted(dst) || !hook_path_is_trusted(dst_json)) {
 		hook_warn("the hook directory or its files are modifiable by non-administrators, ignoring them");
-		return false;
+		return HOOK_SHARED_UNSAFE;
 	}
+
+	/* Past this point the shared directory has passed the trust check, so
+	 * nothing below rejects it - it is administrator owned and whatever is
+	 * in it was put there by an administrator. What is left is only whether
+	 * we can use it, and the layer is not ours to withdraw over that. */
 
 	struct win_version_info ver_src = {0};
 	struct win_version_info ver_dst = {0};
 
 	if (!get_dll_ver(src, &ver_src) || !get_dll_ver(dst, &ver_dst))
-		return false;
+		return HOOK_SHARED_UNUSABLE;
 
 	/* Newest wins: the directory is shared with every other OBS derived
 	 * application on the machine and the hook version is the protocol they
@@ -256,18 +282,20 @@ static bool update_hook_file(bool b64)
 		/* an unelevated process cannot refresh the shared copy, so it
 		 * uses the one in the install directory instead */
 		if (!has_elevation())
-			return false;
+			return HOOK_SHARED_UNUSABLE;
 
+		/* a half-finished refresh: hook_install_file() unlinks before
+		 * it copies, so the manifest may now be missing */
 		if (!install_hook_file(src_json, dst_json) || !install_hook_file(src, dst))
-			return false;
+			return HOOK_SHARED_UNSAFE;
 	}
 
 	/* do not use if major version incremented in target compared to
 	 * ours */
 	if (ver_dst.major > ver_src.major)
-		return false;
+		return HOOK_SHARED_UNUSABLE;
 
-	return true;
+	return HOOK_SHARED_OK;
 }
 
 #define warn(format, ...) blog(LOG_WARNING, "%s: " format, "[Vulkan Capture Init]", ##__VA_ARGS__)
@@ -373,16 +401,21 @@ static void disable_vulkan_layer(bool b64)
 
 void init_hook_files()
 {
-	if (update_hook_file(true)) {
+	enum hook_shared_state state = update_hook_file(true);
+
+	if (state == HOOK_SHARED_OK) {
 		programdata64_hook_exists = true;
 		init_vulkan_registry(true);
-	} else {
+	} else if (state == HOOK_SHARED_UNSAFE) {
 		disable_vulkan_layer(true);
 	}
-	if (update_hook_file(false)) {
+
+	state = update_hook_file(false);
+
+	if (state == HOOK_SHARED_OK) {
 		programdata32_hook_exists = true;
 		init_vulkan_registry(false);
-	} else {
+	} else if (state == HOOK_SHARED_UNSAFE) {
 		disable_vulkan_layer(false);
 	}
 }
