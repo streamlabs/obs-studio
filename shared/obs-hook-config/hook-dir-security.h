@@ -159,6 +159,15 @@ static inline bool hook_path_chain_is_trusted(const wchar_t *path)
 
 	memcpy(buffer, path, (length + 1) * sizeof(wchar_t));
 
+	/* Win32 canonical form before any of the parsing below, which is all
+	 * written against backslashes while obs_module_file() produces forward
+	 * ones. Mixed is the dangerous case: wcsrchr finds the last backslash
+	 * and silently skips whatever directories came after it. */
+	for (size_t i = 0; i < length; i++) {
+		if (buffer[i] == L'/')
+			buffer[i] = L'\\';
+	}
+
 	/* a trailing separator would make the first step examine the object a
 	 * second time, as its own parent */
 	if (buffer[length - 1] == L'\\' && !(length == 3 && buffer[1] == L':'))
