@@ -395,16 +395,21 @@ static int file_write_packet(void *opaque, const uint8_t *buffer, int size)
 static int64_t file_seek(void *opaque, int64_t offset, int whence)
 {
 	FILE *file = opaque;
+	int64_t result;
 
-	if (whence & AVSEEK_SIZE)
-		return os_fgetsize(file);
+	if (whence & AVSEEK_SIZE) {
+		result = os_fgetsize(file);
+		return result < 0 ? AVERROR(errno ? errno : EIO) : result;
+	}
 
 	whence &= ~AVSEEK_FORCE;
 	if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END)
 		return AVERROR(EINVAL);
 	if (os_fseeki64(file, offset, whence) != 0)
 		return AVERROR(errno ? errno : EIO);
-	return os_ftelli64(file);
+
+	result = os_ftelli64(file);
+	return result < 0 ? AVERROR(errno ? errno : EIO) : result;
 }
 
 static bool is_native_file_path(const char *url)
@@ -412,8 +417,7 @@ static bool is_native_file_path(const char *url)
 	const char *protocol = avio_find_protocol_name(url);
 	if ((protocol && strcmp(protocol, "file") == 0) || astrcmpi_n(url, "file:", 5) == 0)
 		return true;
-	const bool drive_path = ((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) &&
-				url[1] == ':';
+	const bool drive_path = ((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) && url[1] == ':';
 	const bool unc_path = (url[0] == '\\' && url[1] == '\\') || (url[0] == '/' && url[1] == '/');
 	return drive_path || unc_path;
 }
@@ -445,8 +449,8 @@ static int open_native_output_file(struct ffmpeg_data *data)
 		return AVERROR(ENOMEM);
 	}
 
-	data->output->pb = avio_alloc_context(buffer, buffer_size, 1, data->output_file, NULL, file_write_packet,
-					     file_seek);
+	data->output->pb =
+		avio_alloc_context(buffer, buffer_size, 1, data->output_file, NULL, file_write_packet, file_seek);
 	if (!data->output->pb) {
 		av_free(buffer);
 		fclose(data->output_file);

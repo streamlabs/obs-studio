@@ -99,7 +99,7 @@ static bool create_test_junction(const wchar_t *link, const wchar_t *target)
 	memcpy(data->path, substitute, substitute_bytes + sizeof(wchar_t));
 	memcpy((BYTE *)data->path + data->print_offset, target, target_bytes + sizeof(wchar_t));
 	data->data_length = (USHORT)(FIELD_OFFSET(struct test_mount_point_reparse_buffer, path) - header_size +
-					 substitute_bytes + target_bytes + 2 * sizeof(wchar_t));
+				     substitute_bytes + target_bytes + 2 * sizeof(wchar_t));
 
 	success = DeviceIoControl(dir, FSCTL_SET_REPARSE_POINT, data, data->data_length + header_size, NULL, 0, &bytes,
 				  NULL);
