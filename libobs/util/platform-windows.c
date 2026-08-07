@@ -1535,8 +1535,8 @@ static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **han
 	return true;
 }
 
-/* Matches what fopen("wb") granted. Safety comes from the reparse checks below, not from denying
- * writers: withholding FILE_SHARE_WRITE only breaks callers that legitimately share a file. */
+/* READ|WRITE is the CRT deny-none mode fopen("wb") used; DELETE is carried over from this API's
+ * original mask. Safety comes from the reparse checks below, not from denying writers. */
 #define WRITE_SHARE_MODE (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
 
 FILE *os_fopen_write_nofollow(const char *path)
