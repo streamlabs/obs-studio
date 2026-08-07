@@ -152,6 +152,14 @@ static void os_fopen_write_nofollow_test(void **state)
 	assert_true(fwrite("data", 1, 4, normal) == 4);
 	assert_int_equal(fclose(normal), 0);
 
+	/* Dual output opens one recording path from two muxers; denying write sharing failed the second. */
+	FILE *first = os_fopen_write_nofollow(utf8_path);
+	assert_non_null(first);
+	FILE *second = os_fopen_write_nofollow(utf8_path);
+	assert_non_null(second);
+	assert_int_equal(fclose(second), 0);
+	assert_int_equal(fclose(first), 0);
+
 	assert_true(create_test_junction(junction_dir, target_dir));
 	assert_true(os_wcs_to_utf8(junction_child, 0, utf8_path, sizeof(utf8_path)) > 0);
 	assert_null(os_fopen_write_nofollow(utf8_path));
