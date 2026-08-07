@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdio.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 #include <libavcodec/avcodec.h>
@@ -62,6 +63,7 @@ struct ffmpeg_data {
 	const AVCodec *acodec;
 	const AVCodec *vcodec;
 	AVFormatContext *output;
+	FILE *output_file;
 	struct SwsContext *swscale;
 
 	int64_t total_frames;
@@ -86,6 +88,7 @@ struct ffmpeg_data {
 	struct ffmpeg_cfg config;
 
 	bool initialized;
+	bool custom_io;
 
 	char *last_error;
 };

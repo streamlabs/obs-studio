@@ -483,7 +483,7 @@ static bool flv_output_start(void *data)
 	dstr_copy(&stream->path, path);
 	obs_data_release(settings);
 
-	stream->file = os_fopen(stream->path.array, "wb");
+	stream->file = os_fopen_write_nofollow(stream->path.array);
 	if (!stream->file) {
 		warn("Unable to open FLV file '%s'", stream->path.array);
 		return false;
