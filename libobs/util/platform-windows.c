@@ -1535,6 +1535,10 @@ static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **han
 	return true;
 }
 
+/* READ|WRITE is the CRT deny-none mode fopen("wb") used; DELETE is carried over from this API's
+ * original mask. Safety comes from the reparse checks below, not from denying writers. */
+#define WRITE_SHARE_MODE (FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+
 FILE *os_fopen_write_nofollow(const char *path)
 {
 	wchar_t *wide_path = NULL;
@@ -1565,7 +1569,7 @@ FILE *os_fopen_write_nofollow(const char *path)
 	for (size_t attempt = 0; attempt < 3; attempt++) {
 		DWORD error;
 
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+		handle = CreateFileW(absolute, GENERIC_WRITE, WRITE_SHARE_MODE, NULL, OPEN_EXISTING,
 				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 		if (handle != INVALID_HANDLE_VALUE)
 			break;
@@ -1576,7 +1580,7 @@ FILE *os_fopen_write_nofollow(const char *path)
 			goto cleanup;
 		}
 
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_NEW,
+		handle = CreateFileW(absolute, GENERIC_WRITE, WRITE_SHARE_MODE, NULL, CREATE_NEW,
 				     FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 		if (handle != INVALID_HANDLE_VALUE)
 			break;
@@ -1603,7 +1607,7 @@ FILE *os_fopen_write_nofollow(const char *path)
 			goto cleanup;
 		}
 		CloseHandle(handle);
-		handle = CreateFileW(absolute, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+		handle = CreateFileW(absolute, GENERIC_WRITE, WRITE_SHARE_MODE, NULL, OPEN_EXISTING,
 				     FILE_ATTRIBUTE_NORMAL, NULL);
 		if (handle == INVALID_HANDLE_VALUE) {
 			set_errno_from_win32(GetLastError());
