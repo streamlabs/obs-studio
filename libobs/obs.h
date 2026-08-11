@@ -1989,6 +1989,19 @@ struct obs_sceneitem_crop {
 EXPORT void obs_sceneitem_set_crop(obs_sceneitem_t *item, const struct obs_sceneitem_crop *crop);
 EXPORT void obs_sceneitem_get_crop(const obs_sceneitem_t *item, struct obs_sceneitem_crop *crop);
 
+/**
+ * Sets the source dimensions against which a nested scene item's crop was
+ * authored.  Passing zero for either dimension clears the reference so it is
+ * captured from the nested scene on first use.  Non-scene items are ignored.
+ */
+EXPORT void obs_sceneitem_set_crop_reference(obs_sceneitem_t *item, uint32_t width, uint32_t height);
+
+/**
+ * Gets the source dimensions against which a nested scene item's crop was
+ * authored.  Both dimensions are zero for non-scene or unanchored items.
+ */
+EXPORT void obs_sceneitem_get_crop_reference(const obs_sceneitem_t *item, uint32_t *width, uint32_t *height);
+
 EXPORT void obs_sceneitem_set_scale_filter(obs_sceneitem_t *item, enum obs_scale_type filter);
 EXPORT enum obs_scale_type obs_sceneitem_get_scale_filter(obs_sceneitem_t *item);
 
