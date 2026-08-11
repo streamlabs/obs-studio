@@ -342,19 +342,59 @@ static uint32_t scene_getheight(void *data);
 static uint32_t canvas_getwidth(obs_weak_canvas_t *weak);
 static uint32_t canvas_getheight(obs_weak_canvas_t *weak);
 
+static inline bool get_video_info_dimensions(const struct obs_video_info *ovi, float *x, float *y)
+{
+	if (!ovi || !ovi->base_width || !ovi->base_height)
+		return false;
+
+	*x = (float)ovi->base_width;
+	*y = (float)ovi->base_height;
+	return true;
+}
+
 static inline void get_scene_dimensions(const obs_sceneitem_t *item, float *x, float *y)
 {
 	obs_scene_t *parent = item->parent;
-	if (!parent || (parent->is_group && !parent->source->canvas)) {
-		*x = (float)obs->data.main_canvas->mix->ovi.base_width;
-		*y = (float)obs->data.main_canvas->mix->ovi.base_height;
-	} else if (parent->is_group) {
+
+	/* Streamlabs scenes can contain items for multiple canvases.  The
+	 * ambient render mix is not defined for calls from the UI thread, so an
+	 * item's explicitly assigned canvas must be the authoritative coordinate
+	 * space whenever one is available. */
+	if (get_video_info_dimensions(item->canvas, x, y))
+		return;
+
+	/* Group children remain relative to the group's canvas.  The group resizes
+	 * itself, so using its transient content dimensions here would double-apply
+	 * resizing and recreate the upstream group scale-reference bug. */
+	if (parent && !parent->is_group && parent->custom_size && parent->cx && parent->cy) {
+		*x = (float)parent->cx;
+		*y = (float)parent->cy;
+		return;
+	}
+
+	if (parent && parent->source->canvas) {
 		*x = (float)canvas_getwidth(parent->source->canvas);
 		*y = (float)canvas_getheight(parent->source->canvas);
-	} else {
+		if (*x > 0.0f && *y > 0.0f)
+			return;
+	}
+
+	if (parent) {
 		*x = (float)scene_getwidth(parent);
 		*y = (float)scene_getheight(parent);
+		if (*x > 0.0f && *y > 0.0f)
+			return;
 	}
+
+	if (obs && obs->data.main_canvas &&
+	    get_video_info_dimensions(&obs->data.main_canvas->ovi, x, y))
+		return;
+
+	/* Avoid producing infinities if an item is created before video is
+	 * initialized.  Assigning a canvas later rebases this temporary reference
+	 * to the real dimensions. */
+	*x = 1.0f;
+	*y = 1.0f;
 }
 
 /* Rounds absolute pixel values to next .5. */
@@ -420,7 +460,8 @@ static inline void item_canvas_scale(struct vec2 *dst, const obs_sceneitem_t *it
 
 	float x, y;
 	get_scene_dimensions(item, &x, &y);
-	float scale_factor = y / item->scale_ref.y;
+	float reference_height = item->scale_ref.y > 0.0f ? item->scale_ref.y : y;
+	float scale_factor = y / reference_height;
 	vec2_mulf(dst, &item->scale, scale_factor);
 }
 
@@ -434,7 +475,8 @@ static inline void item_relative_scale(struct vec2 *dst, const struct vec2 *v, c
 
 	float x, y;
 	get_scene_dimensions(item, &x, &y);
-	float scale_factor = item->scale_ref.y / y;
+	float reference_height = item->scale_ref.y > 0.0f ? item->scale_ref.y : y;
+	float scale_factor = reference_height / y;
 	vec2_mulf(dst, v, scale_factor);
 }
 
@@ -1586,12 +1628,16 @@ static uint32_t scene_getwidth(void *data)
 	obs_scene_t *scene = data;
 	if (scene->custom_size) {
 		return scene->cx;
-	} else {
-		struct obs_video_info ovi;
-		if (obs_get_video_info_current(&ovi)) {
-			return ovi.base_width;
-		}
 	}
+
+	struct obs_video_info ovi;
+	if (obs_get_video_info_current(&ovi))
+		return ovi.base_width;
+	if (scene->source->canvas)
+		return canvas_getwidth(scene->source->canvas);
+	if (obs && obs->data.main_canvas)
+		return obs->data.main_canvas->ovi.base_width;
+
 	return 0;
 }
 
@@ -1600,12 +1646,16 @@ static uint32_t scene_getheight(void *data)
 	obs_scene_t *scene = data;
 	if (scene->custom_size) {
 		return scene->cy;
-	} else {
-		struct obs_video_info ovi;
-		if (obs_get_video_info_current(&ovi)) {
-			return ovi.base_height;
-		}
 	}
+
+	struct obs_video_info ovi;
+	if (obs_get_video_info_current(&ovi))
+		return ovi.base_height;
+	if (scene->source->canvas)
+		return canvas_getheight(scene->source->canvas);
+	if (obs && obs->data.main_canvas)
+		return obs->data.main_canvas->ovi.base_height;
+
 	return 0;
 }
 
@@ -2148,6 +2198,7 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	dst->pos = src->pos;
 	dst->rot = src->rot;
 	dst->scale = src->scale;
+	dst->scale_ref = src->scale_ref;
 	dst->align = src->align;
 	dst->last_width = src->last_width;
 	dst->last_height = src->last_height;
@@ -2203,6 +2254,8 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	}
 
 	obs_sceneitem_set_crop(dst, &src->crop);
+	dst->crop_ref_width = src->crop_ref_width;
+	dst->crop_ref_height = src->crop_ref_height;
 	obs_sceneitem_set_locked(dst, src->locked);
 
 	if (defer_texture_update) {
@@ -2592,11 +2645,7 @@ static obs_sceneitem_t *obs_scene_add_internal(obs_scene_t *scene, obs_source_t 
 	item->is_scene = strcmp(source->info.id, scene_info.id) == 0;
 	item->private_settings = obs_data_create();
 	item->toggle_visibility = OBS_INVALID_HOTKEY_PAIR_ID;
-	// TODO: FIXME:
-	// We should make transition to the new coordinate system
-	// See: https://github.com/obsproject/obs-studio/pull/9910
-	// The line below was modified to enable old (absolute) coordinates globally.
-	item->absolute_coordinates = true; // scene->absolute_coordinates;
+	item->absolute_coordinates = scene->absolute_coordinates;
 	os_atomic_set_long(&item->active_refs, 1);
 	vec2_set(&item->scale, 1.0f, 1.0f);
 	get_scene_dimensions(item, &item->scale_ref.x, &item->scale_ref.y);
@@ -3406,10 +3455,31 @@ static bool group_item_transition(obs_scene_t *scene, obs_sceneitem_t *item, voi
 	return true;
 }
 
-void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
-			      struct obs_video_info *canvas)
+void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canvas)
 {
-	item->canvas = canvas;
+	if (!item)
+		return;
+
+	if (item->canvas == canvas) {
+		do_update_transform(item);
+		return;
+	}
+
+	if (!item->absolute_coordinates) {
+		/* Preserve the caller-visible transform while changing the coordinate
+		 * space.  This is also the point where newly-created items replace the
+		 * temporary/main-canvas scale reference with their assigned canvas. */
+		struct obs_transform_info info;
+		scene_item_get_info_internal(item, &info);
+
+		item->canvas = canvas;
+		get_scene_dimensions(item, &item->scale_ref.x, &item->scale_ref.y);
+		scene_item_set_info_internal(item, &info);
+	} else {
+		item->canvas = canvas;
+	}
+
+	do_update_transform(item);
 }
 
 struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item)
