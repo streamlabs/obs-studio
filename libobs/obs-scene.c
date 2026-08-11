@@ -1346,6 +1346,19 @@ static void scene_load_item(struct obs_scene *scene, obs_data_t *item_data)
 	item->crop.right = (uint32_t)obs_data_get_int(item_data, "crop_right");
 	item->crop.bottom = (uint32_t)obs_data_get_int(item_data, "crop_bottom");
 
+	if (item->is_scene) {
+		const int64_t crop_ref_width = obs_data_get_int(item_data, "crop_ref_width");
+		const int64_t crop_ref_height = obs_data_get_int(item_data, "crop_ref_height");
+		const bool crop_ref_valid = crop_ref_width > 0 && crop_ref_width <= UINT32_MAX && crop_ref_height > 0 &&
+					    crop_ref_height <= UINT32_MAX;
+
+		/* Older scene collections do not have crop reference dimensions.  Keep
+		 * zero as the sentinel so update_item_transform snapshots the nested
+		 * scene's current dimensions on first use. */
+		item->crop_ref_width = crop_ref_valid ? (uint32_t)crop_ref_width : 0;
+		item->crop_ref_height = crop_ref_valid ? (uint32_t)crop_ref_height : 0;
+	}
+
 	scale_filter_str = obs_data_get_string(item_data, "scale_filter");
 	item->scale_filter = OBS_SCALE_DISABLE;
 
@@ -1473,6 +1486,10 @@ static void scene_save_item(obs_data_array_t *array, struct obs_scene_item *item
 	obs_data_set_int(item_data, "crop_top", (int)item->crop.top);
 	obs_data_set_int(item_data, "crop_right", (int)item->crop.right);
 	obs_data_set_int(item_data, "crop_bottom", (int)item->crop.bottom);
+	if (item->is_scene) {
+		obs_data_set_int(item_data, "crop_ref_width", (int64_t)item->crop_ref_width);
+		obs_data_set_int(item_data, "crop_ref_height", (int64_t)item->crop_ref_height);
+	}
 	obs_data_set_int(item_data, "id", item->id);
 	obs_data_set_bool(item_data, "group_item_backup", !!backup_group);
 
@@ -3731,6 +3748,43 @@ void obs_sceneitem_get_crop(const obs_sceneitem_t *item, struct obs_sceneitem_cr
 		return;
 
 	memcpy(crop, &item->crop, sizeof(*crop));
+}
+
+void obs_sceneitem_set_crop_reference(obs_sceneitem_t *item, uint32_t width, uint32_t height)
+{
+	if (!obs_ptr_valid(item, "obs_sceneitem_set_crop_reference"))
+		return;
+	if (!item->is_scene)
+		return;
+
+	if (!width || !height) {
+		item->crop_ref_width = 0;
+		item->crop_ref_height = 0;
+	} else {
+		item->crop_ref_width = width;
+		item->crop_ref_height = height;
+	}
+
+	os_atomic_set_bool(&item->update_transform, true);
+}
+
+void obs_sceneitem_get_crop_reference(const obs_sceneitem_t *item, uint32_t *width, uint32_t *height)
+{
+	if (!obs_ptr_valid(width, "obs_sceneitem_get_crop_reference"))
+		return;
+	if (!obs_ptr_valid(height, "obs_sceneitem_get_crop_reference"))
+		return;
+
+	*width = 0;
+	*height = 0;
+
+	if (!obs_ptr_valid(item, "obs_sceneitem_get_crop_reference"))
+		return;
+	if (!item->is_scene)
+		return;
+
+	*width = item->crop_ref_width;
+	*height = item->crop_ref_height;
 }
 
 void obs_sceneitem_set_scale_filter(obs_sceneitem_t *item, enum obs_scale_type filter)
