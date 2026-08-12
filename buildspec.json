@@ -1,16 +1,16 @@
 {
     "dependencies": {
         "prebuilt": {
-            "version": "2025-07-11sl4",
+            "version": "2025-08-23sl4",
             "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
             "label": "Pre-Built obs-deps",
             "hashes": {
-                "macos-x86_64": "828e0fdbbc5b09acccd72d3e4765b08eb3627b2be32f9e79797ac1870c457b2a",
-                "macos-arm64": "ad3edb1839c564450bd2624a894041130ea5f35e5d42d964bdf75373531dd823",
-                "macos-universal": "1ad6297a9f8b439657cf5b84063843fb2783c2a323453c5759bef0897731f9e0",
-                "windows-x64": "7e67f5f6cda4752b618832d9aa0c3b1e8fa4b03ca2539961d5bfcd0b2cd7a163",
-                "windows-x86": "b370bf5cc7fe68f9be982261562a9e1275fd771b055be60387ae9b89a3be36c9",
-                "windows-arm64": "10496eb6c4b20c4e899741e55ec0d96c79db7cfed8861f61baad07f71b818745"
+                "macos-x86_64": "06d140d215fe6efdf9e21745889ab998468e80ccaa3e7f7da031ff3facc7a910",
+                "macos-arm64": "0c99b0f0c15cf74699868bc3de0874c621a6a9a098b381feb707fe5185c9b795",
+                "macos-universal": "829b26c1c35b0a70648dcde8ac6d5b0405e2b781dc14b2100c2df52281b948ec",
+                "windows-x64": "fa14699662e2b321718cff43025c6457f19c3af009de57269f53d4eb71f6d481",
+                "windows-x86": "df43ced1577163eb5989145e289bd5387ba2f19740ee72239232c7d4dfcef2d6",
+                "windows-arm64": "2f03a2c6b7bdb4c0006ee64725f2109981a8b92b5af73e325809bd27dc42388a"
             }
         },
         "qt6": {
