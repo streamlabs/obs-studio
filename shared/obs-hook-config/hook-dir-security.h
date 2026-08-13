@@ -18,6 +18,7 @@
 #include <windows.h>
 #include <aclapi.h>
 #include <sddl.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <strsafe.h>
 
@@ -93,45 +94,104 @@ static inline bool hook_is_reparse_point(const wchar_t *path)
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-/* Owned by an administrative account, with nobody else holding write_mask. */
-static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
+/* A string SID runs to "S-1-" plus an identifier authority of up to 15 digits
+ * plus SID_MAX_SUB_AUTHORITIES of up to 11 each, so 184 characters. A reason
+ * has to hold one of those and the longest sentence built around it. Truncating
+ * either would leave a diagnostic that no longer names the principal, which is
+ * the whole point of it. */
+#define HOOK_SID_TEXT_MAX 192
+#define HOOK_TRUST_REASON_MAX 320
+
+/* Reasons are phrased to read after the path: "<path> is owned by
+ * S-1-5-21-...". Working that out from a bare bool cost a round trip through a
+ * crash report once, so every refusal below says which object and why. */
+static inline void hook_trust_why(wchar_t *why, size_t count, const wchar_t *format, ...)
+{
+	va_list args;
+
+	if (!why || count == 0)
+		return;
+
+	va_start(args, format);
+	StringCchVPrintfW(why, count, format, args);
+	va_end(args);
+}
+
+static inline void hook_sid_text(PSID sid, wchar_t *text, size_t count)
+{
+	wchar_t *converted = NULL;
+
+	if (sid && IsValidSid(sid) && ConvertSidToStringSidW(sid, &converted)) {
+		StringCchCopyW(text, count, converted);
+		LocalFree(converted);
+		return;
+	}
+
+	StringCchCopyW(text, count, L"an unreadable SID");
+}
+
+/* Owned by an administrative account, with nobody else holding write_mask.
+ * why is optional, and written only when this returns false. */
+static inline bool hook_object_trust(const wchar_t *path, DWORD write_mask, wchar_t *why, size_t why_count)
 {
 	PSECURITY_DESCRIPTOR sd = NULL;
 	PSID owner = NULL;
 	PACL dacl = NULL;
+	wchar_t sid_text[HOOK_SID_TEXT_MAX];
 	bool trusted = false;
+	DWORD result;
 
 	/* every other check here follows the link */
-	if (hook_is_reparse_point(path))
+	if (hook_is_reparse_point(path)) {
+		hook_trust_why(why, why_count, L"is a reparse point");
 		return false;
+	}
 
-	if (GetNamedSecurityInfoW(path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION, &owner,
-				  NULL, &dacl, NULL, &sd) != ERROR_SUCCESS) {
+	result = GetNamedSecurityInfoW(path, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+				       &owner, NULL, &dacl, NULL, &sd);
+	if (result != ERROR_SUCCESS) {
+		hook_trust_why(why, why_count, L"has no readable security descriptor: %lu", result);
 		return false;
 	}
 
 	/* the owner can always rewrite the DACL, and a NULL DACL grants
 	 * everything to everyone */
-	if (!hook_sid_is_trusted(owner) || !dacl)
+	if (!hook_sid_is_trusted(owner)) {
+		hook_sid_text(owner, sid_text, _countof(sid_text));
+		hook_trust_why(why, why_count, L"is owned by %s", sid_text);
 		goto done;
+	}
+	if (!dacl) {
+		hook_trust_why(why, why_count, L"has no DACL, which grants everything to everyone");
+		goto done;
+	}
 
 	for (WORD i = 0; i < dacl->AceCount; i++) {
 		ACCESS_ALLOWED_ACE *ace = NULL;
 
-		if (!GetAce(dacl, i, (void **)&ace))
+		if (!GetAce(dacl, i, (void **)&ace)) {
+			hook_trust_why(why, why_count, L"has an unreadable ACE at index %u", (unsigned)i);
 			goto done;
+		}
 		if (ace->Header.AceType == ACCESS_DENIED_ACE_TYPE)
 			continue;
-		if (ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE)
+		if (ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE) {
+			hook_trust_why(why, why_count, L"has an ACE at index %u of unhandled type %u", (unsigned)i,
+				       (unsigned)ace->Header.AceType);
 			goto done;
+		}
 		/* inherit-only, such as the CREATOR OWNER entry %ProgramData% and
 		 * %ProgramFiles% both carry, grants nothing on this object */
 		if (ace->Header.AceFlags & INHERIT_ONLY_ACE)
 			continue;
 		if ((ace->Mask & write_mask) == 0)
 			continue;
-		if (!hook_sid_is_trusted((PSID)&ace->SidStart))
+		if (!hook_sid_is_trusted((PSID)&ace->SidStart)) {
+			hook_sid_text((PSID)&ace->SidStart, sid_text, _countof(sid_text));
+			hook_trust_why(why, why_count, L"grants %s write access 0x%08lX, out of 0x%08lX", sid_text,
+				       (unsigned long)(ace->Mask & write_mask), (unsigned long)ace->Mask);
 			goto done;
+		}
 	}
 
 	trusted = true;
@@ -141,21 +201,46 @@ done:
 	return trusted;
 }
 
+static inline bool hook_object_is_trusted(const wchar_t *path, DWORD write_mask)
+{
+	return hook_object_trust(path, write_mask, NULL, 0);
+}
+
 static inline bool hook_path_is_trusted(const wchar_t *path)
 {
 	return hook_object_is_trusted(path, HOOK_WRITE_ACCESS);
 }
 
-/* The object plus every directory above it. Locking down a file means nothing
- * if a standard user can rename one of its parents and present a different
- * tree under the same path. */
-static inline bool hook_path_chain_is_trusted(const wchar_t *path)
+/* The object and the path to it, answered separately, because only the object
+ * is acted on. It is the one that says who wrote what is there, and the one an
+ * elevated writer can repair.
+ *
+ * An untrusted ancestor is reported and nothing else. A standard user who can
+ * rename a parent of %ProgramData% or of the install directory already owns the
+ * machine by routes that have nothing to do with us - the application the user
+ * launches sits under one of those parents - so refusing to capture over it
+ * costs them vulkan capture and denies an attacker nothing. Callers log which
+ * component failed and carry on. */
+struct hook_trust {
+	bool object;
+	bool ancestors;
+	wchar_t object_why[HOOK_TRUST_REASON_MAX];
+	wchar_t ancestor[MAX_PATH]; /* the component ancestor_why describes */
+	wchar_t ancestor_why[HOOK_TRUST_REASON_MAX];
+};
+
+static inline void hook_path_trust(const wchar_t *path, struct hook_trust *trust)
 {
 	wchar_t buffer[MAX_PATH];
 	size_t length = wcslen(path);
 
-	if (length == 0 || length >= MAX_PATH)
-		return false;
+	memset(trust, 0, sizeof(*trust));
+
+	if (length == 0 || length >= MAX_PATH) {
+		hook_trust_why(trust->object_why, _countof(trust->object_why),
+			       L"is %u characters, which is not a path this can examine", (unsigned)length);
+		return;
+	}
 
 	memcpy(buffer, path, (length + 1) * sizeof(wchar_t));
 
@@ -173,27 +258,41 @@ static inline bool hook_path_chain_is_trusted(const wchar_t *path)
 	if (buffer[length - 1] == L'\\' && !(length == 3 && buffer[1] == L':'))
 		buffer[length - 1] = 0;
 
-	if (!hook_object_is_trusted(buffer, HOOK_WRITE_ACCESS))
-		return false;
+	trust->object = hook_object_trust(buffer, HOOK_WRITE_ACCESS, trust->object_why, _countof(trust->object_why));
 
 	for (;;) {
 		wchar_t *separator = wcsrchr(buffer, L'\\');
 
 		/* not a drive-letter path, so not one we can reason about */
-		if (!separator)
-			return false;
+		if (!separator) {
+			StringCchCopyW(trust->ancestor, _countof(trust->ancestor), buffer);
+			hook_trust_why(trust->ancestor_why, _countof(trust->ancestor_why),
+				       L"is not under a drive letter, so the path to it cannot be checked");
+			return;
+		}
 
 		if (separator == buffer + 2 && buffer[1] == L':') {
 			separator[1] = 0; /* the root keeps its separator */
-			return hook_object_is_trusted(buffer, HOOK_ANCESTOR_WRITE_ACCESS);
+			trust->ancestors = hook_object_trust(buffer, HOOK_ANCESTOR_WRITE_ACCESS, trust->ancestor_why,
+							     _countof(trust->ancestor_why));
+			if (!trust->ancestors)
+				StringCchCopyW(trust->ancestor, _countof(trust->ancestor), buffer);
+			return;
 		}
 
 		*separator = 0;
 
-		if (!hook_object_is_trusted(buffer, HOOK_ANCESTOR_WRITE_ACCESS))
-			return false;
+		if (!hook_object_trust(buffer, HOOK_ANCESTOR_WRITE_ACCESS, trust->ancestor_why,
+				       _countof(trust->ancestor_why))) {
+			StringCchCopyW(trust->ancestor, _countof(trust->ancestor), buffer);
+			return;
+		}
 	}
 }
+
+/* No chain predicate on purpose. One that folded the ancestors back into a
+ * single bool is what led callers to quarantine a directory, and to decline the
+ * shared hook, over a drive root they could neither vouch for nor repair. */
 
 /* Moves an untrusted hook path aside rather than repairing it in place: an ACL
  * change does not revoke handles opened before it, so the creator could rename
