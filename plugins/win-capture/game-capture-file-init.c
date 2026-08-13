@@ -14,6 +14,46 @@
 /* ------------------------------------------------------------------------- */
 /* helper funcs                                                              */
 
+/* Converted rather than logged through %ls, which goes via the CRT locale and
+ * drops the rest of the line at the first character outside it - a user profile
+ * name is exactly where these paths carry one. */
+static void hook_warn_path(const char *lead, const wchar_t *path)
+{
+	char *path_utf8 = NULL;
+
+	os_wcs_to_utf8_ptr(path, 0, &path_utf8);
+	hook_warn("%s: %s", lead, path_utf8 ? path_utf8 : "?");
+	bfree(path_utf8);
+}
+
+/* Names whichever half of the chain failed, and what was wrong with it. */
+static void hook_warn_trust(const char *lead, const wchar_t *path, const struct hook_trust *trust)
+{
+	char *path_utf8 = NULL;
+	char *why_utf8 = NULL;
+
+	if (trust->object && trust->ancestors)
+		return;
+
+	os_wcs_to_utf8_ptr(path, 0, &path_utf8);
+
+	if (!trust->object) {
+		os_wcs_to_utf8_ptr(trust->object_why, 0, &why_utf8);
+		hook_warn("%s: %s %s", lead, path_utf8 ? path_utf8 : "?", why_utf8 ? why_utf8 : "?");
+	} else {
+		char *ancestor_utf8 = NULL;
+
+		os_wcs_to_utf8_ptr(trust->ancestor, 0, &ancestor_utf8);
+		os_wcs_to_utf8_ptr(trust->ancestor_why, 0, &why_utf8);
+		hook_warn("%s: %s is reached through %s, which %s", lead, path_utf8 ? path_utf8 : "?",
+			  ancestor_utf8 ? ancestor_utf8 : "?", why_utf8 ? why_utf8 : "?");
+		bfree(ancestor_utf8);
+	}
+
+	bfree(path_utf8);
+	bfree(why_utf8);
+}
+
 static bool has_elevation_internal()
 {
 	SID_IDENTIFIER_AUTHORITY sia = SECURITY_NT_AUTHORITY;
@@ -105,11 +145,19 @@ char *get_hook_path(bool b64)
 	/* The whole chain, re-checked rather than relying on what module load
 	 * decided: this is the value we are about to inject into another
 	 * process, and startup was a long time ago. */
-	if (((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) &&
-	    hook_path_chain_is_trusted(path)) {
-		char *path_utf8 = NULL;
-		os_wcs_to_utf8_ptr(path, 0, &path_utf8);
-		return path_utf8;
+	if ((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) {
+		struct hook_trust trust;
+
+		hook_path_trust(path, &trust);
+
+		if (trust.object) {
+			char *path_utf8 = NULL;
+			os_wcs_to_utf8_ptr(path, 0, &path_utf8);
+			return path_utf8;
+		}
+
+		/* startup accepted it, so something changed since then */
+		hook_warn_trust("falling back to the hook in the install directory", path, &trust);
 	}
 
 	return obs_module_file(b64 ? "graphics-hook64.dll" : "graphics-hook32.dll");
@@ -167,7 +215,10 @@ static bool install_hook_file(const wchar_t *src, const wchar_t *dst)
  *
  * Unsafe is the directory's problem: untrusted, or holding files we cannot
  * vouch for, or gone. The loader hands that directory to every vulkan process
- * on the machine, elevated ones included, so the entry has to go. */
+ * on the machine, elevated ones included, so the entry has to go.
+ *
+ * The path above the directory is neither. It is logged where it is found and
+ * acted on nowhere - see hook_path_trust. */
 enum hook_shared_state {
 	HOOK_SHARED_OK,
 	HOOK_SHARED_UNUSABLE,
@@ -206,11 +257,26 @@ static enum hook_shared_state update_hook_file(bool b64)
 
 		/* We are about to publish these bytes machine-wide, elevated. If
 		 * our own copy sits somewhere a standard user can rewrite, there
-		 * is nothing here worth publishing. */
-		if (!hook_path_chain_is_trusted(src) || !hook_path_is_trusted(src_json)) {
-			hook_warn("the hook in the install directory is modifiable by non-administrators, "
-				  "not publishing it");
+		 * is nothing here worth publishing. The directory holding it, not
+		 * the path to it - a user who can rename a parent of
+		 * %ProgramFiles% can replace the application itself, so refusing
+		 * over one would cost capture and deny them nothing. */
+		struct hook_trust src_trust;
+
+		hook_path_trust(src, &src_trust);
+
+		if (!src_trust.object) {
+			hook_warn_trust("not publishing the hook in the install directory", src, &src_trust);
 			/* our copy, not the shared one - it may be sound */
+			return HOOK_SHARED_UNUSABLE;
+		}
+		if (!src_trust.ancestors)
+			hook_warn_trust("publishing the hook in the install directory despite its path", src,
+					&src_trust);
+		if (!hook_path_is_trusted(src_json)) {
+			hook_warn_path("not publishing the hook in the install directory, its manifest is "
+				       "modifiable by non-administrators",
+				       src_json);
 			return HOOK_SHARED_UNUSABLE;
 		}
 
@@ -218,11 +284,29 @@ static enum hook_shared_state update_hook_file(bool b64)
 		 * only means something if standard users could not have written
 		 * these files. Hardening propagates to children, so afterwards
 		 * the answer would always be yes. */
-		bool dir_was_trusted = dir_exists(dir) && hook_path_chain_is_trusted(dir);
+		struct hook_trust dir_trust;
+		bool dir_present = dir_exists(dir);
+
+		/* also for a path with nothing at it, where it reports that
+		 * there was no security descriptor to read */
+		hook_path_trust(dir, &dir_trust);
+
+		/* The directory itself, not the path to it. An untrusted
+		 * ancestor is not something an elevated writer can repair and
+		 * says nothing about who wrote what is inside, so replacing the
+		 * directory over it would destroy an administrator's hooks for
+		 * nothing. It still stops the shared copy being used, below. */
+		bool dir_was_trusted = dir_present && dir_trust.object;
 		bool was_trusted = dir_was_trusted && hook_path_is_trusted(dst) && hook_path_is_trusted(dst_json);
 
 		if (!dir_was_trusted) {
 			DWORD attributes = GetFileAttributesW(dir);
+
+			if (attributes != INVALID_FILE_ATTRIBUTES && !dir_present)
+				hook_warn_path("replacing the shared hook directory path, which is not a directory",
+					       dir);
+			else if (attributes != INVALID_FILE_ATTRIBUTES)
+				hook_warn_trust("replacing the shared hook directory", dir, &dir_trust);
 
 			if (attributes != INVALID_FILE_ATTRIBUTES && !hook_dir_quarantine(dir)) {
 				hook_warn("failed to move the untrusted hook directory aside: %lu", GetLastError());
@@ -258,8 +342,26 @@ static enum hook_shared_state update_hook_file(bool b64)
 		return HOOK_SHARED_UNSAFE;
 	}
 
-	if (!hook_path_chain_is_trusted(dir) || !hook_path_is_trusted(dst) || !hook_path_is_trusted(dst_json)) {
-		hook_warn("the hook directory or its files are modifiable by non-administrators, ignoring them");
+	struct hook_trust shared_trust;
+
+	hook_path_trust(dir, &shared_trust);
+
+	/* The directory, not the path to it. Withdrawing the layer over an
+	 * ancestor takes vulkan capture away from everything on the machine,
+	 * permanently and invisibly, for a condition no elevated writer can
+	 * repair and that a standard user with that reach does not need. */
+	if (!shared_trust.object) {
+		hook_warn_trust("ignoring the shared hook directory", dir, &shared_trust);
+		return HOOK_SHARED_UNSAFE;
+	}
+	if (!shared_trust.ancestors)
+		hook_warn_trust("using the shared hook directory despite its path", dir, &shared_trust);
+	if (!hook_path_is_trusted(dst)) {
+		hook_warn_path("ignoring the shared hook, it is modifiable by non-administrators", dst);
+		return HOOK_SHARED_UNSAFE;
+	}
+	if (!hook_path_is_trusted(dst_json)) {
+		hook_warn_path("ignoring the shared hook, its manifest is modifiable by non-administrators", dst_json);
 		return HOOK_SHARED_UNSAFE;
 	}
 
