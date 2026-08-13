@@ -16,41 +16,62 @@
 
 /* Converted rather than logged through %ls, which goes via the CRT locale and
  * drops the rest of the line at the first character outside it - a user profile
- * name is exactly where these paths carry one. */
-static void hook_warn_path(const char *lead, const wchar_t *path)
+ * name is exactly where these paths carry one. why is optional. */
+static void hook_warn_wide(const char *lead, const wchar_t *path, const wchar_t *why)
 {
 	char *path_utf8 = NULL;
+	char *why_utf8 = NULL;
 
 	os_wcs_to_utf8_ptr(path, 0, &path_utf8);
-	hook_warn("%s: %s", lead, path_utf8 ? path_utf8 : "?");
+	if (why)
+		os_wcs_to_utf8_ptr(why, 0, &why_utf8);
+
+	if (why_utf8)
+		hook_warn("%s: %s %s", lead, path_utf8 ? path_utf8 : "?", why_utf8);
+	else
+		hook_warn("%s: %s", lead, path_utf8 ? path_utf8 : "?");
+
 	bfree(path_utf8);
+	bfree(why_utf8);
+}
+
+/* hook_path_is_trusted, but it says why it refused. The refusal is not always a
+ * write grant - an unreadable descriptor or a reparse point lands here too - so
+ * a caller that phrases it as one is guessing. */
+static bool hook_file_is_trusted(const char *lead, const wchar_t *path)
+{
+	wchar_t why[HOOK_TRUST_REASON_MAX];
+
+	if (hook_object_trust(path, HOOK_WRITE_ACCESS, why, _countof(why)))
+		return true;
+
+	hook_warn_wide(lead, path, why);
+	return false;
 }
 
 /* Names whichever half of the chain failed, and what was wrong with it. */
 static void hook_warn_trust(const char *lead, const wchar_t *path, const struct hook_trust *trust)
 {
 	char *path_utf8 = NULL;
+	char *ancestor_utf8 = NULL;
 	char *why_utf8 = NULL;
 
-	if (trust->object && trust->ancestors)
+	if (!trust->object) {
+		hook_warn_wide(lead, path, trust->object_why);
+		return;
+	}
+	if (trust->ancestors)
 		return;
 
 	os_wcs_to_utf8_ptr(path, 0, &path_utf8);
+	os_wcs_to_utf8_ptr(trust->ancestor, 0, &ancestor_utf8);
+	os_wcs_to_utf8_ptr(trust->ancestor_why, 0, &why_utf8);
 
-	if (!trust->object) {
-		os_wcs_to_utf8_ptr(trust->object_why, 0, &why_utf8);
-		hook_warn("%s: %s %s", lead, path_utf8 ? path_utf8 : "?", why_utf8 ? why_utf8 : "?");
-	} else {
-		char *ancestor_utf8 = NULL;
-
-		os_wcs_to_utf8_ptr(trust->ancestor, 0, &ancestor_utf8);
-		os_wcs_to_utf8_ptr(trust->ancestor_why, 0, &why_utf8);
-		hook_warn("%s: %s is reached through %s, which %s", lead, path_utf8 ? path_utf8 : "?",
-			  ancestor_utf8 ? ancestor_utf8 : "?", why_utf8 ? why_utf8 : "?");
-		bfree(ancestor_utf8);
-	}
+	hook_warn("%s: %s is reached through %s, which %s", lead, path_utf8 ? path_utf8 : "?",
+		  ancestor_utf8 ? ancestor_utf8 : "?", why_utf8 ? why_utf8 : "?");
 
 	bfree(path_utf8);
+	bfree(ancestor_utf8);
 	bfree(why_utf8);
 }
 
@@ -273,12 +294,8 @@ static enum hook_shared_state update_hook_file(bool b64)
 		if (!src_trust.ancestors)
 			hook_warn_trust("publishing the hook in the install directory despite its path", src,
 					&src_trust);
-		if (!hook_path_is_trusted(src_json)) {
-			hook_warn_path("not publishing the hook in the install directory, its manifest is "
-				       "modifiable by non-administrators",
-				       src_json);
+		if (!hook_file_is_trusted("not publishing the hook in the install directory", src_json))
 			return HOOK_SHARED_UNUSABLE;
-		}
 
 		/* Read before we touch anything: the version arbitration below
 		 * only means something if standard users could not have written
@@ -303,8 +320,8 @@ static enum hook_shared_state update_hook_file(bool b64)
 			DWORD attributes = GetFileAttributesW(dir);
 
 			if (attributes != INVALID_FILE_ATTRIBUTES && !dir_present)
-				hook_warn_path("replacing the shared hook directory path, which is not a directory",
-					       dir);
+				hook_warn_wide("replacing the shared hook directory path, which is not a directory",
+					       dir, NULL);
 			else if (attributes != INVALID_FILE_ATTRIBUTES)
 				hook_warn_trust("replacing the shared hook directory", dir, &dir_trust);
 
@@ -356,14 +373,10 @@ static enum hook_shared_state update_hook_file(bool b64)
 	}
 	if (!shared_trust.ancestors)
 		hook_warn_trust("using the shared hook directory despite its path", dir, &shared_trust);
-	if (!hook_path_is_trusted(dst)) {
-		hook_warn_path("ignoring the shared hook, it is modifiable by non-administrators", dst);
+	if (!hook_file_is_trusted("ignoring the shared hook", dst))
 		return HOOK_SHARED_UNSAFE;
-	}
-	if (!hook_path_is_trusted(dst_json)) {
-		hook_warn_path("ignoring the shared hook, its manifest is modifiable by non-administrators", dst_json);
+	if (!hook_file_is_trusted("ignoring the shared hook", dst_json))
 		return HOOK_SHARED_UNSAFE;
-	}
 
 	/* Past this point the shared directory has passed the trust check, so
 	 * nothing below rejects it - it is administrator owned and whatever is
