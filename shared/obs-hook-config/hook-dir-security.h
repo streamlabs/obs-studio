@@ -94,8 +94,13 @@ static inline bool hook_is_reparse_point(const wchar_t *path)
 	return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 
-#define HOOK_TRUST_REASON_MAX 160
-#define HOOK_SID_TEXT_MAX 96
+/* A string SID runs to "S-1-" plus an identifier authority of up to 15 digits
+ * plus SID_MAX_SUB_AUTHORITIES of up to 11 each, so 184 characters. A reason
+ * has to hold one of those and the longest sentence built around it. Truncating
+ * either would leave a diagnostic that no longer names the principal, which is
+ * the whole point of it. */
+#define HOOK_SID_TEXT_MAX 192
+#define HOOK_TRUST_REASON_MAX 320
 
 /* Reasons are phrased to read after the path: "<path> is owned by
  * S-1-5-21-...". Working that out from a bare bool cost a round trip through a

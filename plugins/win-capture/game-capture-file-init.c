@@ -75,6 +75,26 @@ static void hook_warn_trust(const char *lead, const wchar_t *path, const struct 
 	bfree(why_utf8);
 }
 
+/* obs_module_file() produces forward slashes, so either separator can be last. */
+static bool parent_dir(const wchar_t *path, wchar_t *out, size_t out_bytes)
+{
+	const wchar_t *back = wcsrchr(path, L'\\');
+	const wchar_t *forward = wcsrchr(path, L'/');
+	const wchar_t *separator = (forward && (!back || forward > back)) ? forward : back;
+	size_t length;
+
+	if (!separator)
+		return false;
+
+	length = (size_t)(separator - path);
+	if (length == 0 || (length + 1) * sizeof(wchar_t) > out_bytes)
+		return false;
+
+	memcpy(out, path, length * sizeof(wchar_t));
+	out[length] = 0;
+	return true;
+}
+
 static bool has_elevation_internal()
 {
 	SID_IDENTIFIER_AUTHORITY sia = SECURITY_NT_AUTHORITY;
@@ -158,27 +178,33 @@ static bool programdata32_hook_exists = false;
 
 char *get_hook_path(bool b64)
 {
+	wchar_t dir[MAX_PATH];
 	wchar_t path[MAX_PATH];
+
+	get_programdata_path(dir, L"obs-studio-hook");
 
 	get_programdata_path(path, L"obs-studio-hook\\");
 	make_filename(path, L"graphics-hook", L".dll");
 
-	/* The whole chain, re-checked rather than relying on what module load
-	 * decided: this is the value we are about to inject into another
-	 * process, and startup was a long time ago. */
+	/* Re-checked rather than relying on what module load decided: this is
+	 * the value we are about to inject into another process, and startup was
+	 * a long time ago. The directory as well as the file - delete-child on
+	 * the directory is enough to swap the hook out from under this - and
+	 * only what sits above the directory is advisory. */
 	if ((b64 && programdata64_hook_exists) || (!b64 && programdata32_hook_exists)) {
 		struct hook_trust trust;
 
-		hook_path_trust(path, &trust);
+		hook_path_trust(dir, &trust);
 
-		if (trust.object) {
+		if (trust.object && hook_file_is_trusted("falling back to the hook in the install directory", path)) {
 			char *path_utf8 = NULL;
 			os_wcs_to_utf8_ptr(path, 0, &path_utf8);
 			return path_utf8;
 		}
 
 		/* startup accepted it, so something changed since then */
-		hook_warn_trust("falling back to the hook in the install directory", path, &trust);
+		if (!trust.object)
+			hook_warn_trust("falling back to the hook in the install directory", dir, &trust);
 	}
 
 	return obs_module_file(b64 ? "graphics-hook64.dll" : "graphics-hook32.dll");
@@ -278,22 +304,31 @@ static enum hook_shared_state update_hook_file(bool b64)
 
 		/* We are about to publish these bytes machine-wide, elevated. If
 		 * our own copy sits somewhere a standard user can rewrite, there
-		 * is nothing here worth publishing. The directory holding it, not
-		 * the path to it - a user who can rename a parent of
-		 * %ProgramFiles% can replace the application itself, so refusing
-		 * over one would cost capture and deny them nothing. */
+		 * is nothing here worth publishing. The directory holding it and
+		 * the files in it, but not the path above the directory - a user
+		 * who can rename a parent of %ProgramFiles% can replace the
+		 * application itself, so refusing over one would cost capture
+		 * and deny them nothing. */
+		wchar_t src_dir[MAX_PATH];
 		struct hook_trust src_trust;
 
-		hook_path_trust(src, &src_trust);
+		if (!parent_dir(src, src_dir, sizeof(src_dir))) {
+			hook_warn_wide("not publishing the hook, cannot resolve its directory", src, NULL);
+			return HOOK_SHARED_UNUSABLE;
+		}
+
+		hook_path_trust(src_dir, &src_trust);
 
 		if (!src_trust.object) {
-			hook_warn_trust("not publishing the hook in the install directory", src, &src_trust);
+			hook_warn_trust("not publishing the hook in the install directory", src_dir, &src_trust);
 			/* our copy, not the shared one - it may be sound */
 			return HOOK_SHARED_UNUSABLE;
 		}
 		if (!src_trust.ancestors)
-			hook_warn_trust("publishing the hook in the install directory despite its path", src,
+			hook_warn_trust("publishing the hook in the install directory despite its path", src_dir,
 					&src_trust);
+		if (!hook_file_is_trusted("not publishing the hook in the install directory", src))
+			return HOOK_SHARED_UNUSABLE;
 		if (!hook_file_is_trusted("not publishing the hook in the install directory", src_json))
 			return HOOK_SHARED_UNUSABLE;
 
