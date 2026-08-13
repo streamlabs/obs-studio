@@ -42,6 +42,18 @@
  * every drive root grants exactly that to Authenticated Users. */
 #define HOOK_ANCESTOR_WRITE_ACCESS (FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_ALL)
 
+/* A volume root is the one ancestor DELETE says nothing about: it cannot be
+ * renamed or unlinked, and holding it there confers nothing over what is inside.
+ * Replacing a directory below the root needs FILE_DELETE_CHILD on the root, or
+ * DELETE on that directory itself, and both are still checked.
+ *
+ * Counting it rejected real machines. The default root ACE
+ * (A;OICIIO;GRGWGX+DELETE;;;AU) is inherit-only and carries DELETE, so anything
+ * that materialises it onto the root - icacls /reset, a permissions repair tool,
+ * an imaging step - leaves DELETE granted to Authenticated Users and harmless,
+ * and every path on the machine failing. */
+#define HOOK_ROOT_WRITE_ACCESS (FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER | GENERIC_ALL)
+
 static inline bool hook_enable_privilege(const wchar_t *name)
 {
 	TOKEN_PRIVILEGES privileges = {0};
@@ -273,7 +285,7 @@ static inline void hook_path_trust(const wchar_t *path, struct hook_trust *trust
 
 		if (separator == buffer + 2 && buffer[1] == L':') {
 			separator[1] = 0; /* the root keeps its separator */
-			trust->ancestors = hook_object_trust(buffer, HOOK_ANCESTOR_WRITE_ACCESS, trust->ancestor_why,
+			trust->ancestors = hook_object_trust(buffer, HOOK_ROOT_WRITE_ACCESS, trust->ancestor_why,
 							     _countof(trust->ancestor_why));
 			if (!trust->ancestors)
 				StringCchCopyW(trust->ancestor, _countof(trust->ancestor), buffer);
