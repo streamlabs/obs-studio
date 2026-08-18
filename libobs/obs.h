@@ -1968,13 +1968,6 @@ EXPORT void obs_sceneitem_get_box_scale(const obs_sceneitem_t *item, struct vec2
 EXPORT bool obs_sceneitem_visible(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_set_visible(obs_sceneitem_t *item, bool visible);
 
-/**
- * Assigns the coordinate canvas for a scene item.
- *
- * For items using relative coordinates, the current absolute transform is
- * preserved while its relative position, bounds, and scale reference are
- * rebased to the new canvas.
- */
 EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
 				     struct obs_video_info *canvas);
 EXPORT struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item);
