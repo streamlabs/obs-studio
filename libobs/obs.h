@@ -488,7 +488,22 @@ EXPORT bool obs_get_video_info_for_encoder(obs_encoder_t *encoder,
 EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
 					  struct obs_video_info *ovi);
 
-/** Remove a video info */
+/**
+ * Removes a video info created by obs_create_video_info().
+ *
+ * @return OBS_VIDEO_SUCCESS if successful
+ *         OBS_VIDEO_INVALID_PARAM if the video info is not registered
+ *         OBS_VIDEO_CURRENTLY_ACTIVE if video cannot be deactivated
+ *         OBS_VIDEO_INFO_IN_USE if a scene item is assigned to the video info
+ *         OBS_VIDEO_REINITIALIZATION_FAILED if the video info was removed but
+ *             the remaining video configuration could not be initialized
+ *         OBS_VIDEO_FAIL for generic failure
+ *
+ * @note OBS_VIDEO_SUCCESS and OBS_VIDEO_REINITIALIZATION_FAILED both mean the
+ *       video info was removed and the pointer is no longer valid.  For every
+ *       other result, the video info remains registered and the pointer stays
+ *       valid.
+ */
 EXPORT int obs_remove_video_info(struct obs_video_info *ovi);
 /** Adds new video info to array of video info objects, need to be initialized */
 EXPORT struct obs_video_info *obs_create_video_info();
@@ -1968,8 +1983,14 @@ EXPORT void obs_sceneitem_get_box_scale(const obs_sceneitem_t *item, struct vec2
 EXPORT bool obs_sceneitem_visible(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_set_visible(obs_sceneitem_t *item, bool visible);
 
+/**
+ * Assigns a registered video info to a scene item.  Passing NULL makes the
+ * item render on every canvas.  A non-NULL video info must remain registered;
+ * attempts to assign a removed or currently-removing video info are ignored.
+ */
 EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
 				     struct obs_video_info *canvas);
+/** Returns a borrowed video info pointer kept alive by the scene item. */
 EXPORT struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item);
 
 struct obs_sceneitem_crop {
