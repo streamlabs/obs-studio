@@ -993,9 +993,7 @@ static void obs_free_video(bool full_clean)
 		pthread_mutex_lock(&obs->video.canvases_mutex);
 		size_t num = obs->video.canvases.num;
 		for (size_t i = 0; i < num; i++) {
-			struct obs_managed_video_info *managed =
-				(struct obs_managed_video_info *)obs->video.canvases.array[i];
-			assert(managed->scene_item_refs == 0);
+			assert(((struct obs_managed_video_info *)obs->video.canvases.array[i])->scene_item_refs == 0);
 			bfree(obs->video.canvases.array[i]);
 			obs->video.canvases.array[i] = NULL;
 		}
