@@ -356,21 +356,23 @@ static inline void get_scene_dimensions(const obs_sceneitem_t *item, float *x, f
 {
 	obs_scene_t *parent = item->parent;
 
-	/* Streamlabs scenes can contain items for multiple canvases.  The
-	 * ambient render mix is not defined for calls from the UI thread, so an
-	 * item's explicitly assigned canvas must be the authoritative coordinate
-	 * space whenever one is available. */
-	if (get_video_info_dimensions(item->canvas, x, y))
-		return;
-
-	/* Group children remain relative to the group's canvas.  The group resizes
-	 * itself, so using its transient content dimensions here would double-apply
-	 * resizing and recreate the upstream group scale-reference bug. */
+	/* A fixed-size non-group scene defines its own coordinate space.  An
+	 * item's output-canvas assignment controls routing, but must not make the
+	 * item move or scale when that external canvas changes size.  Groups remain
+	 * relative to their canvas because their transient content dimensions are
+	 * recomputed from their children. */
 	if (parent && !parent->is_group && parent->custom_size && parent->cx && parent->cy) {
 		*x = (float)parent->cx;
 		*y = (float)parent->cy;
 		return;
 	}
+
+	/* Streamlabs scenes can contain items for multiple canvases.  The
+	 * ambient render mix is not defined for calls from the UI thread, so an
+	 * item's explicitly assigned canvas is authoritative when its containing
+	 * scene does not define a fixed coordinate space. */
+	if (get_video_info_dimensions(item->canvas, x, y))
+		return;
 
 	if (parent && parent->source->canvas) {
 		*x = (float)canvas_getwidth(parent->source->canvas);
