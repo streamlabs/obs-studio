@@ -2233,7 +2233,12 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	dst->bounds_crop = src->bounds_crop;
 	dst->stream_visible = src->stream_visible;
 	dst->recording_visible = src->recording_visible;
-	dst->canvas = src->canvas;
+	if (src->canvas && !obs_video_info_add_sceneitem_ref(src->canvas)) {
+		blog(LOG_WARNING, "Failed to retain scene item canvas while duplicating item");
+		dst->canvas = NULL;
+	} else {
+		dst->canvas = src->canvas;
+	}
 
 	if (src->show_transition) {
 		obs_source_t *transition =
@@ -2773,6 +2778,7 @@ static void obs_sceneitem_destroy(obs_sceneitem_t *item)
 		if (item->source)
 			obs_source_release(item->source);
 		da_free(item->audio_actions);
+		obs_video_info_release_sceneitem_ref(item->canvas);
 		bfree(item);
 	}
 }
@@ -3481,6 +3487,12 @@ void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canv
 		do_update_transform(item);
 		return;
 	}
+	if (canvas && !obs_video_info_add_sceneitem_ref(canvas)) {
+		blog(LOG_WARNING, "Tried to assign an unregistered or removing video info to a scene item");
+		return;
+	}
+
+	struct obs_video_info *old_canvas = item->canvas;
 
 	if (!item->absolute_coordinates) {
 		/* Preserve the caller-visible transform while changing the coordinate
@@ -3497,6 +3509,7 @@ void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canv
 	}
 
 	do_update_transform(item);
+	obs_video_info_release_sceneitem_ref(old_canvas);
 }
 
 struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item)

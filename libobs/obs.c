@@ -29,6 +29,12 @@ struct obs_core *obs = NULL;
 static THREAD_LOCAL bool is_ui_thread = false;
 const bool key_processing_enabled = false;
 
+struct obs_managed_video_info {
+	struct obs_video_info ovi;
+	size_t scene_item_refs;
+	bool removing;
+};
+
 extern void add_default_module_paths(void);
 extern char *find_libobs_data_file(const char *file);
 static void obs_free_graphics(void);
@@ -987,6 +993,9 @@ static void obs_free_video(bool full_clean)
 		pthread_mutex_lock(&obs->video.canvases_mutex);
 		size_t num = obs->video.canvases.num;
 		for (size_t i = 0; i < num; i++) {
+			struct obs_managed_video_info *managed =
+				(struct obs_managed_video_info *)obs->video.canvases.array[i];
+			assert(managed->scene_item_refs == 0);
 			bfree(obs->video.canvases.array[i]);
 			obs->video.canvases.array[i] = NULL;
 		}
@@ -2013,28 +2022,78 @@ bool obs_get_video_info(struct obs_video_info *ovi)
 
 int obs_remove_video_info(struct obs_video_info *ovi)
 {
+	if (!ovi || !obs)
+		return OBS_VIDEO_INVALID_PARAM;
+
+	bool found = false;
+
+	/* Mark the video info as removing before deactivating video.  Canvas
+	 * assignment takes the same mutex, so no new scene-item reference can
+	 * race with the reference check below. */
+	pthread_mutex_lock(&obs->video.canvases_mutex);
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
+		if (obs->video.canvases.array[i] != ovi)
+			continue;
+
+		struct obs_managed_video_info *managed =
+			(struct obs_managed_video_info *)ovi;
+		found = true;
+		if (managed->removing) {
+			pthread_mutex_unlock(&obs->video.canvases_mutex);
+			return OBS_VIDEO_INVALID_PARAM;
+		}
+		if (managed->scene_item_refs != 0) {
+			pthread_mutex_unlock(&obs->video.canvases_mutex);
+			return OBS_VIDEO_INFO_IN_USE;
+		}
+		managed->removing = true;
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.canvases_mutex);
+
+	if (!found)
+		return OBS_VIDEO_INVALID_PARAM;
+
 	int ret = obs_deactivate_video_info();
-	if (ret != OBS_VIDEO_SUCCESS)
+	if (ret != OBS_VIDEO_SUCCESS) {
+		pthread_mutex_lock(&obs->video.canvases_mutex);
+		for (size_t i = 0; i < obs->video.canvases.num; i++) {
+			if (obs->video.canvases.array[i] == ovi) {
+				struct obs_managed_video_info *managed =
+					(struct obs_managed_video_info *)ovi;
+				managed->removing = false;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&obs->video.canvases_mutex);
 		return ret;
+	}
 
 	pthread_mutex_lock(&obs->video.canvases_mutex);
-	size_t num = obs->video.canvases.num;
-	for (size_t i = 0; i < num; i++) {
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] == ovi) {
-			bfree(obs->video.canvases.array[i]);
 			da_erase(obs->video.canvases, i);
 			break;
 		}
 	}
-
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
+	bfree(ovi);
 
-	return obs_init_video();
+	ret = obs_init_video();
+	if (ret != OBS_VIDEO_SUCCESS) {
+		blog(LOG_ERROR, "Video info was removed, but the remaining video configuration failed to initialize: %d",
+		     ret);
+		return OBS_VIDEO_REINITIALIZATION_FAILED;
+	}
+
+	return OBS_VIDEO_SUCCESS;
 }
 
 struct obs_video_info *obs_create_video_info()
 {
-	struct obs_video_info *ovi = bzalloc(sizeof(struct obs_video_info));
+	struct obs_managed_video_info *managed =
+		bzalloc(sizeof(struct obs_managed_video_info));
+	struct obs_video_info *ovi = &managed->ovi;
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	da_push_back(obs->video.canvases, &ovi);
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
@@ -2062,6 +2121,50 @@ struct obs_video_info *obs_create_video_info()
 	ovi->gpu_conversion = true;
 
 	return ovi;
+}
+
+bool obs_video_info_add_sceneitem_ref(struct obs_video_info *ovi)
+{
+	if (!ovi)
+		return true;
+	if (!obs)
+		return false;
+
+	bool retained = false;
+	pthread_mutex_lock(&obs->video.canvases_mutex);
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
+		if (obs->video.canvases.array[i] != ovi)
+			continue;
+
+		struct obs_managed_video_info *managed =
+			(struct obs_managed_video_info *)ovi;
+		if (!managed->removing) {
+			managed->scene_item_refs++;
+			retained = true;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.canvases_mutex);
+	return retained;
+}
+
+void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi)
+{
+	if (!ovi || !obs)
+		return;
+
+	pthread_mutex_lock(&obs->video.canvases_mutex);
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
+		if (obs->video.canvases.array[i] != ovi)
+			continue;
+
+		struct obs_managed_video_info *managed =
+			(struct obs_managed_video_info *)ovi;
+		assert(managed->scene_item_refs != 0);
+		managed->scene_item_refs--;
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.canvases_mutex);
 }
 
 size_t obs_get_video_info_count()
