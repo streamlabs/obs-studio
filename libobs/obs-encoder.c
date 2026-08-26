@@ -2393,7 +2393,12 @@ void obs_encoder_group_destroy(obs_encoder_group_t *group)
 
 bool obs_encoder_video_tex_active(const obs_encoder_t *encoder, enum video_format format)
 {
+	if (!encoder || !encoder->media)
+		return false;
+
 	struct obs_core_video_mix *mix = get_mix_for_video(encoder->media);
+	if (!mix)
+		return false;
 
 	if (format == VIDEO_FORMAT_NV12)
 		return mix->using_nv12_tex;
