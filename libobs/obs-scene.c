@@ -342,19 +342,61 @@ static uint32_t scene_getheight(void *data);
 static uint32_t canvas_getwidth(obs_weak_canvas_t *weak);
 static uint32_t canvas_getheight(obs_weak_canvas_t *weak);
 
+static inline bool get_video_info_dimensions(const struct obs_video_info *ovi, float *x, float *y)
+{
+	if (!ovi || !ovi->base_width || !ovi->base_height)
+		return false;
+
+	*x = (float)ovi->base_width;
+	*y = (float)ovi->base_height;
+	return true;
+}
+
 static inline void get_scene_dimensions(const obs_sceneitem_t *item, float *x, float *y)
 {
 	obs_scene_t *parent = item->parent;
-	if (!parent || (parent->is_group && !parent->source->canvas)) {
-		*x = (float)obs->data.main_canvas->mix->ovi.base_width;
-		*y = (float)obs->data.main_canvas->mix->ovi.base_height;
-	} else if (parent->is_group) {
+
+	/* A fixed-size non-group scene defines its own coordinate space.  An
+	 * item's output-canvas assignment controls routing, but must not make the
+	 * item move or scale when that external canvas changes size.  Groups remain
+	 * relative to their canvas because their transient content dimensions are
+	 * recomputed from their children. */
+	if (parent && !parent->is_group && parent->custom_size && parent->cx && parent->cy) {
+		*x = (float)parent->cx;
+		*y = (float)parent->cy;
+		return;
+	}
+
+	/* Streamlabs scenes can contain items for multiple canvases.  The
+	 * ambient render mix is not defined for calls from the UI thread, so an
+	 * item's explicitly assigned canvas is authoritative when its containing
+	 * scene does not define a fixed coordinate space. */
+	if (get_video_info_dimensions(item->canvas, x, y))
+		return;
+
+	if (parent && parent->source->canvas) {
 		*x = (float)canvas_getwidth(parent->source->canvas);
 		*y = (float)canvas_getheight(parent->source->canvas);
-	} else {
+		if (*x > 0.0f && *y > 0.0f)
+			return;
+	}
+
+	if (parent) {
 		*x = (float)scene_getwidth(parent);
 		*y = (float)scene_getheight(parent);
+		if (*x > 0.0f && *y > 0.0f)
+			return;
 	}
+
+	if (obs && obs->data.main_canvas &&
+	    get_video_info_dimensions(&obs->data.main_canvas->ovi, x, y))
+		return;
+
+	/* Avoid producing infinities if an item is created before video is
+	 * initialized.  Assigning a canvas later rebases this temporary reference
+	 * to the real dimensions. */
+	*x = 1.0f;
+	*y = 1.0f;
 }
 
 /* Rounds absolute pixel values to next .5. */
@@ -420,7 +462,8 @@ static inline void item_canvas_scale(struct vec2 *dst, const obs_sceneitem_t *it
 
 	float x, y;
 	get_scene_dimensions(item, &x, &y);
-	float scale_factor = y / item->scale_ref.y;
+	float reference_height = item->scale_ref.y > 0.0f ? item->scale_ref.y : y;
+	float scale_factor = y / reference_height;
 	vec2_mulf(dst, &item->scale, scale_factor);
 }
 
@@ -434,7 +477,8 @@ static inline void item_relative_scale(struct vec2 *dst, const struct vec2 *v, c
 
 	float x, y;
 	get_scene_dimensions(item, &x, &y);
-	float scale_factor = item->scale_ref.y / y;
+	float reference_height = item->scale_ref.y > 0.0f ? item->scale_ref.y : y;
+	float scale_factor = reference_height / y;
 	vec2_mulf(dst, v, scale_factor);
 }
 
@@ -1304,6 +1348,19 @@ static void scene_load_item(struct obs_scene *scene, obs_data_t *item_data)
 	item->crop.right = (uint32_t)obs_data_get_int(item_data, "crop_right");
 	item->crop.bottom = (uint32_t)obs_data_get_int(item_data, "crop_bottom");
 
+	if (item->is_scene) {
+		const int64_t crop_ref_width = obs_data_get_int(item_data, "crop_ref_width");
+		const int64_t crop_ref_height = obs_data_get_int(item_data, "crop_ref_height");
+		const bool crop_ref_valid = crop_ref_width > 0 && crop_ref_width <= UINT32_MAX && crop_ref_height > 0 &&
+					    crop_ref_height <= UINT32_MAX;
+
+		/* Older scene collections do not have crop reference dimensions.  Keep
+		 * zero as the sentinel so update_item_transform snapshots the nested
+		 * scene's current dimensions on first use. */
+		item->crop_ref_width = crop_ref_valid ? (uint32_t)crop_ref_width : 0;
+		item->crop_ref_height = crop_ref_valid ? (uint32_t)crop_ref_height : 0;
+	}
+
 	scale_filter_str = obs_data_get_string(item_data, "scale_filter");
 	item->scale_filter = OBS_SCALE_DISABLE;
 
@@ -1431,6 +1488,10 @@ static void scene_save_item(obs_data_array_t *array, struct obs_scene_item *item
 	obs_data_set_int(item_data, "crop_top", (int)item->crop.top);
 	obs_data_set_int(item_data, "crop_right", (int)item->crop.right);
 	obs_data_set_int(item_data, "crop_bottom", (int)item->crop.bottom);
+	if (item->is_scene) {
+		obs_data_set_int(item_data, "crop_ref_width", (int64_t)item->crop_ref_width);
+		obs_data_set_int(item_data, "crop_ref_height", (int64_t)item->crop_ref_height);
+	}
 	obs_data_set_int(item_data, "id", item->id);
 	obs_data_set_bool(item_data, "group_item_backup", !!backup_group);
 
@@ -1586,12 +1647,16 @@ static uint32_t scene_getwidth(void *data)
 	obs_scene_t *scene = data;
 	if (scene->custom_size) {
 		return scene->cx;
-	} else {
-		struct obs_video_info ovi;
-		if (obs_get_video_info_current(&ovi)) {
-			return ovi.base_width;
-		}
 	}
+
+	struct obs_video_info ovi;
+	if (obs_get_video_info_current(&ovi))
+		return ovi.base_width;
+	if (scene->source->canvas)
+		return canvas_getwidth(scene->source->canvas);
+	if (obs && obs->data.main_canvas)
+		return obs->data.main_canvas->ovi.base_width;
+
 	return 0;
 }
 
@@ -1600,12 +1665,16 @@ static uint32_t scene_getheight(void *data)
 	obs_scene_t *scene = data;
 	if (scene->custom_size) {
 		return scene->cy;
-	} else {
-		struct obs_video_info ovi;
-		if (obs_get_video_info_current(&ovi)) {
-			return ovi.base_height;
-		}
 	}
+
+	struct obs_video_info ovi;
+	if (obs_get_video_info_current(&ovi))
+		return ovi.base_height;
+	if (scene->source->canvas)
+		return canvas_getheight(scene->source->canvas);
+	if (obs && obs->data.main_canvas)
+		return obs->data.main_canvas->ovi.base_height;
+
 	return 0;
 }
 
@@ -2148,6 +2217,7 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	dst->pos = src->pos;
 	dst->rot = src->rot;
 	dst->scale = src->scale;
+	dst->scale_ref = src->scale_ref;
 	dst->align = src->align;
 	dst->last_width = src->last_width;
 	dst->last_height = src->last_height;
@@ -2165,7 +2235,12 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	dst->bounds_crop = src->bounds_crop;
 	dst->stream_visible = src->stream_visible;
 	dst->recording_visible = src->recording_visible;
-	dst->canvas = src->canvas;
+	if (src->canvas && !obs_video_info_add_sceneitem_ref(src->canvas)) {
+		blog(LOG_WARNING, "Failed to retain scene item canvas while duplicating item");
+		dst->canvas = NULL;
+	} else {
+		dst->canvas = src->canvas;
+	}
 
 	if (src->show_transition) {
 		obs_source_t *transition =
@@ -2203,6 +2278,8 @@ static inline void duplicate_item_data(struct obs_scene_item *dst, struct obs_sc
 	}
 
 	obs_sceneitem_set_crop(dst, &src->crop);
+	dst->crop_ref_width = src->crop_ref_width;
+	dst->crop_ref_height = src->crop_ref_height;
 	obs_sceneitem_set_locked(dst, src->locked);
 
 	if (defer_texture_update) {
@@ -2592,11 +2669,7 @@ static obs_sceneitem_t *obs_scene_add_internal(obs_scene_t *scene, obs_source_t 
 	item->is_scene = strcmp(source->info.id, scene_info.id) == 0;
 	item->private_settings = obs_data_create();
 	item->toggle_visibility = OBS_INVALID_HOTKEY_PAIR_ID;
-	// TODO: FIXME:
-	// We should make transition to the new coordinate system
-	// See: https://github.com/obsproject/obs-studio/pull/9910
-	// The line below was modified to enable old (absolute) coordinates globally.
-	item->absolute_coordinates = true; // scene->absolute_coordinates;
+	item->absolute_coordinates = scene->absolute_coordinates;
 	os_atomic_set_long(&item->active_refs, 1);
 	vec2_set(&item->scale, 1.0f, 1.0f);
 	get_scene_dimensions(item, &item->scale_ref.x, &item->scale_ref.y);
@@ -2707,6 +2780,7 @@ static void obs_sceneitem_destroy(obs_sceneitem_t *item)
 		if (item->source)
 			obs_source_release(item->source);
 		da_free(item->audio_actions);
+		obs_video_info_release_sceneitem_ref(item->canvas);
 		bfree(item);
 	}
 }
@@ -3406,10 +3480,38 @@ static bool group_item_transition(obs_scene_t *scene, obs_sceneitem_t *item, voi
 	return true;
 }
 
-void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
-			      struct obs_video_info *canvas)
+void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canvas)
 {
-	item->canvas = canvas;
+	if (!item)
+		return;
+
+	if (item->canvas == canvas) {
+		do_update_transform(item);
+		return;
+	}
+	if (canvas && !obs_video_info_add_sceneitem_ref(canvas)) {
+		blog(LOG_WARNING, "Tried to assign an unregistered or removing video info to a scene item");
+		return;
+	}
+
+	struct obs_video_info *old_canvas = item->canvas;
+
+	if (!item->absolute_coordinates) {
+		/* Preserve the caller-visible transform while changing the coordinate
+		 * space.  This is also the point where newly-created items replace the
+		 * temporary/main-canvas scale reference with their assigned canvas. */
+		struct obs_transform_info info;
+		scene_item_get_info_internal(item, &info);
+
+		item->canvas = canvas;
+		get_scene_dimensions(item, &item->scale_ref.x, &item->scale_ref.y);
+		scene_item_set_info_internal(item, &info);
+	} else {
+		item->canvas = canvas;
+	}
+
+	do_update_transform(item);
+	obs_video_info_release_sceneitem_ref(old_canvas);
 }
 
 struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item)
@@ -3661,6 +3763,43 @@ void obs_sceneitem_get_crop(const obs_sceneitem_t *item, struct obs_sceneitem_cr
 		return;
 
 	memcpy(crop, &item->crop, sizeof(*crop));
+}
+
+void obs_sceneitem_set_crop_reference(obs_sceneitem_t *item, uint32_t width, uint32_t height)
+{
+	if (!obs_ptr_valid(item, "obs_sceneitem_set_crop_reference"))
+		return;
+	if (!item->is_scene)
+		return;
+
+	if (!width || !height) {
+		item->crop_ref_width = 0;
+		item->crop_ref_height = 0;
+	} else {
+		item->crop_ref_width = width;
+		item->crop_ref_height = height;
+	}
+
+	os_atomic_set_bool(&item->update_transform, true);
+}
+
+void obs_sceneitem_get_crop_reference(const obs_sceneitem_t *item, uint32_t *width, uint32_t *height)
+{
+	if (!obs_ptr_valid(width, "obs_sceneitem_get_crop_reference"))
+		return;
+	if (!obs_ptr_valid(height, "obs_sceneitem_get_crop_reference"))
+		return;
+
+	*width = 0;
+	*height = 0;
+
+	if (!obs_ptr_valid(item, "obs_sceneitem_get_crop_reference"))
+		return;
+	if (!item->is_scene)
+		return;
+
+	*width = item->crop_ref_width;
+	*height = item->crop_ref_height;
 }
 
 void obs_sceneitem_set_scale_filter(obs_sceneitem_t *item, enum obs_scale_type filter)
