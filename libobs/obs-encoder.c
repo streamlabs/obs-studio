@@ -285,6 +285,12 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 			continue;
 		if (current_mix->rendering_mode != current->rendering_mode)
 			continue;
+		if (current_mix->preserve_frame_rate !=
+		    current->preserve_frame_rate)
+			continue;
+		if (current_mix->ovi.fps_num != current->ovi.fps_num ||
+		    current_mix->ovi.fps_den != current->ovi.fps_den)
+			continue;
 
 		if (current->ovi.scale_type != encoder->gpu_scale_type)
 			continue;
@@ -318,7 +324,8 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 
 	ovi.gpu_conversion = true;
 
-	mix = obs_create_video_mix(&ovi);
+	mix = obs_create_video_mix_with_frame_rate(
+		&ovi, current_mix->preserve_frame_rate);
 	if (!mix)
 		return;
 
@@ -341,6 +348,12 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		if (current->canvas_ovi != current_mix->canvas_ovi)
 			continue;
 		if (current->rendering_mode != current_mix->rendering_mode)
+			continue;
+		if (current->preserve_frame_rate !=
+		    current_mix->preserve_frame_rate)
+			continue;
+		if (current->ovi.fps_num != current_mix->ovi.fps_num ||
+		    current->ovi.fps_den != current_mix->ovi.fps_den)
 			continue;
 
 		if (current->ovi.scale_type != encoder->gpu_scale_type)

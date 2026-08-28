@@ -1123,6 +1123,42 @@ EXPORT video_t *obs_record_view_add(obs_view_t *view,
 /** Adds a view to the main render loop, with custom video settings */
 EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
 
+/**
+ * Adds an auxiliary mix to the main render loop.
+ *
+ * Auxiliary mixes render the supplied view using a private copy of
+ * @p render_info, while using the registered canvas identity associated with
+ * @p identity_source_mix for scene membership and canvas-aware audio routing.
+ * This allows a caller to test candidate render settings without registering
+ * another application canvas or changing the identified canvas settings. In
+ * particular, the auxiliary mix and any encoder-only rescale mixes derived
+ * from it preserve the FPS supplied in @p render_info rather than inheriting
+ * the main canvas FPS.
+ *
+ * The @p render_info structure is copied synchronously; the caller may modify
+ * or release the structure after this function returns. The identity source
+ * must be a published, attached ordinary mix (neither auxiliary nor
+ * encoder-only) backed by a registered canvas. Auxiliary mixes are
+ * intentionally excluded from obs_video_mix_get() and
+ * obs_view_enum_video_info(); use the returned handle directly. The auxiliary
+ * mix inherits the identity source's rendering mode; callers must therefore
+ * select the ordinary identity source appropriate for the render pass they
+ * intend to exercise.
+ *
+ * The returned handle remains owned by libobs. Stop every encoder and output
+ * using the auxiliary mix before calling obs_view_remove(), and call
+ * obs_view_remove() before obs_view_destroy(). Removal releases the mix and its
+ * retained canvas identity asynchronously on the video thread. The identified
+ * canvas cannot be removed while that retention is active.
+ *
+ * @return The newly created auxiliary mix, or NULL if validation or creation
+ *         failed.
+ */
+EXPORT obs_core_video_mix_t *
+obs_view_add_auxiliary_mix(obs_view_t *view,
+			   const struct obs_video_info *render_info,
+			   obs_core_video_mix_t *identity_source_mix);
+
 /** Removes a view from the main render loop */
 EXPORT void obs_view_remove(obs_view_t *view);
 

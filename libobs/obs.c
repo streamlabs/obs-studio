@@ -32,6 +32,8 @@ const bool key_processing_enabled = false;
 struct obs_managed_video_info {
 	struct obs_video_info ovi;
 	size_t scene_item_refs;
+	/* Keeps the registered identity alive while auxiliary mixes borrow it. */
+	size_t auxiliary_mix_refs;
 	bool removing;
 };
 
@@ -644,14 +646,16 @@ static void sync_mix_fps_with_main_canvas(struct obs_core_video_mix *video)
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 }
 
-static int obs_init_video_mix(struct obs_video_info *ovi, struct obs_core_video_mix *video)
+static int obs_init_video_mix(struct obs_video_info *ovi,
+			      struct obs_core_video_mix *video)
 {
 	struct video_output_info vi;
 
 	pthread_mutex_init_value(&video->gpu_encoder_mutex);
 
 	video->ovi = *ovi;
-	sync_mix_fps_with_main_canvas(video);
+	if (!video->preserve_frame_rate)
+		sync_mix_fps_with_main_canvas(video);
 	make_video_info(&vi, &video->ovi);
 
 	video->gpu_conversion = ovi->gpu_conversion;
@@ -687,16 +691,24 @@ static int obs_init_video_mix(struct obs_video_info *ovi, struct obs_core_video_
 	return OBS_VIDEO_SUCCESS;
 }
 
-struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi)
+struct obs_core_video_mix *
+obs_create_video_mix_with_frame_rate(struct obs_video_info *ovi,
+				     bool preserve_frame_rate)
 {
 	struct obs_core_video_mix *video =
 		bzalloc(sizeof(struct obs_core_video_mix));
 	video->canvas_ovi = ovi;
+	video->preserve_frame_rate = preserve_frame_rate;
 	if (obs_init_video_mix(ovi, video) != OBS_VIDEO_SUCCESS) {
 		bfree(video);
 		video = NULL;
 	}
 	return video;
+}
+
+struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi)
+{
+	return obs_create_video_mix_with_frame_rate(ovi, false);
 }
 
 static bool restore_canvases(void)
@@ -909,6 +921,11 @@ void obs_free_video_mix(struct obs_core_video_mix *video)
 		video->gpu_encoder_active = 0;
 		video->cur_texture = 0;
 	}
+
+	if (video->retains_canvas_identity) {
+		obs_video_info_release_auxiliary_mix_ref(video->canvas_ovi);
+		video->retains_canvas_identity = false;
+	}
 	bfree(video);
 }
 
@@ -993,7 +1010,10 @@ static void obs_free_video(bool full_clean)
 		pthread_mutex_lock(&obs->video.canvases_mutex);
 		size_t num = obs->video.canvases.num;
 		for (size_t i = 0; i < num; i++) {
-			assert(((struct obs_managed_video_info *)obs->video.canvases.array[i])->scene_item_refs == 0);
+			struct obs_managed_video_info *managed =
+				(struct obs_managed_video_info *)obs->video.canvases.array[i];
+			assert(managed->scene_item_refs == 0);
+			assert(managed->auxiliary_mix_refs == 0);
 			bfree(obs->video.canvases.array[i]);
 			obs->video.canvases.array[i] = NULL;
 		}
@@ -2025,9 +2045,9 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 
 	bool found = false;
 
-	/* Mark the video info as removing before deactivating video.  Canvas
-	 * assignment takes the same mutex, so no new scene-item reference can
-	 * race with the reference check below. */
+	/* Mark the video info as removing before deactivating video. Canvas
+	 * assignment and auxiliary identity retention take the same mutex, so no
+	 * new owner can race with the reference checks below. */
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] != ovi)
@@ -2040,7 +2060,8 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 			pthread_mutex_unlock(&obs->video.canvases_mutex);
 			return OBS_VIDEO_INVALID_PARAM;
 		}
-		if (managed->scene_item_refs != 0) {
+		if (managed->scene_item_refs != 0 ||
+		    managed->auxiliary_mix_refs != 0) {
 			pthread_mutex_unlock(&obs->video.canvases_mutex);
 			return OBS_VIDEO_INFO_IN_USE;
 		}
@@ -2160,6 +2181,48 @@ void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi)
 			(struct obs_managed_video_info *)ovi;
 		assert(managed->scene_item_refs != 0);
 		managed->scene_item_refs--;
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.canvases_mutex);
+}
+
+bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi)
+{
+	if (!ovi || !obs)
+		return false;
+
+	bool retained = false;
+	pthread_mutex_lock(&obs->video.canvases_mutex);
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
+		if (obs->video.canvases.array[i] != ovi)
+			continue;
+
+		struct obs_managed_video_info *managed =
+			(struct obs_managed_video_info *)ovi;
+		if (!managed->removing) {
+			managed->auxiliary_mix_refs++;
+			retained = true;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.canvases_mutex);
+	return retained;
+}
+
+void obs_video_info_release_auxiliary_mix_ref(struct obs_video_info *ovi)
+{
+	if (!ovi || !obs)
+		return;
+
+	pthread_mutex_lock(&obs->video.canvases_mutex);
+	for (size_t i = 0; i < obs->video.canvases.num; i++) {
+		if (obs->video.canvases.array[i] != ovi)
+			continue;
+
+		struct obs_managed_video_info *managed =
+			(struct obs_managed_video_info *)ovi;
+		assert(managed->auxiliary_mix_refs != 0);
+		managed->auxiliary_mix_refs--;
 		break;
 	}
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
@@ -3053,7 +3116,10 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_vid
 	// As this canvas is unused, we can safely skip it.
 	for (size_t i = 1, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
-		if (!mix || mix->encoder_only_mix)
+		/* Auxiliary mixes deliberately share a canvas identity with a normal
+		 * mix. Their creator receives the exact handle, while discovery must
+		 * continue to resolve the application's normal mix. */
+		if (!mix || mix->encoder_only_mix || mix->auxiliary_mix)
 			continue;
 		if ((mix->canvas_ovi == ovi || ovi == NULL) && mix->rendering_mode == mode) {
 			result = mix;

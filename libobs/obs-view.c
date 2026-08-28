@@ -169,6 +169,65 @@ video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi)
 	return mix->video;
 }
 
+obs_core_video_mix_t *
+obs_view_add_auxiliary_mix(obs_view_t *view,
+			   const struct obs_video_info *render_info,
+			   obs_core_video_mix_t *identity_source_mix)
+{
+	if (!obs || !obs->video.graphics || !view || !render_info ||
+	    !identity_source_mix)
+		return NULL;
+
+	/* Copy before doing any validation or allocation so callers can use a
+	 * temporary settings structure without transferring its ownership. */
+	struct obs_video_info render_settings = *render_info;
+	struct obs_video_info *canvas_identity = NULL;
+	enum obs_video_rendering_mode rendering_mode =
+		OBS_MAIN_VIDEO_RENDERING;
+
+	/* Validate the opaque source handle without dereferencing it until it is
+	 * found in the published mix array. Chaining auxiliary/encoder-only
+	 * identities is rejected: the alias must terminate at a real canvas. */
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	for (size_t i = 0; i < obs->video.mixes.num; i++) {
+		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
+		if (mix != identity_source_mix)
+			continue;
+		if (mix->view && !mix->encoder_only_mix &&
+		    !mix->auxiliary_mix) {
+			canvas_identity = mix->canvas_ovi;
+			rendering_mode = mix->rendering_mode;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	/* The dedicated retention prevents obs_remove_video_info() from freeing
+	 * the aliased identity before this auxiliary mix leaves the render loop. */
+	if (!canvas_identity ||
+	    !obs_video_info_add_auxiliary_mix_ref(canvas_identity))
+		return NULL;
+
+	struct obs_core_video_mix *mix =
+		obs_create_video_mix_with_frame_rate(&render_settings, true);
+	if (!mix) {
+		obs_video_info_release_auxiliary_mix_ref(canvas_identity);
+		return NULL;
+	}
+
+	mix->view = view;
+	mix->canvas_ovi = canvas_identity;
+	mix->rendering_mode = rendering_mode;
+	mix->auxiliary_mix = true;
+	mix->retains_canvas_identity = true;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	da_push_back(obs->video.mixes, &mix);
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	return mix;
+}
+
 video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi)
 {
 	if (!view)
@@ -229,7 +288,10 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix->view != view)
 			continue;
-		if (mix->encoder_only_mix)
+		/* Auxiliary mixes alias an existing public identity and are consumed
+		 * through their direct handle, so enumerating them would duplicate the
+		 * identified canvas. */
+		if (mix->encoder_only_mix || mix->auxiliary_mix)
 			continue;
 		if (!enum_proc(param, mix->canvas_ovi))
 			break;

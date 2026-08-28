@@ -130,10 +130,10 @@ struct audio_mix_buffer *get_audio_mix(struct audio_output *audio,
 }
 
 static void do_audio_output(struct audio_output *audio, size_t mix_idx,
-			    uint64_t timestamp, uint32_t frames)
+			    uint64_t timestamp, uint32_t frames, void *canvas)
 {
 	struct audio_mix_buffer *output_mix =
-		get_audio_mix(audio, mix_idx, obs_get_audio_rendering_canvas());
+		get_audio_mix(audio, mix_idx, canvas);
 	struct audio_mix *mix = &audio->mixes[mix_idx];
 	struct audio_data data;
 
@@ -146,7 +146,7 @@ static void do_audio_output(struct audio_output *audio, size_t mix_idx,
 
 		struct obs_encoder *encoder = input->param;
 		if (encoder && encoder->video &&
-		    encoder->video->canvas_ovi != obs_get_audio_rendering_canvas()) {
+		    encoder->video->canvas_ovi != canvas) {
 			continue;
 		}
 		float(*buf)[AUDIO_OUTPUT_FRAMES] =
@@ -167,13 +167,14 @@ static void do_audio_output(struct audio_output *audio, size_t mix_idx,
 	pthread_mutex_unlock(&audio->input_mutex);
 }
 
-static void clamp_audio_output(struct audio_output *audio, size_t bytes)
+static void clamp_audio_output(struct audio_output *audio, size_t bytes,
+			       void *canvas)
 {
 	size_t float_size = bytes / sizeof(float);
 
 	for (size_t mix_idx = 0; mix_idx < MAX_AUDIO_MIXES; mix_idx++) {
-		struct audio_mix_buffer *output_mix = get_audio_mix(
-			audio, mix_idx, obs_get_audio_rendering_canvas());
+		struct audio_mix_buffer *output_mix =
+			get_audio_mix(audio, mix_idx, canvas);
 		struct audio_mix *mix = &audio->mixes[mix_idx];
 
 		/* do not process mixing if a specific mix is inactive */
@@ -267,15 +268,17 @@ static void input_and_output(struct audio_output *audio, uint64_t audio_time,
 		return;
 
 	for (size_t canvas_idx = 0; canvas_idx < canvases; canvas_idx++) {
-		obs_set_audio_rendering_canvas(
-			audio->mixes_outputs.array[canvas_idx].canvas);
+		void *canvas = audio->mixes_outputs.array[canvas_idx].canvas;
+		obs_set_audio_rendering_canvas(canvas);
 
 		/* clamps audio data to -1.0..1.0 */
-		clamp_audio_output(audio, bytes);
+		clamp_audio_output(audio, bytes, canvas);
 
-		/* output audio*/
+		/* Route with the loop-local identity: another audio_t thread may
+		 * update the legacy global rendering context concurrently. */
 		for (size_t i = 0; i < MAX_AUDIO_MIXES; i++)
-			do_audio_output(audio, i, new_ts, AUDIO_OUTPUT_FRAMES);
+			do_audio_output(audio, i, new_ts, AUDIO_OUTPUT_FRAMES,
+					canvas);
 	}
 }
 

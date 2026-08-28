@@ -384,6 +384,15 @@ struct obs_core_video_mix {
 
 	float color_matrix[16];
 
+	/* Auxiliary mixes render with private settings while borrowing a
+	 * registered canvas identity. They are returned directly to their
+	 * creator and must not participate in ordinary mix discovery. */
+	bool auxiliary_mix;
+	bool retains_canvas_identity;
+	/* Preserve the mix-local FPS instead of synchronizing it with the main
+	 * canvas. Encoder-only mixes inherit this from their source mix. */
+	bool preserve_frame_rate;
+
 	bool encoder_only_mix;
 	long encoder_refs;
 
@@ -391,10 +400,15 @@ struct obs_core_video_mix {
 };
 
 extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi);
+extern struct obs_core_video_mix *
+obs_create_video_mix_with_frame_rate(struct obs_video_info *ovi,
+				     bool preserve_frame_rate);
 extern void obs_free_video_mix(struct obs_core_video_mix *video);
 extern void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix);
 extern bool obs_video_info_add_sceneitem_ref(struct obs_video_info *ovi);
 extern void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi);
+extern bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi);
+extern void obs_video_info_release_auxiliary_mix_ref(struct obs_video_info *ovi);
 
 struct obs_core_video {
 	graphics_t *graphics;
