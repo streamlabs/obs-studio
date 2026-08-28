@@ -388,6 +388,10 @@ struct obs_core_video_mix {
 	 * registered canvas identity. They are returned directly to their
 	 * creator and must not participate in ordinary mix discovery. */
 	bool auxiliary_mix;
+	/* Tracks ownership of the auxiliary reference on canvas_ovi. Unlike
+	 * ordinary mixes, an auxiliary mix can remain in the asynchronous render
+	 * teardown after its caller releases it, so the registered identity must
+	 * stay alive until obs_free_video_mix() releases that reference. */
 	bool retains_canvas_identity;
 	/* Preserve the mix-local FPS instead of synchronizing it with the main
 	 * canvas. Encoder-only mixes inherit this from their source mix. */
