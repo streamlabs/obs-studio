@@ -1019,7 +1019,7 @@ static void obs_free_video(bool full_clean)
 				(struct obs_managed_video_info *)obs->video.canvases.array[i];
 			assert(managed->scene_item_refs == 0);
 			assert(managed->auxiliary_mix_refs == 0);
-			bfree(obs->video.canvases.array[i]);
+			bfree(managed);
 			obs->video.canvases.array[i] = NULL;
 		}
 		da_free(obs->video.canvases);
