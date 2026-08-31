@@ -954,7 +954,14 @@ EXPORT enum obs_audio_rendering_mode obs_get_audio_rendering_mode(void);
 EXPORT struct obs_video_info *obs_get_audio_rendering_canvas(void);
 EXPORT void obs_set_audio_rendering_canvas(struct obs_video_info *ovi);
 
-/** Sets the active video render context for the current render pass. */
+/**
+ * Sets the active video mix for the current render pass.
+ *
+ * The mix is borrowed and is not retained. It must remain valid for the
+ * duration of the render pass. Pass NULL to clear the active context.
+ *
+ * @param  mix  Active mix, or NULL to clear the context.
+ */
 EXPORT void obs_set_video_render_context(obs_core_video_mix_t *mix);
 
 /** Set the replay buffer rendering mode*/
@@ -1151,8 +1158,16 @@ EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
  * retained canvas identity asynchronously on the video thread. The identified
  * canvas cannot be removed while that retention is active.
  *
- * @return The newly created auxiliary mix, or NULL if validation or creation
- *         failed.
+ * @param  view                 Non-NULL view whose sources the auxiliary mix
+ *                              renders. It must remain alive until the mix is
+ *                              removed with obs_view_remove().
+ * @param  render_info          Non-NULL private render settings copied into
+ *                              the auxiliary mix.
+ * @param  identity_source_mix  Non-NULL published ordinary mix whose
+ *                              registered canvas identity and rendering mode
+ *                              are borrowed.
+ * @return                      The newly created auxiliary mix, or NULL if
+ *                              validation or creation failed.
  */
 EXPORT obs_core_video_mix_t *
 obs_view_add_auxiliary_mix(obs_view_t *view,
@@ -2516,11 +2531,43 @@ EXPORT bool obs_weak_encoder_references_encoder(obs_weak_encoder_t *weak, obs_en
 EXPORT void obs_encoder_set_name(obs_encoder_t *encoder, const char *name);
 EXPORT const char *obs_encoder_get_name(const obs_encoder_t *encoder);
 
+/**
+ * Binds an encoder to a currently published video mix.
+ *
+ * The mix is borrowed and remains owned by libobs. Binding it does not extend
+ * its lifetime. For a video encoder, the encoder must be inactive and not yet
+ * initialized. A NULL or stale mix, an invalid encoder, or an active or
+ * initialized video encoder causes the request to be logged and ignored.
+ *
+ * @param  encoder  Encoder to bind. Audio encoders use the mix identity for
+ *                  canvas-aware audio routing.
+ * @param  video    Published video mix to bind.
+ */
 EXPORT void obs_encoder_set_video_mix(obs_encoder_t *encoder,
 				      struct obs_core_video_mix *video);
 
+/**
+ * Returns the video output owned by a video mix.
+ *
+ * The returned pointer is borrowed and remains valid only while @p mix is
+ * valid. No reference or ownership is transferred.
+ *
+ * @param  mix  Video mix to inspect, or NULL.
+ * @return      The mix's video output, or NULL when @p mix is NULL.
+ */
 EXPORT video_t *obs_video_mix_get_video(struct obs_core_video_mix *mix);
 
+/**
+ * Finds a published ordinary video mix by canvas identity and rendering mode.
+ *
+ * Auxiliary and encoder-only mixes are excluded from discovery. A NULL @p ovi
+ * matches any canvas identity. The returned handle is borrowed, transfers no
+ * ownership, and remains valid only while the mix stays published.
+ *
+ * @param  ovi   Registered canvas identity to match, or NULL as a wildcard.
+ * @param  mode  Rendering mode to match.
+ * @return       The first matching ordinary mix, or NULL when no match exists.
+ */
 EXPORT obs_core_video_mix_t *
 obs_video_mix_get(struct obs_video_info *ovi,
 		  enum obs_video_rendering_mode mode);

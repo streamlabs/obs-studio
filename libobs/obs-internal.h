@@ -333,6 +333,21 @@ struct obs_task_info {
 	void *param;
 };
 
+/* Describes how a core video mix is published, accessed, and owned. */
+enum obs_core_video_mix_kind {
+	/* A published application canvas mix that participates in ordinary mix
+	 * discovery. Keep this value at zero so zero-initialized mixes use the
+	 * default kind. */
+	OBS_CORE_VIDEO_MIX_KIND_ORDINARY = 0,
+	/* A private render mix that borrows a registered ordinary mix's canvas
+	 * identity for scene filtering and audio routing, and is accessed only
+	 * through the handle returned to its creator. */
+	OBS_CORE_VIDEO_MIX_KIND_AUXILIARY,
+	/* A private scaling or conversion mix created and owned by video encoders,
+	 * and excluded from ordinary mix discovery. */
+	OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY,
+};
+
 struct obs_core_video_mix {
 	struct obs_view *view;
 
@@ -384,10 +399,10 @@ struct obs_core_video_mix {
 
 	float color_matrix[16];
 
-	/* Auxiliary mixes render with private settings while borrowing a
-	 * registered canvas identity. They are returned directly to their
-	 * creator and must not participate in ordinary mix discovery. */
-	bool auxiliary_mix;
+	/* Auxiliary mixes are returned directly to their creator, while
+	 * encoder-only mixes are implementation details of scaled encoders.
+	 * Neither kind participates in ordinary mix discovery. */
+	enum obs_core_video_mix_kind kind;
 	/* Tracks ownership of the auxiliary reference on canvas_ovi. Unlike
 	 * ordinary mixes, an auxiliary mix can remain in the asynchronous render
 	 * teardown after its caller releases it, so the registered identity must
@@ -397,7 +412,6 @@ struct obs_core_video_mix {
 	 * canvas. Encoder-only mixes inherit this from their source mix. */
 	bool preserve_frame_rate;
 
-	bool encoder_only_mix;
 	long encoder_refs;
 
 	bool mix_audio;

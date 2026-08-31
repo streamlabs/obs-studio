@@ -272,7 +272,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		return;
 
 	/* Store original video_t so it can be restored if scaling is disabled. */
-	if (!current_mix->encoder_only_mix)
+	if (current_mix->kind != OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY)
 		encoder->original_video = encoder->media;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
@@ -329,7 +329,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	if (!mix)
 		return;
 
-	mix->encoder_only_mix = true;
+	mix->kind = OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY;
 	mix->encoder_refs = 1;
 	mix->canvas_ovi = current_mix->canvas_ovi;
 	mix->view = current_mix->view;
@@ -750,7 +750,7 @@ static void maybe_clear_encoder_core_video_mix(obs_encoder_t *encoder)
 		if (mix->video != encoder->media)
 			continue;
 
-		if (!mix->encoder_only_mix)
+		if (mix->kind != OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY)
 			break;
 
 		video_t *original_video = encoder->original_video;
@@ -1341,7 +1341,7 @@ static void encoder_set_video_internal(obs_encoder_t *encoder, video_t *video,
 	}
 
 	encoder->video = mix;
-	if (!mix || !mix->encoder_only_mix)
+	if (!mix || mix->kind != OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY)
 		encoder->original_video = NULL;
 
 	if (video) {

@@ -193,8 +193,8 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix != identity_source_mix)
 			continue;
-		if (mix->view && !mix->encoder_only_mix &&
-		    !mix->auxiliary_mix) {
+		if (mix->view &&
+		    mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
 			canvas_identity = mix->canvas_ovi;
 			rendering_mode = mix->rendering_mode;
 		}
@@ -218,7 +218,7 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 	mix->view = view;
 	mix->canvas_ovi = canvas_identity;
 	mix->rendering_mode = rendering_mode;
-	mix->auxiliary_mix = true;
+	mix->kind = OBS_CORE_VIDEO_MIX_KIND_AUXILIARY;
 	mix->retains_canvas_identity = true;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
@@ -291,7 +291,7 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 		/* Auxiliary mixes alias an existing public identity and are consumed
 		 * through their direct handle, so enumerating them would duplicate the
 		 * identified canvas. */
-		if (mix->encoder_only_mix || mix->auxiliary_mix)
+		if (mix->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY)
 			continue;
 		if (!enum_proc(param, mix->canvas_ovi))
 			break;

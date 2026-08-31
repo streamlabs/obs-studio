@@ -922,7 +922,12 @@ void obs_free_video_mix(struct obs_core_video_mix *video)
 		video->cur_texture = 0;
 	}
 
+	assert(video->retains_canvas_identity ==
+	       (video->kind == OBS_CORE_VIDEO_MIX_KIND_AUXILIARY));
+	assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY ||
+	       video->preserve_frame_rate);
 	if (video->retains_canvas_identity) {
+		assert(video->canvas_ovi != NULL);
 		obs_video_info_release_auxiliary_mix_ref(video->canvas_ovi);
 		video->retains_canvas_identity = false;
 	}
@@ -3119,7 +3124,7 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_vid
 		/* Auxiliary mixes deliberately share a canvas identity with a normal
 		 * mix. Their creator receives the exact handle, while discovery must
 		 * continue to resolve the application's normal mix. */
-		if (!mix || mix->encoder_only_mix || mix->auxiliary_mix)
+		if (!mix || mix->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY)
 			continue;
 		if ((mix->canvas_ovi == ovi || ovi == NULL) && mix->rendering_mode == mode) {
 			result = mix;
