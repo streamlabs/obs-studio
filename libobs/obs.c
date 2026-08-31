@@ -32,7 +32,7 @@ const bool key_processing_enabled = false;
 struct obs_managed_video_info {
 	struct obs_video_info ovi;
 	size_t scene_item_refs;
-	/* Keeps the registered identity alive while auxiliary mixes borrow it. */
+	/* Number of auxiliary mixes retaining this registered video info. */
 	size_t auxiliary_mix_refs;
 	bool removing;
 };
@@ -2050,9 +2050,9 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 
 	bool found = false;
 
-	/* Mark the video info as removing before deactivating video. Canvas
-	 * assignment and auxiliary identity retention take the same mutex, so no
-	 * new owner can race with the reference checks below. */
+	/* Mark the video info as removing while holding canvases_mutex. Scene items
+	 * and auxiliary mixes acquire references under the same mutex, so no new
+	 * reference can race with the checks below. */
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] != ovi)
@@ -3121,9 +3121,8 @@ obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_vid
 	// As this canvas is unused, we can safely skip it.
 	for (size_t i = 1, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
-		/* Auxiliary mixes deliberately share a canvas identity with a normal
-		 * mix. Their creator receives the exact handle, while discovery must
-		 * continue to resolve the application's normal mix. */
+		/* Return only ordinary mixes. Auxiliary and encoder-only mixes can use
+		 * the same canvas identity and rendering mode. */
 		if (!mix || mix->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY)
 			continue;
 		if ((mix->canvas_ovi == ovi || ovi == NULL) && mix->rendering_mode == mode) {

@@ -178,16 +178,14 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 	    !identity_source_mix)
 		return NULL;
 
-	/* Copy before doing any validation or allocation so callers can use a
-	 * temporary settings structure without transferring its ownership. */
 	struct obs_video_info render_settings = *render_info;
 	struct obs_video_info *canvas_identity = NULL;
 	enum obs_video_rendering_mode rendering_mode =
 		OBS_MAIN_VIDEO_RENDERING;
 
-	/* Validate the opaque source handle without dereferencing it until it is
-	 * found in the published mix array. Chaining auxiliary/encoder-only
-	 * identities is rejected: the alias must terminate at a real canvas. */
+	/* Verify that identity_source_mix is still in the mix list before
+	 * dereferencing it. Only an attached ordinary mix can supply the canvas
+	 * identity. */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0; i < obs->video.mixes.num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
@@ -202,8 +200,8 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
-	/* The dedicated retention prevents obs_remove_video_info() from freeing
-	 * the aliased identity before this auxiliary mix leaves the render loop. */
+	/* Prevent the registered video info from being removed until the auxiliary
+	 * mix is destroyed. */
 	if (!canvas_identity ||
 	    !obs_video_info_add_auxiliary_mix_ref(canvas_identity))
 		return NULL;
@@ -288,9 +286,8 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix->view != view)
 			continue;
-		/* Auxiliary mixes alias an existing public identity and are consumed
-		 * through their direct handle, so enumerating them would duplicate the
-		 * identified canvas. */
+		/* Auxiliary and encoder-only mixes reuse an ordinary mix's canvas
+		 * identity, so enumerate only ordinary mixes. */
 		if (mix->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY)
 			continue;
 		if (!enum_proc(param, mix->canvas_ovi))

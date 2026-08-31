@@ -333,18 +333,18 @@ struct obs_task_info {
 	void *param;
 };
 
-/* Describes how a core video mix is published, accessed, and owned. */
+/* Identifies the role of a core video mix. */
 enum obs_core_video_mix_kind {
-	/* A published application canvas mix that participates in ordinary mix
-	 * discovery. Keep this value at zero so zero-initialized mixes use the
-	 * default kind. */
+	/* An ordinary video mix eligible for obs_video_mix_get() and
+	 * obs_view_enum_video_info(). Keep this value at zero so zero-initialized
+	 * mixes use this kind. */
 	OBS_CORE_VIDEO_MIX_KIND_ORDINARY = 0,
-	/* A private render mix that borrows a registered ordinary mix's canvas
-	 * identity for scene filtering and audio routing, and is accessed only
-	 * through the handle returned to its creator. */
+	/* An auxiliary video mix that uses an ordinary mix's canvas identity for
+	 * scene filtering and audio routing. Excluded from obs_video_mix_get() and
+	 * obs_view_enum_video_info(). */
 	OBS_CORE_VIDEO_MIX_KIND_AUXILIARY,
-	/* A private scaling or conversion mix created and owned by video encoders,
-	 * and excluded from ordinary mix discovery. */
+	/* A scaling or conversion video mix managed by encoders and excluded from
+	 * obs_video_mix_get() and obs_view_enum_video_info(). */
 	OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY,
 };
 
@@ -399,17 +399,12 @@ struct obs_core_video_mix {
 
 	float color_matrix[16];
 
-	/* Auxiliary mixes are returned directly to their creator, while
-	 * encoder-only mixes are implementation details of scaled encoders.
-	 * Neither kind participates in ordinary mix discovery. */
 	enum obs_core_video_mix_kind kind;
-	/* Tracks ownership of the auxiliary reference on canvas_ovi. Unlike
-	 * ordinary mixes, an auxiliary mix can remain in the asynchronous render
-	 * teardown after its caller releases it, so the registered identity must
-	 * stay alive until obs_free_video_mix() releases that reference. */
+	/* True while this mix owns an auxiliary reference to canvas_ovi.
+	 * obs_free_video_mix() releases the reference. */
 	bool retains_canvas_identity;
-	/* Preserve the mix-local FPS instead of synchronizing it with the main
-	 * canvas. Encoder-only mixes inherit this from their source mix. */
+	/* Keep the mix-local frame rate instead of synchronizing it with the main
+	 * canvas. Encoder-only mixes inherit this setting from their source mix. */
 	bool preserve_frame_rate;
 
 	long encoder_refs;
@@ -672,7 +667,7 @@ extern void cache_multiple_rendering(void);
 extern bool get_cached_multiple_rendering(void);
 
 extern struct obs_core_video_mix *get_mix_for_video(video_t *video);
-/* Use to set the active video render context for the current render pass. */
+/* Sets the active video mix for the current render pass. */
 extern void obs_set_video_render_context(struct obs_core_video_mix *mix);
 
 extern void start_raw_video(video_t *video, const struct video_scale_info *conversion, uint32_t frame_rate_divisor,
