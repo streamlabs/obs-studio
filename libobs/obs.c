@@ -32,9 +32,15 @@ const bool key_processing_enabled = false;
 struct obs_managed_video_info {
 	struct obs_video_info ovi;
 	size_t scene_item_refs;
-	/* Number of non-ordinary mixes retaining this video info. */
+	/* Number of non-ordinary mixes retaining this registered video info. */
 	size_t non_ordinary_mix_refs;
 	bool removing;
+};
+
+enum video_info_retain_result {
+	VIDEO_INFO_RETAIN_UNREGISTERED,
+	VIDEO_INFO_RETAINED,
+	VIDEO_INFO_RETAIN_REMOVING,
 };
 
 extern void add_default_module_paths(void);
@@ -42,6 +48,8 @@ extern char *find_libobs_data_file(const char *file);
 static void obs_free_graphics(void);
 static void obs_free_render_textures(struct obs_core_video_mix *video);
 static void obs_free_video_mix_resources(struct obs_core_video_mix *video, bool mutex_initialized);
+static enum video_info_retain_result obs_video_info_retain_non_ordinary_mix_ref(struct obs_video_info *ovi);
+static bool obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi);
 
 static inline void make_video_info(struct video_output_info *vi, const struct obs_video_info *ovi)
 {
@@ -708,12 +716,18 @@ struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_
 		if (preserve_frame_rate || render_info != canvas_ovi)
 			return NULL;
 		break;
-	case OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY:
-		if (!obs_video_info_add_non_ordinary_mix_ref(canvas_ovi))
+	case OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY: {
+		/* Encoder-only mixes can inherit an unregistered, canvas-owned
+		 * identity from their source mix. A registered identity must still be
+		 * retained so removal cannot race with mix creation. */
+		enum video_info_retain_result result = obs_video_info_retain_non_ordinary_mix_ref(canvas_ovi);
+		if (result == VIDEO_INFO_RETAIN_REMOVING)
 			return NULL;
 		break;
+	}
 	case OBS_CORE_VIDEO_MIX_KIND_AUXILIARY:
-		if (!preserve_frame_rate || !obs_video_info_add_non_ordinary_mix_ref(canvas_ovi))
+		if (!preserve_frame_rate ||
+		    obs_video_info_retain_non_ordinary_mix_ref(canvas_ovi) != VIDEO_INFO_RETAINED)
 			return NULL;
 		break;
 	default:
@@ -954,7 +968,12 @@ void obs_free_video_mix(struct obs_core_video_mix *video)
 	assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY || video->preserve_frame_rate);
 	if (video->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
 		assert(video->canvas_ovi != NULL);
-		obs_video_info_release_non_ordinary_mix_ref(video->canvas_ovi);
+		/* Registered identities remain discoverable while retained. An
+		 * encoder-only canvas-owned identity remains alive and unregistered
+		 * until its source mix releases the encoder during teardown. */
+		const bool released = obs_video_info_release_non_ordinary_mix_ref(video->canvas_ovi);
+		assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY || released);
+		UNUSED_PARAMETER(released);
 	}
 	bfree(video);
 }
@@ -2198,12 +2217,12 @@ void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi)
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
 }
 
-bool obs_video_info_add_non_ordinary_mix_ref(struct obs_video_info *ovi)
+static enum video_info_retain_result obs_video_info_retain_non_ordinary_mix_ref(struct obs_video_info *ovi)
 {
 	if (!ovi || !obs)
-		return false;
+		return VIDEO_INFO_RETAIN_REMOVING;
 
-	bool retained = false;
+	enum video_info_retain_result result = VIDEO_INFO_RETAIN_UNREGISTERED;
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] != ovi)
@@ -2212,19 +2231,22 @@ bool obs_video_info_add_non_ordinary_mix_ref(struct obs_video_info *ovi)
 		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		if (!managed->removing) {
 			managed->non_ordinary_mix_refs++;
-			retained = true;
+			result = VIDEO_INFO_RETAINED;
+		} else {
+			result = VIDEO_INFO_RETAIN_REMOVING;
 		}
 		break;
 	}
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
-	return retained;
+	return result;
 }
 
-void obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi)
+static bool obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi)
 {
 	if (!ovi || !obs)
-		return;
+		return false;
 
+	bool released = false;
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] != ovi)
@@ -2233,9 +2255,11 @@ void obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi)
 		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		assert(managed->non_ordinary_mix_refs != 0);
 		managed->non_ordinary_mix_refs--;
+		released = true;
 		break;
 	}
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
+	return released;
 }
 
 size_t obs_get_video_info_count()

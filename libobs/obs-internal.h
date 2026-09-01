@@ -388,7 +388,7 @@ struct obs_core_video_mix {
 
 	video_t *video;
 	struct obs_video_info ovi;         /* Mix-local render settings. */
-	struct obs_video_info *canvas_ovi; /* Stable public canvas identity for lookups/routing. */
+	struct obs_video_info *canvas_ovi; /* Stable canvas identity for lookups/routing; may be canvas-owned. */
 	enum obs_video_rendering_mode rendering_mode;
 
 	bool gpu_conversion;
@@ -412,7 +412,7 @@ struct obs_core_video_mix {
 
 extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi);
 /* Creates a mix of the requested kind. Non-ordinary mixes copy render_info and
- * retain canvas_ovi as their registered canvas identity. */
+ * use canvas_ovi as their canvas identity. Registered identities are retained. */
 extern struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_info *render_info,
 								struct obs_video_info *canvas_ovi,
 								enum obs_core_video_mix_kind kind,
@@ -423,8 +423,6 @@ extern void obs_encoder_release_video_mix_references(struct obs_core_video_mix *
 extern struct obs_core_video_mix *get_mix_for_video_locked(video_t *video);
 extern bool obs_video_info_add_sceneitem_ref(struct obs_video_info *ovi);
 extern void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi);
-extern bool obs_video_info_add_non_ordinary_mix_ref(struct obs_video_info *ovi);
-extern void obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi);
 
 struct obs_core_video {
 	graphics_t *graphics;
