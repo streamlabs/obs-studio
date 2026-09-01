@@ -465,8 +465,7 @@ EXPORT int obs_reset_video(struct obs_video_info *ovi);
 
 EXPORT int obs_deactivate_video_info();
 
-EXPORT int obs_set_video_info(struct obs_video_info *canvas,
-			      struct obs_video_info *updated);
+EXPORT int obs_set_video_info(struct obs_video_info *canvas, struct obs_video_info *updated);
 
 /** Gets video info first/default */
 EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
@@ -474,19 +473,14 @@ EXPORT bool obs_get_video_info(struct obs_video_info *ovi);
 EXPORT bool obs_get_video_info_current(struct obs_video_info *ovi);
 /** Gets video info by index*/
 EXPORT size_t obs_get_video_info_count();
-EXPORT bool obs_get_video_info_by_index(size_t index,
-					struct obs_video_info *ovi);
-EXPORT struct obs_video_info * obs_get_video_info_by_index2(size_t index);
+EXPORT bool obs_get_video_info_by_index(size_t index, struct obs_video_info *ovi);
+EXPORT struct obs_video_info *obs_get_video_info_by_index2(size_t index);
 /** Gets video info used by output*/
-EXPORT bool obs_get_video_info_for_output(obs_output_t *output,
-					  struct obs_video_info *ovi,
-					  size_t index);
+EXPORT bool obs_get_video_info_for_output(obs_output_t *output, struct obs_video_info *ovi, size_t index);
 /** Gets video info used by output*/
-EXPORT bool obs_get_video_info_for_encoder(obs_encoder_t *encoder,
-					   struct obs_video_info *ovi);
+EXPORT bool obs_get_video_info_for_encoder(obs_encoder_t *encoder, struct obs_video_info *ovi);
 
-EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
-					  struct obs_video_info *ovi);
+EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item, struct obs_video_info *ovi);
 
 /**
  * Removes a video info created by obs_create_video_info().
@@ -494,7 +488,8 @@ EXPORT bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
  * @return OBS_VIDEO_SUCCESS if successful
  *         OBS_VIDEO_INVALID_PARAM if the video info is not registered
  *         OBS_VIDEO_CURRENTLY_ACTIVE if video cannot be deactivated
- *         OBS_VIDEO_INFO_IN_USE if a scene item is assigned to the video info
+ *         OBS_VIDEO_INFO_IN_USE if a scene item or non-ordinary video mix
+ *             retains the video info
  *         OBS_VIDEO_REINITIALIZATION_FAILED if the video info was removed but
  *             the remaining video configuration could not be initialized
  *         OBS_VIDEO_FAIL for generic failure
@@ -916,8 +911,7 @@ EXPORT proc_handler_t *obs_get_proc_handler(void);
 EXPORT void obs_render_main_texture(void);
 
 /** Renders the output texture for a specific output*/
-EXPORT void obs_render_texture(struct obs_video_info *ovi,
-			       enum obs_video_rendering_mode mode);
+EXPORT void obs_render_texture(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
 
 /** Renders the last main output texture ignoring background color */
 EXPORT void obs_render_main_texture_src_color_only(void);
@@ -954,16 +948,21 @@ EXPORT enum obs_audio_rendering_mode obs_get_audio_rendering_mode(void);
 EXPORT struct obs_video_info *obs_get_audio_rendering_canvas(void);
 EXPORT void obs_set_audio_rendering_canvas(struct obs_video_info *ovi);
 
-/** Sets the active video render context for the current render pass. */
+/**
+ * Sets the video mix used for rendering.
+ *
+ * No reference is added to @p mix. It must remain valid until another mix is
+ * set or the current mix is cleared by passing NULL.
+ *
+ * @param  mix  Video mix to use, or NULL to clear the current mix.
+ */
 EXPORT void obs_set_video_render_context(obs_core_video_mix_t *mix);
 
 /** Set the replay buffer rendering mode*/
-EXPORT void obs_set_replay_buffer_rendering_mode(
-	enum obs_replay_buffer_rendering_mode mode);
+EXPORT void obs_set_replay_buffer_rendering_mode(enum obs_replay_buffer_rendering_mode mode);
 
 /** Get current replay buffer rendering mode*/
-EXPORT enum obs_replay_buffer_rendering_mode
-obs_get_replay_buffer_rendering_mode(void);
+EXPORT enum obs_replay_buffer_rendering_mode obs_get_replay_buffer_rendering_mode(void);
 
 /** Saves a source to settings data */
 EXPORT obs_data_t *obs_save_source(obs_source_t *source);
@@ -1113,15 +1112,45 @@ EXPORT void obs_view_render(obs_view_t *view);
 EXPORT video_t *obs_view_add(obs_view_t *view);
 
 /** Adds a view to the main render loop */
-EXPORT video_t *obs_stream_view_add(obs_view_t *view,
-				    struct obs_video_info *ovi);
+EXPORT video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi);
 
 /** Adds a view to the main render loop */
-EXPORT video_t *obs_record_view_add(obs_view_t *view,
-				    struct obs_video_info *ovi);
+EXPORT video_t *obs_record_view_add(obs_view_t *view, struct obs_video_info *ovi);
 
 /** Adds a view to the main render loop, with custom video settings */
 EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
+
+/**
+ * Adds an auxiliary video mix to the main render loop.
+ *
+ * The mix renders @p view using a copy of @p render_info. It uses the
+ * registered video info and rendering mode from @p identity_source_mix for
+ * canvas-specific scene filtering and audio routing. All video mixes share the
+ * main graphics thread's render cadence, so @p render_info must specify a frame
+ * rate equivalent to @p identity_source_mix. Use an encoder frame-rate divisor
+ * when a lower output frame rate is required.
+ *
+ * @p identity_source_mix must be a valid mix returned by obs_video_mix_get()
+ * whose view remains in the main render loop. Auxiliary mixes are not returned
+ * by obs_video_mix_get() or represented in obs_view_enum_video_info(); use the
+ * handle returned by this function directly.
+ *
+ * libobs owns the returned mix. Keep @p view alive while it is in use.
+ * obs_view_remove() removes every mix associated with @p view, so stop all
+ * corresponding outputs and encoders before calling it. Do not use the handle
+ * afterward, and call obs_view_remove() before obs_view_destroy(). Cleanup
+ * completes asynchronously; the source video info remains in use until the
+ * video thread finishes cleanup.
+ *
+ * @param  view                 Non-NULL view to render.
+ * @param  render_info          Non-NULL video settings, copied by value.
+ * @param  identity_source_mix  Non-NULL source mix returned by
+ *                              obs_video_mix_get().
+ * @return                      The new auxiliary mix, or NULL if validation or
+ *                              creation fails.
+ */
+EXPORT obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct obs_video_info *render_info,
+							obs_core_video_mix_t *identity_source_mix);
 
 /** Removes a view from the main render loop */
 EXPORT void obs_view_remove(obs_view_t *view);
@@ -1145,12 +1174,10 @@ EXPORT obs_display_t *obs_display_create(const struct gs_init_data *graphics_dat
 EXPORT void obs_display_destroy(obs_display_t *display);
 
 /** Changes the size of this display */
-EXPORT void obs_display_resize(obs_display_t *display, uint32_t cx,
-			       uint32_t cy);
+EXPORT void obs_display_resize(obs_display_t *display, uint32_t cx, uint32_t cy);
 #ifdef __APPLE__
 /** Creates IOSurface (Apple shared memory) */
-EXPORT uint32_t obs_display_create_iosurface(obs_display_t *display,
-					     uint32_t width, uint32_t height);
+EXPORT uint32_t obs_display_create_iosurface(obs_display_t *display, uint32_t width, uint32_t height);
 #endif
 
 /** Updates the color space of this display */
@@ -1812,12 +1839,10 @@ EXPORT bool obs_transition_audio_render(obs_source_t *transition, uint64_t *ts_o
 					obs_transition_audio_mix_callback_t mix_a_callback,
 					obs_transition_audio_mix_callback_t mix_b_callback);
 
-EXPORT bool obs_transition_audio_render_do(
-	obs_source_t *transition, uint64_t *ts_out,
-	struct audio_data_mixes_outputs *audio, uint32_t mixers,
-	size_t channels, size_t sample_rate,
-	obs_transition_audio_mix_callback_t mix_a_callback,
-	obs_transition_audio_mix_callback_t mix_b_callback);
+EXPORT bool obs_transition_audio_render_do(obs_source_t *transition, uint64_t *ts_out,
+					   struct audio_data_mixes_outputs *audio, uint32_t mixers, size_t channels,
+					   size_t sample_rate, obs_transition_audio_mix_callback_t mix_a_callback,
+					   obs_transition_audio_mix_callback_t mix_b_callback);
 
 /* swaps transition sources and textures as an optimization and to reduce
  * memory usage when switching between transitions */
@@ -1938,11 +1963,9 @@ EXPORT bool obs_sceneitem_selected(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_locked(const obs_sceneitem_t *item);
 EXPORT bool obs_sceneitem_set_locked(obs_sceneitem_t *item, bool lock);
 EXPORT bool obs_sceneitem_stream_visible(const obs_sceneitem_t *item);
-EXPORT bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item,
-					     bool stream_visible);
+EXPORT bool obs_sceneitem_set_stream_visible(obs_sceneitem_t *item, bool stream_visible);
 EXPORT bool obs_sceneitem_recording_visible(const obs_sceneitem_t *item);
-EXPORT bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item,
-						bool recording_visible);
+EXPORT bool obs_sceneitem_set_recording_visible(obs_sceneitem_t *item, bool recording_visible);
 
 /* Functions for getting/setting specific orientation of a scene item */
 EXPORT void obs_sceneitem_set_pos(obs_sceneitem_t *item, const struct vec2 *pos);
@@ -1953,17 +1976,14 @@ EXPORT void obs_sceneitem_set_order(obs_sceneitem_t *item, enum obs_order_moveme
 EXPORT void obs_sceneitem_set_order_position(obs_sceneitem_t *item, int position);
 EXPORT void obs_sceneitem_set_bounds_type(obs_sceneitem_t *item, enum obs_bounds_type type);
 EXPORT void obs_sceneitem_set_bounds_alignment(obs_sceneitem_t *item, uint32_t alignment);
-EXPORT void obs_scene_set_items_order(obs_scene_t *scene,
-				      int64_t *new_items_order,
-				      int items_count);
+EXPORT void obs_scene_set_items_order(obs_scene_t *scene, int64_t *new_items_order, int items_count);
 EXPORT void obs_sceneitem_set_bounds_crop(obs_sceneitem_t *item, bool crop);
 EXPORT void obs_sceneitem_set_bounds(obs_sceneitem_t *item, const struct vec2 *bounds);
 
 EXPORT int64_t obs_sceneitem_get_id(const obs_sceneitem_t *item);
 
 EXPORT void obs_sceneitem_get_pos(const obs_sceneitem_t *item, struct vec2 *pos);
-EXPORT void obs_sceneitem_get_size(const obs_sceneitem_t *item,
-				   struct vec2 *size);
+EXPORT void obs_sceneitem_get_size(const obs_sceneitem_t *item, struct vec2 *size);
 EXPORT float obs_sceneitem_get_rot(const obs_sceneitem_t *item);
 EXPORT void obs_sceneitem_get_scale(const obs_sceneitem_t *item, struct vec2 *scale);
 EXPORT uint32_t obs_sceneitem_get_alignment(const obs_sceneitem_t *item);
@@ -1988,8 +2008,7 @@ EXPORT bool obs_sceneitem_set_visible(obs_sceneitem_t *item, bool visible);
  * item render on every canvas.  A non-NULL video info must remain registered;
  * attempts to assign a removed or currently-removing video info are ignored.
  */
-EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item,
-				     struct obs_video_info *canvas);
+EXPORT void obs_sceneitem_set_canvas(obs_sceneitem_t *item, struct obs_video_info *canvas);
 /** Returns a borrowed video info pointer kept alive by the scene item. */
 EXPORT struct obs_video_info *obs_sceneitem_get_canvas(obs_sceneitem_t *item);
 
@@ -2480,14 +2499,47 @@ EXPORT bool obs_weak_encoder_references_encoder(obs_weak_encoder_t *weak, obs_en
 EXPORT void obs_encoder_set_name(obs_encoder_t *encoder, const char *name);
 EXPORT const char *obs_encoder_get_name(const obs_encoder_t *encoder);
 
-EXPORT void obs_encoder_set_video_mix(obs_encoder_t *encoder,
-				      struct obs_core_video_mix *video);
+/**
+ * Sets the video mix to be used with an encoder.
+ *
+ * @p mix must be owned by libobs. No reference is added, so the mix must remain
+ * valid while the encoder uses it. The mix supplies a video encoder's input and
+ * selects the registered video info used to route an audio encoder to one
+ * canvas.
+ *
+ * A video encoder must be inactive and not yet initialized. An audio encoder
+ * must be inactive, but may already be initialized. A NULL or stale mix, or an
+ * invalid encoder state, triggers a warning and leaves the encoder unchanged.
+ *
+ * @param  encoder  Encoder to update.
+ * @param  mix      Non-NULL video mix to use.
+ */
+EXPORT void obs_encoder_set_video_mix(obs_encoder_t *encoder, struct obs_core_video_mix *mix);
 
+/**
+ * Returns the video output context used by a video mix.
+ *
+ * The returned pointer is owned by libobs and remains valid only while
+ * @p mix remains valid.
+ *
+ * @param  mix  Video mix to inspect, or NULL.
+ * @return      Video output context, or NULL when @p mix is NULL.
+ */
 EXPORT video_t *obs_video_mix_get_video(struct obs_core_video_mix *mix);
 
-EXPORT obs_core_video_mix_t *
-obs_video_mix_get(struct obs_video_info *ovi,
-		  enum obs_video_rendering_mode mode);
+/**
+ * Finds a non-main video mix by registered video info and rendering mode.
+ *
+ * Auxiliary mixes and mixes created internally for encoder scaling are not
+ * returned. A NULL @p ovi matches any registered video info. The returned mix
+ * is owned by libobs and is not reference-counted; do not retain it after its
+ * view or video configuration is removed or reset.
+ *
+ * @param  ovi   Registered video info pointer to match, or NULL.
+ * @param  mode  Video rendering mode to match.
+ * @return       First matching video mix, or NULL if none is found.
+ */
+EXPORT obs_core_video_mix_t *obs_video_mix_get(struct obs_video_info *ovi, enum obs_video_rendering_mode mode);
 
 /** Returns the codec of an encoder by the id */
 EXPORT const char *obs_get_encoder_codec(const char *id);
@@ -2678,8 +2730,7 @@ EXPORT void *obs_encoder_create_rerouted(obs_encoder_t *encoder, const char *rer
 EXPORT bool obs_encoder_paused(const obs_encoder_t *output);
 
 /** Set encoder error to outputs */
-EXPORT void obs_outputs_set_last_error(obs_encoder_t *encoder,
-				       const char *error_text);
+EXPORT void obs_outputs_set_last_error(obs_encoder_t *encoder, const char *error_text);
 EXPORT const char *obs_encoder_get_last_error(obs_encoder_t *encoder);
 EXPORT void obs_encoder_set_last_error(obs_encoder_t *encoder, const char *message);
 
@@ -2830,7 +2881,8 @@ EXPORT enum obs_icon_type obs_source_get_icon_type(const char *id);
  * obs_output_add_packet_callback() and obs_output_remove_packet_callback(),
  * respectively.
  */
-EXPORT void bpm_inject(obs_output_t *output, struct encoder_packet *pkt, struct encoder_packet_time *pkt_time, void *param);
+EXPORT void bpm_inject(obs_output_t *output, struct encoder_packet *pkt, struct encoder_packet_time *pkt_time,
+		       void *param);
 
 /* BPM function to destroy all allocations for a given output. */
 EXPORT void bpm_destroy(obs_output_t *output);

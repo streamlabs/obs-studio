@@ -169,6 +169,53 @@ video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi)
 	return mix->video;
 }
 
+obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct obs_video_info *render_info,
+						 obs_core_video_mix_t *identity_source_mix)
+{
+	if (!obs || !obs->video.graphics || !view || !render_info || !identity_source_mix)
+		return NULL;
+
+	struct obs_video_info *canvas_identity = NULL;
+	enum obs_video_rendering_mode rendering_mode = OBS_MAIN_VIDEO_RENDERING;
+
+	/* Verify that identity_source_mix is still in the mix list before
+	 * dereferencing it. Only an attached ordinary mix can supply the canvas
+	 * identity. */
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	for (size_t i = 0; i < obs->video.mixes.num; i++) {
+		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
+		if (mix != identity_source_mix)
+			continue;
+		const bool cadence_matches = render_info->fps_num && render_info->fps_den && mix->ovi.fps_num &&
+					     mix->ovi.fps_den &&
+					     (uint64_t)render_info->fps_num * mix->ovi.fps_den ==
+						     (uint64_t)mix->ovi.fps_num * render_info->fps_den;
+		if (mix->view && mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY && cadence_matches) {
+			canvas_identity = mix->canvas_ovi;
+			rendering_mode = mix->rendering_mode;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	if (!canvas_identity)
+		return NULL;
+
+	struct obs_core_video_mix *mix =
+		obs_create_video_mix_internal(render_info, canvas_identity, OBS_CORE_VIDEO_MIX_KIND_AUXILIARY);
+	if (!mix)
+		return NULL;
+
+	mix->view = view;
+	mix->rendering_mode = rendering_mode;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	da_push_back(obs->video.mixes, &mix);
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+
+	return mix;
+}
+
 video_t *obs_stream_view_add(obs_view_t *view, struct obs_video_info *ovi)
 {
 	if (!view)
@@ -229,7 +276,9 @@ void obs_view_enum_video_info(obs_view_t *view, bool (*enum_proc)(void *, struct
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix->view != view)
 			continue;
-		if (mix->encoder_only_mix)
+		/* Auxiliary and encoder-only mixes reuse an ordinary mix's canvas
+		 * identity, so enumerate only ordinary mixes. */
+		if (mix->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY)
 			continue;
 		if (!enum_proc(param, mix->canvas_ovi))
 			break;
