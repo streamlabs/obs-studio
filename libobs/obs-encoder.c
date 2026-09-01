@@ -254,13 +254,12 @@ struct gpu_rescale_mix_key {
 	struct obs_view *view;
 	struct obs_video_info *canvas_ovi;
 	enum obs_video_rendering_mode rendering_mode;
-	bool preserve_frame_rate;
 };
 
 static bool video_mix_matches_key(const struct obs_core_video_mix *mix, const struct gpu_rescale_mix_key *key)
 {
 	return mix->view == key->view && mix->canvas_ovi == key->canvas_ovi &&
-	       mix->rendering_mode == key->rendering_mode && mix->preserve_frame_rate == key->preserve_frame_rate;
+	       mix->rendering_mode == key->rendering_mode;
 }
 
 static bool video_mix_matches_gpu_rescale(const struct obs_core_video_mix *mix, const struct gpu_rescale_mix_key *key,
@@ -318,7 +317,6 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		.view = current_mix->view,
 		.canvas_ovi = current_mix->canvas_ovi,
 		.rendering_mode = current_mix->rendering_mode,
-		.preserve_frame_rate = current_mix->preserve_frame_rate,
 	};
 
 	const struct obs_video_info source_info = current_mix->ovi;
@@ -356,8 +354,7 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 	if (mix)
 		return;
 
-	mix = obs_create_video_mix_internal(&desired, key.canvas_ovi, OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY,
-					    key.preserve_frame_rate);
+	mix = obs_create_video_mix_internal(&desired, key.canvas_ovi, OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY);
 	if (!mix)
 		return;
 

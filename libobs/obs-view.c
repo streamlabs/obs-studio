@@ -186,7 +186,11 @@ obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct 
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix != identity_source_mix)
 			continue;
-		if (mix->view && mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
+		const bool cadence_matches = render_info->fps_num && render_info->fps_den && mix->ovi.fps_num &&
+					     mix->ovi.fps_den &&
+					     (uint64_t)render_info->fps_num * mix->ovi.fps_den ==
+						     (uint64_t)mix->ovi.fps_num * render_info->fps_den;
+		if (mix->view && mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY && cadence_matches) {
 			canvas_identity = mix->canvas_ovi;
 			rendering_mode = mix->rendering_mode;
 		}
@@ -198,7 +202,7 @@ obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct 
 		return NULL;
 
 	struct obs_core_video_mix *mix =
-		obs_create_video_mix_internal(render_info, canvas_identity, OBS_CORE_VIDEO_MIX_KIND_AUXILIARY, true);
+		obs_create_video_mix_internal(render_info, canvas_identity, OBS_CORE_VIDEO_MIX_KIND_AUXILIARY);
 	if (!mix)
 		return NULL;
 

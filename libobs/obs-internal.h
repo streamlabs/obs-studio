@@ -400,10 +400,6 @@ struct obs_core_video_mix {
 	float color_matrix[16];
 
 	enum obs_core_video_mix_kind kind;
-	/* Keep the mix-local frame rate instead of synchronizing it with the main
-	 * canvas. Auxiliary mixes set this, ordinary mixes do not, and encoder-only
-	 * mixes inherit the setting from their source mix. */
-	bool preserve_frame_rate;
 
 	long encoder_refs;
 
@@ -415,8 +411,7 @@ extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ov
  * use canvas_ovi as their canvas identity. Registered identities are retained. */
 extern struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_info *render_info,
 								struct obs_video_info *canvas_ovi,
-								enum obs_core_video_mix_kind kind,
-								bool preserve_frame_rate);
+								enum obs_core_video_mix_kind kind);
 extern void obs_free_video_mix(struct obs_core_video_mix *video);
 extern void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix);
 /* Returns a published mix for video. The caller must hold mixes_mutex. */

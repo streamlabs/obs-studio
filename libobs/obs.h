@@ -1125,8 +1125,10 @@ EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
  *
  * The mix renders @p view using a copy of @p render_info. It uses the
  * registered video info and rendering mode from @p identity_source_mix for
- * canvas-specific scene filtering and audio routing. Encoder scaling also
- * preserves the frame rate specified by @p render_info.
+ * canvas-specific scene filtering and audio routing. All video mixes share the
+ * main graphics thread's render cadence, so @p render_info must specify a frame
+ * rate equivalent to @p identity_source_mix. Use an encoder frame-rate divisor
+ * when a lower output frame rate is required.
  *
  * @p identity_source_mix must be a valid mix returned by obs_video_mix_get()
  * whose view remains in the main render loop. Auxiliary mixes are not returned
@@ -1144,7 +1146,8 @@ EXPORT video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi);
  * @param  render_info          Non-NULL video settings, copied by value.
  * @param  identity_source_mix  Non-NULL source mix returned by
  *                              obs_video_mix_get().
- * @return                      The new auxiliary mix, or NULL on failure.
+ * @return                      The new auxiliary mix, or NULL if validation or
+ *                              creation fails.
  */
 EXPORT obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct obs_video_info *render_info,
 							obs_core_video_mix_t *identity_source_mix);

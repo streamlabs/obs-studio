@@ -663,8 +663,7 @@ static int obs_init_video_mix(const struct obs_video_info *ovi, struct obs_core_
 	pthread_mutex_init_value(&video->gpu_encoder_mutex);
 
 	video->ovi = *ovi;
-	if (!video->preserve_frame_rate)
-		sync_mix_fps_with_main_canvas(video);
+	sync_mix_fps_with_main_canvas(video);
 	make_video_info(&vi, &video->ovi);
 
 	video->gpu_conversion = ovi->gpu_conversion;
@@ -706,14 +705,14 @@ fail:
 
 struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_info *render_info,
 							 struct obs_video_info *canvas_ovi,
-							 enum obs_core_video_mix_kind kind, bool preserve_frame_rate)
+							 enum obs_core_video_mix_kind kind)
 {
 	if (!render_info || !canvas_ovi)
 		return NULL;
 
 	switch (kind) {
 	case OBS_CORE_VIDEO_MIX_KIND_ORDINARY:
-		if (preserve_frame_rate || render_info != canvas_ovi)
+		if (render_info != canvas_ovi)
 			return NULL;
 		break;
 	case OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY: {
@@ -726,8 +725,7 @@ struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_
 		break;
 	}
 	case OBS_CORE_VIDEO_MIX_KIND_AUXILIARY:
-		if (!preserve_frame_rate ||
-		    obs_video_info_retain_non_ordinary_mix_ref(canvas_ovi) != VIDEO_INFO_RETAINED)
+		if (obs_video_info_retain_non_ordinary_mix_ref(canvas_ovi) != VIDEO_INFO_RETAINED)
 			return NULL;
 		break;
 	default:
@@ -737,7 +735,6 @@ struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_
 	struct obs_core_video_mix *video = bzalloc(sizeof(struct obs_core_video_mix));
 	video->canvas_ovi = canvas_ovi;
 	video->kind = kind;
-	video->preserve_frame_rate = preserve_frame_rate;
 	if (obs_init_video_mix(render_info, video) != OBS_VIDEO_SUCCESS) {
 		obs_free_video_mix(video);
 		return NULL;
@@ -747,7 +744,7 @@ struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_
 
 struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi)
 {
-	return obs_create_video_mix_internal(ovi, ovi, OBS_CORE_VIDEO_MIX_KIND_ORDINARY, false);
+	return obs_create_video_mix_internal(ovi, ovi, OBS_CORE_VIDEO_MIX_KIND_ORDINARY);
 }
 
 static bool restore_canvases(void)
@@ -965,7 +962,6 @@ void obs_free_video_mix(struct obs_core_video_mix *video)
 	if (video->video)
 		obs_free_video_mix_resources(video, true);
 
-	assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY || video->preserve_frame_rate);
 	if (video->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
 		assert(video->canvas_ovi != NULL);
 		/* Registered identities remain discoverable while retained. An
