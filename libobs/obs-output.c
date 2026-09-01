@@ -1092,11 +1092,17 @@ void obs_output_set_video_encoder2(obs_output_t *output, obs_encoder_t *encoder,
 	if (output->video_encoders[idx] == encoder)
 		return;
 
+	obs_encoder_t *new_encoder = obs_encoder_get_ref(encoder);
+	if (new_encoder && !obs_encoder_add_output(new_encoder, output)) {
+		blog(LOG_WARNING, "%s: encoder '%s' is stopping for video mix removal", __FUNCTION__,
+		     obs_encoder_get_name(new_encoder));
+		obs_encoder_release(new_encoder);
+		return;
+	}
+
 	obs_encoder_remove_output(output->video_encoders[idx], output);
 	obs_encoder_release(output->video_encoders[idx]);
-
-	output->video_encoders[idx] = obs_encoder_get_ref(encoder);
-	obs_encoder_add_output(output->video_encoders[idx], output);
+	output->video_encoders[idx] = new_encoder;
 
 	destroy_caption_track(&output->caption_tracks[idx]);
 	if (encoder != NULL) {
@@ -1154,11 +1160,17 @@ void obs_output_set_audio_encoder(obs_output_t *output, obs_encoder_t *encoder, 
 	if (output->audio_encoders[idx] == encoder)
 		return;
 
+	obs_encoder_t *new_encoder = obs_encoder_get_ref(encoder);
+	if (new_encoder && !obs_encoder_add_output(new_encoder, output)) {
+		blog(LOG_WARNING, "%s: encoder '%s' is stopping for video mix removal", __FUNCTION__,
+		     obs_encoder_get_name(new_encoder));
+		obs_encoder_release(new_encoder);
+		return;
+	}
+
 	obs_encoder_remove_output(output->audio_encoders[idx], output);
 	obs_encoder_release(output->audio_encoders[idx]);
-
-	output->audio_encoders[idx] = obs_encoder_get_ref(encoder);
-	obs_encoder_add_output(output->audio_encoders[idx], output);
+	output->audio_encoders[idx] = new_encoder;
 }
 
 obs_encoder_t *obs_output_get_video_encoder2(const obs_output_t *output, size_t idx)
@@ -2477,21 +2489,41 @@ static void default_raw_audio_callback(void *param, size_t mix_idx, struct audio
 	}
 }
 
-static inline void start_audio_encoders(struct obs_output *output, encoded_callback_t encoded_callback)
+static inline bool start_audio_encoders(struct obs_output *output, encoded_callback_t encoded_callback)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-		if (output->audio_encoders[i]) {
-			obs_encoder_start(output->audio_encoders[i], encoded_callback, output);
-		}
+		if (output->audio_encoders[i] &&
+		    !obs_encoder_start_if_ready(output->audio_encoders[i], encoded_callback, output))
+			return false;
+	}
+	return true;
+}
+
+static inline bool start_video_encoders(struct obs_output *output, encoded_callback_t encoded_callback)
+{
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		if (output->video_encoders[i] &&
+		    !obs_encoder_start_if_ready(output->video_encoders[i], encoded_callback, output))
+			return false;
+	}
+	return true;
+}
+
+static inline void stop_audio_encoders(obs_output_t *output, encoded_callback_t encoded_callback)
+{
+	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
+		obs_encoder_t *audio = output->audio_encoders[i];
+		if (audio)
+			obs_encoder_stop(audio, encoded_callback, output);
 	}
 }
 
-static inline void start_video_encoders(struct obs_output *output, encoded_callback_t encoded_callback)
+static inline void stop_video_encoders(obs_output_t *output, encoded_callback_t encoded_callback)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		if (output->video_encoders[i]) {
-			obs_encoder_start(output->video_encoders[i], encoded_callback, output);
-		}
+		obs_encoder_t *video = output->video_encoders[i];
+		if (video)
+			obs_encoder_stop(video, encoded_callback, output);
 	}
 }
 
@@ -2535,7 +2567,7 @@ static inline bool preserve_active(struct obs_output *output)
 	return (output->delay_flags & OBS_OUTPUT_DELAY_PRESERVE) != 0;
 }
 
-static void hook_data_capture(struct obs_output *output)
+static bool hook_data_capture(struct obs_output *output)
 {
 	encoded_callback_t encoded_callback;
 	bool has_video = flag_video(output);
@@ -2561,10 +2593,17 @@ static void hook_data_capture(struct obs_output *output)
 			     output->context.name, output->delay_sec, preserve_active(output) ? "on" : "off");
 		}
 
-		if (has_audio)
-			start_audio_encoders(output, encoded_callback);
-		if (has_video)
-			start_video_encoders(output, encoded_callback);
+		if ((has_audio && !start_audio_encoders(output, encoded_callback)) ||
+		    (has_video && !start_video_encoders(output, encoded_callback))) {
+			if (has_video)
+				stop_video_encoders(output, encoded_callback);
+			if (has_audio)
+				stop_audio_encoders(output, encoded_callback);
+			os_atomic_set_bool(&output->delay_active, false);
+			if (output->active_delay_ns)
+				obs_output_cleanup_delay(output);
+			return false;
+		}
 	} else {
 		if (has_video)
 			start_raw_video(output->video, obs_output_get_video_conversion(output), 1,
@@ -2572,6 +2611,8 @@ static void hook_data_capture(struct obs_output *output)
 		if (has_audio)
 			start_raw_audio(output);
 	}
+
+	return true;
 }
 
 static inline void signal_start(struct obs_output *output)
@@ -2655,43 +2696,133 @@ static inline bool initialize_video_encoders(obs_output_t *output)
 	return true;
 }
 
-static inline void pair_encoders(obs_output_t *output)
+static struct obs_core_video_mix *get_audio_routing_mix_locked(struct obs_encoder *video)
+{
+	struct obs_core_video_mix *mix = get_mix_for_video_locked(video->media);
+	if (!mix || mix != video->video)
+		return NULL;
+
+	if (mix->kind != OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY)
+		return mix;
+
+	struct obs_core_video_mix *source = get_mix_for_video_locked(video->original_video);
+	if (!source || source->kind == OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY || source->canvas_ovi != mix->canvas_ovi)
+		return NULL;
+
+	return source;
+}
+
+static bool encoder_array_contains(struct obs_encoder **encoders, size_t count, const struct obs_encoder *encoder)
+{
+	for (size_t i = 0; i < count; i++) {
+		if (encoders[i] == encoder)
+			return true;
+	}
+	return false;
+}
+
+static void sort_encoder_array(struct obs_encoder **encoders, size_t count)
+{
+	for (size_t i = 1; i < count; i++) {
+		struct obs_encoder *encoder = encoders[i];
+		size_t pos = i;
+		while (pos && (uintptr_t)encoders[pos - 1] > (uintptr_t)encoder) {
+			encoders[pos] = encoders[pos - 1];
+			pos--;
+		}
+		encoders[pos] = encoder;
+	}
+}
+
+static size_t collect_pairing_locks(obs_output_t *output, struct obs_encoder **encoders)
+{
+	size_t count = 0;
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		struct obs_encoder *video = output->video_encoders[i];
+		if (video && !encoder_array_contains(encoders, count, video))
+			encoders[count++] = video;
+	}
+	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
+		struct obs_encoder *audio = output->audio_encoders[i];
+		if (audio && !encoder_array_contains(encoders, count, audio))
+			encoders[count++] = audio;
+	}
+	sort_encoder_array(encoders, count);
+	return count;
+}
+
+static void lock_pairing_encoders(struct obs_encoder **encoders, size_t count)
+{
+	for (size_t i = 0; i < count; i++)
+		pthread_mutex_lock(&encoders[i]->init_mutex);
+}
+
+static void unlock_pairing_encoders(struct obs_encoder **encoders, size_t count)
+{
+	while (count)
+		pthread_mutex_unlock(&encoders[--count]->init_mutex);
+}
+
+static inline bool pair_encoders(obs_output_t *output)
 {
 	size_t first_venc_idx;
 	if (!get_first_video_encoder_index(output, &first_venc_idx))
-		return;
+		return true;
 	struct obs_encoder *video = output->video_encoders[first_venc_idx];
 
-	pthread_mutex_lock(&video->init_mutex);
-	if (video->active) {
-		pthread_mutex_unlock(&video->init_mutex);
-		return;
-	}
+	struct obs_encoder *encoders[MAX_OUTPUT_VIDEO_ENCODERS + MAX_OUTPUT_AUDIO_ENCODERS];
+	size_t encoder_count = collect_pairing_locks(output, encoders);
+	lock_pairing_encoders(encoders, encoder_count);
 
+	bool success = true;
+	for (size_t i = 0; i < encoder_count; i++) {
+		if (os_atomic_load_bool(&encoders[i]->video_mix_removal_pending) || !encoders[i]->context.data ||
+		    !encoders[i]->media) {
+			success = false;
+			goto unlock;
+		}
+	}
+	if (video->active)
+		goto unlock;
+
+	struct obs_encoder *to_pair[MAX_OUTPUT_AUDIO_ENCODERS];
+	size_t num_to_pair = 0;
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
 		struct obs_encoder *audio = output->audio_encoders[i];
-		if (!audio)
+		if (!audio || audio->active || audio->paired_encoders.num ||
+		    encoder_array_contains(to_pair, num_to_pair, audio))
 			continue;
 
-		pthread_mutex_lock(&audio->init_mutex);
-		if (!audio->active && !audio->paired_encoders.num) {
-			obs_weak_encoder_t *weak_audio = obs_encoder_get_weak_encoder(audio);
-			obs_weak_encoder_t *weak_video = obs_encoder_get_weak_encoder(video);
-			da_push_back(video->paired_encoders, &weak_audio);
-			da_push_back(audio->paired_encoders, &weak_video);
-
-			/*
-			 * Audio output routing is canvas-aware. In multi-canvas sessions an
-			 * audio encoder without an associated video mix gets fed once per
-			 * canvas, which duplicates audio blocks at the same timestamp. Have
-			 * the audio encoder follow the paired video encoder's canvas so it
-			 * only receives the intended mix.
-			 */
-			audio->video = video->video;
-		}
-		pthread_mutex_unlock(&audio->init_mutex);
+		to_pair[num_to_pair++] = audio;
 	}
-	pthread_mutex_unlock(&video->init_mutex);
+	if (!num_to_pair)
+		goto unlock;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	struct obs_core_video_mix *routing_mix = get_audio_routing_mix_locked(video);
+	pthread_mutex_unlock(&obs->video.mixes_mutex);
+	if (!routing_mix) {
+		blog(LOG_ERROR, "Failed to pair encoders: video source mix is no longer available");
+		success = false;
+		goto unlock;
+	}
+
+	/* Audio routing is canvas-aware. Pair each audio encoder with the video
+	 * encoder's source mix so it receives one block per timestamp. Temporary
+	 * encoder-only rescale mixes do not own audio routing. */
+	for (size_t i = 0; i < num_to_pair; i++) {
+		struct obs_encoder *audio = to_pair[i];
+		audio->video = routing_mix;
+		obs_weak_encoder_t *weak_audio = obs_encoder_get_weak_encoder(audio);
+		obs_weak_encoder_t *weak_video = obs_encoder_get_weak_encoder(video);
+		da_push_back(video->paired_encoders, &weak_audio);
+		da_push_back(audio->paired_encoders, &weak_video);
+	}
+
+unlock:
+	unlock_pairing_encoders(encoders, encoder_count);
+
+	return success;
 }
 
 bool obs_output_initialize_encoders(obs_output_t *output, uint32_t flags)
@@ -2914,9 +3045,6 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 	if (!can_begin_data_capture(output))
 		return false;
 
-	if (flag_video(output) && flag_audio(output))
-		pair_encoders(output);
-
 	size_t batch_size;
 	if (!calculate_batch_size(output, &batch_size)) {
 		// Abort before activation so callers get a clean start failure instead of a partial capture state.
@@ -2926,8 +3054,14 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 	// Batch size is recomputed for each start, so overwrite the previous value instead of accumulating it.
 	output->interleaver_max_batch_size = batch_size;
 
+	if (flag_video(output) && flag_audio(output) && !pair_encoders(output))
+		return false;
+
 	os_atomic_set_bool(&output->data_active, true);
-	hook_data_capture(output);
+	if (!hook_data_capture(output)) {
+		os_atomic_set_bool(&output->data_active, false);
+		return false;
+	}
 
 	if (flag_service(output))
 		obs_service_activate(output->service);
@@ -2947,24 +3081,6 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 	}
 
 	return true;
-}
-
-static inline void stop_audio_encoders(obs_output_t *output, encoded_callback_t encoded_callback)
-{
-	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-		obs_encoder_t *audio = output->audio_encoders[i];
-		if (audio)
-			obs_encoder_stop(audio, encoded_callback, output);
-	}
-}
-
-static inline void stop_video_encoders(obs_output_t *output, encoded_callback_t encoded_callback)
-{
-	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		obs_encoder_t *video = output->video_encoders[i];
-		if (video)
-			obs_encoder_stop(video, encoded_callback, output);
-	}
 }
 
 static inline void stop_raw_audio(obs_output_t *output)

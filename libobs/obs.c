@@ -32,16 +32,18 @@ const bool key_processing_enabled = false;
 struct obs_managed_video_info {
 	struct obs_video_info ovi;
 	size_t scene_item_refs;
-	/* Number of auxiliary mixes retaining this registered video info. */
-	size_t auxiliary_mix_refs;
+	/* Number of non-ordinary mixes retaining this video info. */
+	size_t non_ordinary_mix_refs;
 	bool removing;
 };
 
 extern void add_default_module_paths(void);
 extern char *find_libobs_data_file(const char *file);
 static void obs_free_graphics(void);
+static void obs_free_render_textures(struct obs_core_video_mix *video);
+static void obs_free_video_mix_resources(struct obs_core_video_mix *video, bool mutex_initialized);
 
-static inline void make_video_info(struct video_output_info *vi, struct obs_video_info *ovi)
+static inline void make_video_info(struct video_output_info *vi, const struct obs_video_info *ovi)
 {
 	vi->name = "video";
 	vi->format = ovi->output_format;
@@ -56,8 +58,7 @@ static inline void make_video_info(struct video_output_info *vi, struct obs_vide
 
 #ifdef _WIN32
 // Fix for missing Windows dependency required by zlib
-EXPORT int __ms_vsnprintf(char *str, size_t size, const char *format,
-			  va_list ap)
+EXPORT int __ms_vsnprintf(char *str, size_t size, const char *format, va_list ap)
 {
 	return vsnprintf(str, size, format, ap);
 }
@@ -443,9 +444,7 @@ static bool obs_init_textures(struct obs_core_video_mix *video)
 	}
 
 	struct obs_video_info *ovi = &video->ovi;
-	video->render_texture = gs_texture_create(ovi->base_width,
-						  ovi->base_height, format, 1,
-						  NULL, GS_RENDER_TARGET);
+	video->render_texture = gs_texture_create(ovi->base_width, ovi->base_height, format, 1, NULL, GS_RENDER_TARGET);
 	if (!video->render_texture)
 		success = false;
 
@@ -627,8 +626,9 @@ static inline void set_video_matrix(struct obs_core_video_mix *video, struct vid
 static void sync_mix_fps_with_main_canvas(struct obs_core_video_mix *video)
 {
 	/* Main view graphics thread drives frame pacing for all views. Keep the
-	 * mix snapshot and the public canvas handle aligned for callers that
-	 * still read fps_num/fps_den from obs_video_info. */
+	 * mix snapshot aligned with it. Ordinary mixes also own the registered
+	 * canvas settings exposed to callers; non-ordinary mixes must not modify
+	 * their canvas identity. */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 
 	if (obs->video.mixes.num && obs->data.main_canvas->mix) {
@@ -637,7 +637,7 @@ static void sync_mix_fps_with_main_canvas(struct obs_core_video_mix *video)
 		video->ovi.fps_num = main_ovi->fps_num;
 		video->ovi.fps_den = main_ovi->fps_den;
 
-		if (video->canvas_ovi) {
+		if (video->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY && video->canvas_ovi) {
 			video->canvas_ovi->fps_num = main_ovi->fps_num;
 			video->canvas_ovi->fps_den = main_ovi->fps_den;
 		}
@@ -646,10 +646,11 @@ static void sync_mix_fps_with_main_canvas(struct obs_core_video_mix *video)
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 }
 
-static int obs_init_video_mix(struct obs_video_info *ovi,
-			      struct obs_core_video_mix *video)
+static int obs_init_video_mix(const struct obs_video_info *ovi, struct obs_core_video_mix *video)
 {
 	struct video_output_info vi;
+	bool mutex_initialized = false;
+	int result = OBS_VIDEO_FAIL;
 
 	pthread_mutex_init_value(&video->gpu_encoder_mutex);
 
@@ -669,46 +670,70 @@ static int obs_init_video_mix(struct obs_video_info *ovi,
 	if (errorcode != VIDEO_OUTPUT_SUCCESS) {
 		if (errorcode == VIDEO_OUTPUT_INVALIDPARAM) {
 			blog(LOG_ERROR, "Invalid video parameters specified");
-			return OBS_VIDEO_INVALID_PARAM;
+			result = OBS_VIDEO_INVALID_PARAM;
 		} else {
 			blog(LOG_ERROR, "Could not open video output");
 		}
-		return OBS_VIDEO_FAIL;
+		goto fail;
 	}
 
 	if (pthread_mutex_init(&video->gpu_encoder_mutex, NULL) < 0)
-		return OBS_VIDEO_FAIL;
+		goto fail;
+	mutex_initialized = true;
 
 	gs_enter_context(obs->video.graphics);
-
-	if (video->gpu_conversion && !obs_init_gpu_conversion(video))
-		return OBS_VIDEO_FAIL;
-	if (!obs_init_textures(video))
-		return OBS_VIDEO_FAIL;
-
+	bool textures_initialized = (!video->gpu_conversion || obs_init_gpu_conversion(video)) &&
+				    obs_init_textures(video);
 	gs_leave_context();
+	if (!textures_initialized)
+		goto fail;
 
 	return OBS_VIDEO_SUCCESS;
+
+fail:
+	if (video->video)
+		obs_free_video_mix_resources(video, mutex_initialized);
+	return result;
 }
 
-struct obs_core_video_mix *
-obs_create_video_mix_with_frame_rate(struct obs_video_info *ovi,
-				     bool preserve_frame_rate)
+struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_info *render_info,
+							 struct obs_video_info *canvas_ovi,
+							 enum obs_core_video_mix_kind kind, bool preserve_frame_rate)
 {
-	struct obs_core_video_mix *video =
-		bzalloc(sizeof(struct obs_core_video_mix));
-	video->canvas_ovi = ovi;
+	if (!render_info || !canvas_ovi)
+		return NULL;
+
+	switch (kind) {
+	case OBS_CORE_VIDEO_MIX_KIND_ORDINARY:
+		if (preserve_frame_rate || render_info != canvas_ovi)
+			return NULL;
+		break;
+	case OBS_CORE_VIDEO_MIX_KIND_ENCODER_ONLY:
+		if (!obs_video_info_add_non_ordinary_mix_ref(canvas_ovi))
+			return NULL;
+		break;
+	case OBS_CORE_VIDEO_MIX_KIND_AUXILIARY:
+		if (!preserve_frame_rate || !obs_video_info_add_non_ordinary_mix_ref(canvas_ovi))
+			return NULL;
+		break;
+	default:
+		return NULL;
+	}
+
+	struct obs_core_video_mix *video = bzalloc(sizeof(struct obs_core_video_mix));
+	video->canvas_ovi = canvas_ovi;
+	video->kind = kind;
 	video->preserve_frame_rate = preserve_frame_rate;
-	if (obs_init_video_mix(ovi, video) != OBS_VIDEO_SUCCESS) {
-		bfree(video);
-		video = NULL;
+	if (obs_init_video_mix(render_info, video) != OBS_VIDEO_SUCCESS) {
+		obs_free_video_mix(video);
+		return NULL;
 	}
 	return video;
 }
 
 struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi)
 {
-	return obs_create_video_mix_with_frame_rate(ovi, false);
+	return obs_create_video_mix_internal(ovi, ovi, OBS_CORE_VIDEO_MIX_KIND_ORDINARY, false);
 }
 
 static bool restore_canvases(void)
@@ -754,6 +779,8 @@ static int obs_init_video()
 			return OBS_VIDEO_FAIL;
 		if (pthread_mutex_init(&video->mixes_mutex, NULL) < 0)
 			return OBS_VIDEO_FAIL;
+		if (pthread_mutex_init(&video->mix_cleanup_mutex, NULL) < 0)
+			return OBS_VIDEO_FAIL;
 		if (pthread_mutex_init(&video->canvases_mutex, NULL) < 0)
 			return OBS_VIDEO_FAIL;
 	}
@@ -776,22 +803,17 @@ static int obs_init_video()
 		if (!ovi->initialized)
 			continue;
 
-		if (!have_max_fps ||
-		    (uint64_t)ovi->fps_num * max_fps_den >
-			    (uint64_t)max_fps_num * ovi->fps_den) {
+		if (!have_max_fps || (uint64_t)ovi->fps_num * max_fps_den > (uint64_t)max_fps_num * ovi->fps_den) {
 			max_fps_den = ovi->fps_den;
 			max_fps_num = ovi->fps_num;
 			have_max_fps = true;
 		}
 	}
 
-	video->video_frame_interval_ns =
-		util_mul_div64(1000000000ULL, max_fps_den, max_fps_num);
-	video->video_half_frame_interval_ns =
-		util_mul_div64(500000000ULL, max_fps_den, max_fps_num);
+	video->video_frame_interval_ns = util_mul_div64(1000000000ULL, max_fps_den, max_fps_num);
+	video->video_half_frame_interval_ns = util_mul_div64(500000000ULL, max_fps_den, max_fps_num);
 
-	blog(LOG_INFO, "[VIDEO_CANVAS] init with canvases %zu",
-	     obs->video.canvases.num);
+	blog(LOG_INFO, "[VIDEO_CANVAS] init with canvases %zu", obs->video.canvases.num);
 	for (size_t i = 0, num = obs->video.canvases.num; i < num; i++) {
 		struct obs_video_info *ovi = obs->video.canvases.array[i];
 
@@ -896,40 +918,43 @@ static void obs_free_render_textures(struct obs_core_video_mix *video)
 	gs_leave_context();
 }
 
+static void obs_free_video_mix_resources(struct obs_core_video_mix *video, bool mutex_initialized)
+{
+	if (video->video) {
+		video_output_close(video->video);
+		video->video = NULL;
+	}
+
+	obs_free_render_textures(video);
+
+	deque_free(&video->vframe_info_buffer);
+	deque_free(&video->vframe_info_buffer_gpu);
+
+	video->texture_rendered = false;
+	memset(video->textures_copied, 0, sizeof(video->textures_copied));
+	video->texture_converted = false;
+
+	if (mutex_initialized)
+		pthread_mutex_destroy(&video->gpu_encoder_mutex);
+	pthread_mutex_init_value(&video->gpu_encoder_mutex);
+	da_free(video->gpu_encoders);
+
+	video->gpu_encoder_active = 0;
+	video->cur_texture = 0;
+}
+
 void obs_free_video_mix(struct obs_core_video_mix *video)
 {
 	if (obs && obs->video_rendering_mix == video)
 		obs->video_rendering_mix = NULL;
 
-	if (video->video) {
-		video_output_close(video->video);
-		video->video = NULL;
+	if (video->video)
+		obs_free_video_mix_resources(video, true);
 
-		obs_free_render_textures(video);
-
-		deque_free(&video->vframe_info_buffer);
-		deque_free(&video->vframe_info_buffer_gpu);
-
-		video->texture_rendered = false;
-		memset(video->textures_copied, 0, sizeof(video->textures_copied));
-		video->texture_converted = false;
-
-		pthread_mutex_destroy(&video->gpu_encoder_mutex);
-		pthread_mutex_init_value(&video->gpu_encoder_mutex);
-		da_free(video->gpu_encoders);
-
-		video->gpu_encoder_active = 0;
-		video->cur_texture = 0;
-	}
-
-	assert(video->retains_canvas_identity ==
-	       (video->kind == OBS_CORE_VIDEO_MIX_KIND_AUXILIARY));
-	assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY ||
-	       video->preserve_frame_rate);
-	if (video->retains_canvas_identity) {
+	assert(video->kind != OBS_CORE_VIDEO_MIX_KIND_AUXILIARY || video->preserve_frame_rate);
+	if (video->kind != OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
 		assert(video->canvas_ovi != NULL);
-		obs_video_info_release_auxiliary_mix_ref(video->canvas_ovi);
-		video->retains_canvas_identity = false;
+		obs_video_info_release_non_ordinary_mix_ref(video->canvas_ovi);
 	}
 	bfree(video);
 }
@@ -938,8 +963,7 @@ static void obs_free_video(bool full_clean)
 {
 	blog(LOG_INFO, "obs_free_video - full_clean: %d", full_clean);
 	if (!obs->video.graphics) {
-		blog(LOG_INFO,
-		     "obs_free_video - video is not initialized yet, skipping");
+		blog(LOG_INFO, "obs_free_video - video is not initialized yet, skipping");
 		return;
 	}
 
@@ -1001,6 +1025,8 @@ static void obs_free_video(bool full_clean)
 	if (full_clean) {
 		pthread_mutex_destroy(&obs->video.mixes_mutex);
 		pthread_mutex_init_value(&obs->video.mixes_mutex);
+		pthread_mutex_destroy(&obs->video.mix_cleanup_mutex);
+		pthread_mutex_init_value(&obs->video.mix_cleanup_mutex);
 	}
 
 	for (size_t i = 0; i < obs->video.ready_encoder_groups.num; i++) {
@@ -1018,7 +1044,7 @@ static void obs_free_video(bool full_clean)
 			struct obs_managed_video_info *managed =
 				(struct obs_managed_video_info *)obs->video.canvases.array[i];
 			assert(managed->scene_item_refs == 0);
-			assert(managed->auxiliary_mix_refs == 0);
+			assert(managed->non_ordinary_mix_refs == 0);
 			bfree(managed);
 			obs->video.canvases.array[i] = NULL;
 		}
@@ -1412,8 +1438,7 @@ static inline bool obs_init_hotkeys(void)
 	if (os_event_init(&hotkeys->stop_event, OS_EVENT_TYPE_MANUAL) != 0)
 		goto fail;
 	if (key_processing_enabled) {
-		if (pthread_create(&hotkeys->hotkey_thread, NULL,
-				   obs_hotkey_thread, NULL))
+		if (pthread_create(&hotkeys->hotkey_thread, NULL, obs_hotkey_thread, NULL))
 			goto fail;
 
 		hotkeys->strict_modifiers = true;
@@ -1478,11 +1503,9 @@ const struct obs_source_info audio_line_info = {
 
 extern void log_system_info(void);
 
-static bool obs_init(const char *locale, const char *module_config_path,
-		     profiler_name_store_t *store)
+static bool obs_init(const char *locale, const char *module_config_path, profiler_name_store_t *store)
 {
-	blog(LOG_INFO, "OBS API version %d.%d.%d", LIBOBS_API_MAJOR_VER,
-	     LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
+	blog(LOG_INFO, "OBS API version %d.%d.%d", LIBOBS_API_MAJOR_VER, LIBOBS_API_MINOR_VER, LIBOBS_API_PATCH_VER);
 
 	obs = bzalloc(sizeof(struct obs_core));
 
@@ -1491,6 +1514,7 @@ static bool obs_init(const char *locale, const char *module_config_path,
 	pthread_mutex_init_value(&obs->video.task_mutex);
 	pthread_mutex_init_value(&obs->video.encoder_group_mutex);
 	pthread_mutex_init_value(&obs->video.mixes_mutex);
+	pthread_mutex_init_value(&obs->video.mix_cleanup_mutex);
 	pthread_mutex_init_value(&obs->video.canvases_mutex);
 
 	obs->name_store_owned = !store;
@@ -1526,8 +1550,7 @@ static bool obs_init(const char *locale, const char *module_config_path,
 	obs_register_source(&audio_line_info);
 	add_default_module_paths();
 	obs->multiple_rendering = false;
-	obs->replay_buffer_rendering_mode =
-		OBS_RECORDING_REPLAY_BUFFER_RENDERING;
+	obs->replay_buffer_rendering_mode = OBS_RECORDING_REPLAY_BUFFER_RENDERING;
 	obs->video_rendering_mode = OBS_MAIN_VIDEO_RENDERING;
 	obs->audio_rendering_mode = OBS_MAIN_AUDIO_RENDERING;
 
@@ -1816,15 +1839,13 @@ int obs_reset_video(struct obs_video_info *ovi)
 int obs_deactivate_video_info()
 {
 	if (!obs) {
-		blog(LOG_ERROR,
-		     "[VIDEO_CANVAS] obs object is null, video reset is not possible");
+		blog(LOG_ERROR, "[VIDEO_CANVAS] obs object is null, video reset is not possible");
 		return OBS_VIDEO_FAIL;
 	}
 
 	/* don't allow changing of video settings if active. */
 	if (obs_video_active()) {
-		blog(LOG_ERROR,
-		     "[VIDEO_CANVAS] video is active, video reset is not possible");
+		blog(LOG_ERROR, "[VIDEO_CANVAS] video is active, video reset is not possible");
 		return OBS_VIDEO_CURRENTLY_ACTIVE;
 	}
 
@@ -1837,8 +1858,7 @@ int obs_deactivate_video_info()
 	return OBS_VIDEO_SUCCESS;
 }
 
-int obs_set_video_info(struct obs_video_info *canvas,
-		       struct obs_video_info *updated)
+int obs_set_video_info(struct obs_video_info *canvas, struct obs_video_info *updated)
 {
 	int ret = obs_deactivate_video_info();
 	if (ret != OBS_VIDEO_SUCCESS)
@@ -1876,8 +1896,7 @@ int obs_set_video_info(struct obs_video_info *canvas,
 
 	bool yuv = format_is_yuv(updated->output_format);
 	const char *yuv_format = get_video_colorspace_name(updated->colorspace);
-	const char *yuv_range =
-		get_video_range_name(updated->output_format, updated->range);
+	const char *yuv_range = get_video_range_name(updated->output_format, updated->range);
 
 	blog(LOG_INFO, "---------------------------------");
 	blog(LOG_INFO,
@@ -1888,10 +1907,8 @@ int obs_set_video_info(struct obs_video_info *canvas,
 	     "\tfps:               %d/%d\n"
 	     "\tformat:            %s\n"
 	     "\tYUV mode:          %s%s%s",
-	     canvas, updated->base_width, updated->base_height,
-	     updated->output_width, updated->output_height, scale_type_name,
-	     updated->fps_num, updated->fps_den,
-	     get_video_format_name(updated->output_format),
+	     canvas, updated->base_width, updated->base_height, updated->output_width, updated->output_height,
+	     scale_type_name, updated->fps_num, updated->fps_den, get_video_format_name(updated->output_format),
 	     yuv ? yuv_format : "None", yuv ? "/" : "", yuv ? yuv_range : "");
 
 	*canvas = *updated;
@@ -1935,8 +1952,7 @@ bool obs_reset_audio2(const struct obs_audio_info2 *oai)
 		max_buffering_ticks = 45;
 	}
 
-	max_buffering_ms = max_buffering_ticks * AUDIO_OUTPUT_FRAMES *
-			   SEC_TO_MSEC / (int)oai->samples_per_sec;
+	max_buffering_ms = max_buffering_ticks * AUDIO_OUTPUT_FRAMES * SEC_TO_MSEC / (int)oai->samples_per_sec;
 
 	ai.name = "Audio";
 	ai.samples_per_sec = oai->samples_per_sec;
@@ -1983,8 +1999,7 @@ bool obs_get_video_info_current(struct obs_video_info *ovi)
 	return true;
 }
 
-bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
-				   struct obs_video_info *ovi)
+bool obs_get_video_info_scene_item(obs_sceneitem_t *item, struct obs_video_info *ovi)
 {
 	blog(LOG_INFO, "[VIDEO_CANVAS] video info requested for scene item");
 
@@ -2001,15 +2016,13 @@ bool obs_get_video_info_scene_item(obs_sceneitem_t *item,
 	return true;
 }
 
-bool obs_get_video_info_for_output(obs_output_t *output,
-				   struct obs_video_info *ovi, size_t index)
+bool obs_get_video_info_for_output(obs_output_t *output, struct obs_video_info *ovi, size_t index)
 {
 	blog(LOG_INFO, "[VIDEO_CANVAS] video info requested for output");
 	if (!output || !output->video_encoders[index])
 		return false;
 
-	return obs_get_video_info_for_encoder(output->video_encoders[index],
-					      ovi);
+	return obs_get_video_info_for_encoder(output->video_encoders[index], ovi);
 }
 
 bool obs_get_video_info_for_encoder(obs_encoder_t *encoder, struct obs_video_info *ovi)
@@ -2051,22 +2064,20 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 	bool found = false;
 
 	/* Mark the video info as removing while holding canvases_mutex. Scene items
-	 * and auxiliary mixes acquire references under the same mutex, so no new
+	 * and non-ordinary mixes acquire references under the same mutex, so no new
 	 * reference can race with the checks below. */
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	for (size_t i = 0; i < obs->video.canvases.num; i++) {
 		if (obs->video.canvases.array[i] != ovi)
 			continue;
 
-		struct obs_managed_video_info *managed =
-			(struct obs_managed_video_info *)ovi;
+		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		found = true;
 		if (managed->removing) {
 			pthread_mutex_unlock(&obs->video.canvases_mutex);
 			return OBS_VIDEO_INVALID_PARAM;
 		}
-		if (managed->scene_item_refs != 0 ||
-		    managed->auxiliary_mix_refs != 0) {
+		if (managed->scene_item_refs != 0 || managed->non_ordinary_mix_refs != 0) {
 			pthread_mutex_unlock(&obs->video.canvases_mutex);
 			return OBS_VIDEO_INFO_IN_USE;
 		}
@@ -2083,8 +2094,7 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 		pthread_mutex_lock(&obs->video.canvases_mutex);
 		for (size_t i = 0; i < obs->video.canvases.num; i++) {
 			if (obs->video.canvases.array[i] == ovi) {
-				struct obs_managed_video_info *managed =
-					(struct obs_managed_video_info *)ovi;
+				struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 				managed->removing = false;
 				break;
 			}
@@ -2105,8 +2115,8 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 
 	ret = obs_init_video();
 	if (ret != OBS_VIDEO_SUCCESS) {
-		blog(LOG_ERROR, "Video info was removed, but the remaining video configuration failed to initialize: %d",
-		     ret);
+		blog(LOG_ERROR,
+		     "Video info was removed, but the remaining video configuration failed to initialize: %d", ret);
 		return OBS_VIDEO_REINITIALIZATION_FAILED;
 	}
 
@@ -2115,8 +2125,7 @@ int obs_remove_video_info(struct obs_video_info *ovi)
 
 struct obs_video_info *obs_create_video_info()
 {
-	struct obs_managed_video_info *managed =
-		bzalloc(sizeof(struct obs_managed_video_info));
+	struct obs_managed_video_info *managed = bzalloc(sizeof(struct obs_managed_video_info));
 	struct obs_video_info *ovi = &managed->ovi;
 	pthread_mutex_lock(&obs->video.canvases_mutex);
 	da_push_back(obs->video.canvases, &ovi);
@@ -2160,8 +2169,7 @@ bool obs_video_info_add_sceneitem_ref(struct obs_video_info *ovi)
 		if (obs->video.canvases.array[i] != ovi)
 			continue;
 
-		struct obs_managed_video_info *managed =
-			(struct obs_managed_video_info *)ovi;
+		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		if (!managed->removing) {
 			managed->scene_item_refs++;
 			retained = true;
@@ -2182,8 +2190,7 @@ void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi)
 		if (obs->video.canvases.array[i] != ovi)
 			continue;
 
-		struct obs_managed_video_info *managed =
-			(struct obs_managed_video_info *)ovi;
+		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		assert(managed->scene_item_refs != 0);
 		managed->scene_item_refs--;
 		break;
@@ -2191,7 +2198,7 @@ void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi)
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
 }
 
-bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi)
+bool obs_video_info_add_non_ordinary_mix_ref(struct obs_video_info *ovi)
 {
 	if (!ovi || !obs)
 		return false;
@@ -2202,10 +2209,9 @@ bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi)
 		if (obs->video.canvases.array[i] != ovi)
 			continue;
 
-		struct obs_managed_video_info *managed =
-			(struct obs_managed_video_info *)ovi;
+		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
 		if (!managed->removing) {
-			managed->auxiliary_mix_refs++;
+			managed->non_ordinary_mix_refs++;
 			retained = true;
 		}
 		break;
@@ -2214,7 +2220,7 @@ bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi)
 	return retained;
 }
 
-void obs_video_info_release_auxiliary_mix_ref(struct obs_video_info *ovi)
+void obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi)
 {
 	if (!ovi || !obs)
 		return;
@@ -2224,10 +2230,9 @@ void obs_video_info_release_auxiliary_mix_ref(struct obs_video_info *ovi)
 		if (obs->video.canvases.array[i] != ovi)
 			continue;
 
-		struct obs_managed_video_info *managed =
-			(struct obs_managed_video_info *)ovi;
-		assert(managed->auxiliary_mix_refs != 0);
-		managed->auxiliary_mix_refs--;
+		struct obs_managed_video_info *managed = (struct obs_managed_video_info *)ovi;
+		assert(managed->non_ordinary_mix_refs != 0);
+		managed->non_ordinary_mix_refs--;
 		break;
 	}
 	pthread_mutex_unlock(&obs->video.canvases_mutex);
@@ -2247,7 +2252,7 @@ bool obs_get_video_info_by_index(size_t index, struct obs_video_info *ovi)
 	return true;
 }
 
-struct obs_video_info * obs_get_video_info_by_index2(size_t index)
+struct obs_video_info *obs_get_video_info_by_index2(size_t index)
 {
 	blog(LOG_INFO, "[VIDEO_CANVAS] obs_get_video_info_by_index2 - %zu", index);
 
@@ -2256,7 +2261,6 @@ struct obs_video_info * obs_get_video_info_by_index2(size_t index)
 
 	return obs->video.canvases.array[index];
 }
-
 
 float obs_get_video_sdr_white_level(void)
 {
@@ -2423,8 +2427,7 @@ video_t *obs_get_video(void)
 	return obs->data.main_canvas->mix->video;
 }
 
-static bool handle_videos_callback(obs_scene_t *scene, obs_sceneitem_t *item,
-				   void *data)
+static bool handle_videos_callback(obs_scene_t *scene, obs_sceneitem_t *item, void *data)
 {
 	UNUSED_PARAMETER(scene);
 	bool backstage = (bool)data;
@@ -2445,8 +2448,7 @@ static bool handle_videos_callback(obs_scene_t *scene, obs_sceneitem_t *item,
 		source->on_backstage = false;
 
 		obs_data_t *settings = obs_source_get_settings(source);
-		const bool restart_on_activate =
-			obs_data_get_bool(settings, "restart_on_activate");
+		const bool restart_on_activate = obs_data_get_bool(settings, "restart_on_activate");
 		if (restart_on_activate) {
 			obs_source_media_restart(source);
 		}
@@ -2458,18 +2460,16 @@ static bool handle_videos_callback(obs_scene_t *scene, obs_sceneitem_t *item,
 
 void obs_activate_scene_on_backstage(obs_source_t *source)
 {
-	blog(LOG_INFO, "obs_activate_scene_on_backstage - 0x%" PRIXPTR " - %s",
-	     (uintptr_t)source, obs_source_get_name(source));
+	blog(LOG_INFO, "obs_activate_scene_on_backstage - 0x%" PRIXPTR " - %s", (uintptr_t)source,
+	     obs_source_get_name(source));
 
 	if (!source) {
-		blog(LOG_WARNING,
-		     "obs_activate_scene_on_backstage - source is NULL");
+		blog(LOG_WARNING, "obs_activate_scene_on_backstage - source is NULL");
 		return;
 	}
 
 	if (obs_source_get_type(source) != OBS_SOURCE_TYPE_SCENE) {
-		blog(LOG_WARNING,
-		     "obs_activate_scene_on_backstage - trying to add not a scene");
+		blog(LOG_WARNING, "obs_activate_scene_on_backstage - trying to add not a scene");
 		return;
 	}
 
@@ -2479,8 +2479,7 @@ void obs_activate_scene_on_backstage(obs_source_t *source)
 	}
 }
 
-static void handle_transition_sources_callback(obs_source_t *parent,
-					       obs_source_t *child, void *data)
+static void handle_transition_sources_callback(obs_source_t *parent, obs_source_t *child, void *data)
 {
 	UNUSED_PARAMETER(parent);
 	bool backstage = (bool)data;
@@ -2498,14 +2497,13 @@ static void handle_transition_sources_callback(obs_source_t *parent,
 
 void obs_activate_videos_on_backstage(obs_source_t *source)
 {
-	blog(LOG_INFO, "obs_activate_videos_on_backstage - 0x%" PRIXPTR " - %s",
-	     (uintptr_t)source, obs_source_get_name(source));
+	blog(LOG_INFO, "obs_activate_videos_on_backstage - 0x%" PRIXPTR " - %s", (uintptr_t)source,
+	     obs_source_get_name(source));
 
 	if (obs_source_get_type(source) == OBS_SOURCE_TYPE_TRANSITION) {
 		obs_source_activate(source, MAIN_VIEW);
 
-		obs_source_enum_active_tree(
-			source, handle_transition_sources_callback, (void *)1);
+		obs_source_enum_active_tree(source, handle_transition_sources_callback, (void *)1);
 	} else if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
 		source->on_backstage = true;
 		obs_scene_t *scene = obs_scene_from_source(source);
@@ -2515,18 +2513,15 @@ void obs_activate_videos_on_backstage(obs_source_t *source)
 
 void obs_deactivate_scene_on_backstage(obs_source_t *source)
 {
-	blog(LOG_INFO,
-	     "obs_deactivate_scene_on_backstage - 0x%" PRIXPTR " - %s",
-	     (uintptr_t)source, obs_source_get_name(source));
+	blog(LOG_INFO, "obs_deactivate_scene_on_backstage - 0x%" PRIXPTR " - %s", (uintptr_t)source,
+	     obs_source_get_name(source));
 	if (!source) {
-		blog(LOG_WARNING,
-		     "obs_deactivate_scene_on_backstage - source is NULL");
+		blog(LOG_WARNING, "obs_deactivate_scene_on_backstage - source is NULL");
 		return;
 	}
 
 	if (obs_source_get_type(source) != OBS_SOURCE_TYPE_SCENE) {
-		blog(LOG_WARNING,
-		     "obs_deactivate_scene_on_backstage - trying to remove not a scene");
+		blog(LOG_WARNING, "obs_deactivate_scene_on_backstage - trying to remove not a scene");
 		return;
 	}
 
@@ -2536,14 +2531,12 @@ void obs_deactivate_scene_on_backstage(obs_source_t *source)
 
 void obs_deactivate_videos_on_backstage(obs_source_t *source)
 {
-	blog(LOG_INFO,
-	     "obs_deactivate_videos_on_backstage - 0x%" PRIXPTR " - %s",
-	     (uintptr_t)source, obs_source_get_name(source));
+	blog(LOG_INFO, "obs_deactivate_videos_on_backstage - 0x%" PRIXPTR " - %s", (uintptr_t)source,
+	     obs_source_get_name(source));
 
 	if (obs_source_get_type(source) == OBS_SOURCE_TYPE_TRANSITION) {
 		obs_source_deactivate(source, MAIN_VIEW);
-		obs_source_enum_active_tree(
-			source, handle_transition_sources_callback, (void *)0);
+		obs_source_enum_active_tree(source, handle_transition_sources_callback, (void *)0);
 
 	} else if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
 		obs_scene_t *scene = obs_scene_from_source(source);
@@ -2642,8 +2635,7 @@ bool obs_scene_is_present(obs_scene_t *checking_scene)
 	if (checking_scene == NULL)
 		return false;
 
-	if (((obs_source_t *)checking_scene)->info.type !=
-	    OBS_SOURCE_TYPE_SCENE)
+	if (((obs_source_t *)checking_scene)->info.type != OBS_SOURCE_TYPE_SCENE)
 		return false;
 
 	obs_enum_scenes(scene_ref_enum_callback, &checking_scene);
@@ -2988,11 +2980,8 @@ static void obs_render_canvas_texture_internal(obs_canvas_t *canvas, enum gs_ble
 	gs_enable_framebuffer_srgb(previous);
 }
 
-static void obs_render_texture_internal(enum gs_blend_type src_c,
-					enum gs_blend_type dest_c,
-					enum gs_blend_type src_a,
-					enum gs_blend_type dest_a,
-					struct obs_core_video_mix *video)
+static void obs_render_texture_internal(enum gs_blend_type src_c, enum gs_blend_type dest_c, enum gs_blend_type src_a,
+					enum gs_blend_type dest_a, struct obs_core_video_mix *video)
 {
 	gs_texture_t *tex;
 	gs_effect_t *effect;
@@ -3048,7 +3037,8 @@ void obs_render_main_texture(void)
 
 void obs_render_texture(struct obs_video_info *ovi, enum obs_video_rendering_mode mode)
 {
-	obs_render_texture_internal(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA, GS_BLEND_ONE, GS_BLEND_INVSRCALPHA, obs_video_mix_get(ovi, mode));
+	obs_render_texture_internal(GS_BLEND_ONE, GS_BLEND_INVSRCALPHA, GS_BLEND_ONE, GS_BLEND_INVSRCALPHA,
+				    obs_video_mix_get(ovi, mode));
 }
 
 void obs_render_main_texture_src_color_only(void)
@@ -3181,8 +3171,7 @@ void obs_set_video_render_context(struct obs_core_video_mix *mix)
 	obs->video_rendering_mix = mix;
 }
 
-void obs_set_replay_buffer_rendering_mode(
-	enum obs_replay_buffer_rendering_mode mode)
+void obs_set_replay_buffer_rendering_mode(enum obs_replay_buffer_rendering_mode mode)
 {
 	if (!obs)
 		return;
@@ -4029,19 +4018,28 @@ uint32_t obs_get_lagged_frames(void)
 	return obs->video.lagged_frames;
 }
 
-struct obs_core_video_mix *get_mix_for_video(video_t *v)
+struct obs_core_video_mix *get_mix_for_video_locked(video_t *v)
 {
-	struct obs_core_video_mix *result = NULL;
+	if (!obs || !v)
+		return NULL;
 
-	pthread_mutex_lock(&obs->video.mixes_mutex);
 	for (size_t i = 0, num = obs->video.mixes.num; i < num; i++) {
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 
-		if (v == mix->video) {
-			result = mix;
-			break;
-		}
+		if (v == mix->video)
+			return mix;
 	}
+
+	return NULL;
+}
+
+struct obs_core_video_mix *get_mix_for_video(video_t *v)
+{
+	if (!obs || !v)
+		return NULL;
+
+	pthread_mutex_lock(&obs->video.mixes_mutex);
+	struct obs_core_video_mix *result = get_mix_for_video_locked(v);
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
 	return result;
@@ -4130,8 +4128,7 @@ extern void free_gpu_encoding(struct obs_core_video_mix *video);
 
 bool start_gpu_encode(obs_encoder_t *encoder)
 {
-	blog(LOG_INFO, "start_gpu_encode '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
+	blog(LOG_INFO, "start_gpu_encode '%s' (%s) (%p)", obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 	     encoder);
 
 	struct obs_core_video_mix *video = get_mix_for_video(encoder->media);
@@ -4154,10 +4151,8 @@ bool start_gpu_encode(obs_encoder_t *encoder)
 	if (success)
 		da_push_back(video->gpu_encoders, &encoder);
 	else {
-		blog(LOG_ERROR,
-		     "start_gpu_encode - init_gpu_encoding failed! '%s' (%s) (%p)",
-		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-		     encoder);
+		blog(LOG_ERROR, "start_gpu_encode - init_gpu_encoding failed! '%s' (%s) (%p)",
+		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder), encoder);
 		free_gpu_encoding(video);
 	}
 
@@ -4174,8 +4169,7 @@ bool start_gpu_encode(obs_encoder_t *encoder)
 
 void stop_gpu_encode(obs_encoder_t *encoder)
 {
-	blog(LOG_INFO, "stop_gpu_encode '%s' (%s) (%p)",
-	     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
+	blog(LOG_INFO, "stop_gpu_encode '%s' (%s) (%p)", obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
 	     encoder);
 	struct obs_core_video_mix *video = get_mix_for_video(encoder->media);
 
@@ -4193,10 +4187,8 @@ void stop_gpu_encode(obs_encoder_t *encoder)
 
 	obs_enter_graphics();
 	if (video->gpu_want_destroy_thread) {
-		blog(LOG_INFO,
-		     "stop_gpu_encode - gpu_want_destroy_thread: 1 '%s' (%s) (%p)",
-		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
-		     encoder);
+		blog(LOG_INFO, "stop_gpu_encode - gpu_want_destroy_thread: 1 '%s' (%s) (%p)",
+		     obs_encoder_get_name(encoder), obs_encoder_get_id(encoder), encoder);
 		stop_gpu_encoding_thread(video);
 		free_gpu_encoding(video);
 	}

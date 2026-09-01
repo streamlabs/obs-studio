@@ -400,11 +400,9 @@ struct obs_core_video_mix {
 	float color_matrix[16];
 
 	enum obs_core_video_mix_kind kind;
-	/* True while this mix owns an auxiliary reference to canvas_ovi.
-	 * obs_free_video_mix() releases the reference. */
-	bool retains_canvas_identity;
 	/* Keep the mix-local frame rate instead of synchronizing it with the main
-	 * canvas. Encoder-only mixes inherit this setting from their source mix. */
+	 * canvas. Auxiliary mixes set this, ordinary mixes do not, and encoder-only
+	 * mixes inherit the setting from their source mix. */
 	bool preserve_frame_rate;
 
 	long encoder_refs;
@@ -413,15 +411,20 @@ struct obs_core_video_mix {
 };
 
 extern struct obs_core_video_mix *obs_create_video_mix(struct obs_video_info *ovi);
-extern struct obs_core_video_mix *
-obs_create_video_mix_with_frame_rate(struct obs_video_info *ovi,
-				     bool preserve_frame_rate);
+/* Creates a mix of the requested kind. Non-ordinary mixes copy render_info and
+ * retain canvas_ovi as their registered canvas identity. */
+extern struct obs_core_video_mix *obs_create_video_mix_internal(const struct obs_video_info *render_info,
+								struct obs_video_info *canvas_ovi,
+								enum obs_core_video_mix_kind kind,
+								bool preserve_frame_rate);
 extern void obs_free_video_mix(struct obs_core_video_mix *video);
 extern void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix);
+/* Returns a published mix for video. The caller must hold mixes_mutex. */
+extern struct obs_core_video_mix *get_mix_for_video_locked(video_t *video);
 extern bool obs_video_info_add_sceneitem_ref(struct obs_video_info *ovi);
 extern void obs_video_info_release_sceneitem_ref(struct obs_video_info *ovi);
-extern bool obs_video_info_add_auxiliary_mix_ref(struct obs_video_info *ovi);
-extern void obs_video_info_release_auxiliary_mix_ref(struct obs_video_info *ovi);
+extern bool obs_video_info_add_non_ordinary_mix_ref(struct obs_video_info *ovi);
+extern void obs_video_info_release_non_ordinary_mix_ref(struct obs_video_info *ovi);
 
 struct obs_core_video {
 	graphics_t *graphics;
@@ -472,6 +475,8 @@ struct obs_core_video {
 	DARRAY(obs_weak_encoder_t *) ready_encoder_groups;
 
 	pthread_mutex_t mixes_mutex;
+	/* Serializes encoder teardown for detached video mixes. */
+	pthread_mutex_t mix_cleanup_mutex;
 	DARRAY(struct obs_core_video_mix *) mixes;
 };
 
@@ -658,9 +663,7 @@ extern bool obs_graphics_thread_loop_autorelease(struct obs_graphics_context *co
 
 extern gs_effect_t *obs_load_effect(gs_effect_t **effect, const char *file);
 
-extern bool audio_callback(void *param, uint64_t start_ts_in,
-			   uint64_t end_ts_in, uint64_t *out_ts,
-			   uint32_t mixers,
+extern bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint64_t *out_ts, uint32_t mixers,
 			   struct audio_data_mixes_outputs *mixes);
 
 extern void cache_multiple_rendering(void);
@@ -1083,17 +1086,13 @@ struct obs_source {
 	obs_weak_canvas_t *canvas;
 };
 
-extern void set_source_audio_output_buf_size(struct obs_source *source,
-					     size_t canvases);
-extern float *get_source_audio_output_buf(const struct obs_source *source,
-					  size_t canvas_idx, size_t mix_idx,
+extern void set_source_audio_output_buf_size(struct obs_source *source, size_t canvases);
+extern float *get_source_audio_output_buf(const struct obs_source *source, size_t canvas_idx, size_t mix_idx,
 					  size_t channel_idx);
-extern void set_source_audio_output_buf(struct obs_source *source,
-					size_t canvas_idx, size_t mix_idx,
+extern void set_source_audio_output_buf(struct obs_source *source, size_t canvas_idx, size_t mix_idx,
 					size_t channel_idx, float *buf);
 extern void bfree_source_audio_output_buf(struct obs_source *source);
-extern void source_audio_mix_data_init(struct audio_data_mixes_outputs *mix,
-				       size_t canvases);
+extern void source_audio_mix_data_init(struct audio_data_mixes_outputs *mix, size_t canvases);
 extern void source_audio_mix_data_release(struct audio_data_mixes_outputs *mix);
 extern void source_audio_mix_data_clean(struct audio_data_mixes_outputs *mix);
 extern size_t get_audio_outputs_reqired();
@@ -1455,6 +1454,9 @@ struct obs_encoder {
 	struct obs_encoder_info orig_info;
 
 	pthread_mutex_t init_mutex;
+	/* Serializes video-mix cleanup while init_mutex is temporarily released
+	 * to stop outputs. */
+	pthread_mutex_t video_mix_removal_mutex;
 
 	uint32_t samplerate;
 	size_t planes;
@@ -1475,6 +1477,8 @@ struct obs_encoder {
 
 	volatile bool active;
 	volatile bool paused;
+	/* Blocks normal encoder operations during video-mix cleanup. */
+	volatile bool video_mix_removal_pending;
 	bool initialized;
 
 	/* indicates ownership of the info.id buffer */
@@ -1524,7 +1528,7 @@ struct obs_encoder {
 
 	/* stores the video/audio media output pointer.  video_t *or audio_t **/
 	void *media;
-	/* Stores the original video if GPU scaling is enabled and `media` can be overwritten. */
+	/* Restore target and ownership marker for an encoder-only GPU rescale mix. */
 	video_t *original_video;
 
 	pthread_mutex_t callbacks_mutex;
@@ -1547,14 +1551,12 @@ extern struct obs_encoder_info *find_encoder(const char *id);
 extern bool obs_encoder_initialize(obs_encoder_t *encoder);
 extern void obs_encoder_shutdown(obs_encoder_t *encoder);
 
-extern void obs_encoder_start(obs_encoder_t *encoder,
-			      encoded_callback_t new_packet,
-			      void *param);
-extern void obs_encoder_stop(obs_encoder_t *encoder,
-			     encoded_callback_t new_packet,
-			     void *param);
+/* Starts an encoder only if teardown has not reserved it. */
+extern bool obs_encoder_start_if_ready(obs_encoder_t *encoder, encoded_callback_t new_packet, void *param);
+extern void obs_encoder_start(obs_encoder_t *encoder, encoded_callback_t new_packet, void *param);
+extern void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet, void *param);
 
-extern void obs_encoder_add_output(struct obs_encoder *encoder, struct obs_output *output);
+extern bool obs_encoder_add_output(struct obs_encoder *encoder, struct obs_output *output);
 extern void obs_encoder_remove_output(struct obs_encoder *encoder, struct obs_output *output);
 
 extern bool start_gpu_encode(obs_encoder_t *encoder);

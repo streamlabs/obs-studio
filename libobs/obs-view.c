@@ -169,19 +169,14 @@ video_t *obs_view_add2(obs_view_t *view, struct obs_video_info *ovi)
 	return mix->video;
 }
 
-obs_core_video_mix_t *
-obs_view_add_auxiliary_mix(obs_view_t *view,
-			   const struct obs_video_info *render_info,
-			   obs_core_video_mix_t *identity_source_mix)
+obs_core_video_mix_t *obs_view_add_auxiliary_mix(obs_view_t *view, const struct obs_video_info *render_info,
+						 obs_core_video_mix_t *identity_source_mix)
 {
-	if (!obs || !obs->video.graphics || !view || !render_info ||
-	    !identity_source_mix)
+	if (!obs || !obs->video.graphics || !view || !render_info || !identity_source_mix)
 		return NULL;
 
-	struct obs_video_info render_settings = *render_info;
 	struct obs_video_info *canvas_identity = NULL;
-	enum obs_video_rendering_mode rendering_mode =
-		OBS_MAIN_VIDEO_RENDERING;
+	enum obs_video_rendering_mode rendering_mode = OBS_MAIN_VIDEO_RENDERING;
 
 	/* Verify that identity_source_mix is still in the mix list before
 	 * dereferencing it. Only an attached ordinary mix can supply the canvas
@@ -191,8 +186,7 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 		struct obs_core_video_mix *mix = obs->video.mixes.array[i];
 		if (mix != identity_source_mix)
 			continue;
-		if (mix->view &&
-		    mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
+		if (mix->view && mix->kind == OBS_CORE_VIDEO_MIX_KIND_ORDINARY) {
 			canvas_identity = mix->canvas_ovi;
 			rendering_mode = mix->rendering_mode;
 		}
@@ -200,24 +194,16 @@ obs_view_add_auxiliary_mix(obs_view_t *view,
 	}
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 
-	/* Prevent the registered video info from being removed until the auxiliary
-	 * mix is destroyed. */
-	if (!canvas_identity ||
-	    !obs_video_info_add_auxiliary_mix_ref(canvas_identity))
+	if (!canvas_identity)
 		return NULL;
 
 	struct obs_core_video_mix *mix =
-		obs_create_video_mix_with_frame_rate(&render_settings, true);
-	if (!mix) {
-		obs_video_info_release_auxiliary_mix_ref(canvas_identity);
+		obs_create_video_mix_internal(render_info, canvas_identity, OBS_CORE_VIDEO_MIX_KIND_AUXILIARY, true);
+	if (!mix)
 		return NULL;
-	}
 
 	mix->view = view;
-	mix->canvas_ovi = canvas_identity;
 	mix->rendering_mode = rendering_mode;
-	mix->kind = OBS_CORE_VIDEO_MIX_KIND_AUXILIARY;
-	mix->retains_canvas_identity = true;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	da_push_back(obs->video.mixes, &mix);
