@@ -463,15 +463,12 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	ca->reconnecting = true;
-
 	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
 		if (coreaudio_init(ca))
 			break;
 	}
 
 	blog(LOG_DEBUG, "coreaudio: exit the reconnect thread");
-	ca->reconnecting = false;
 	return NULL;
 }
 
@@ -482,12 +479,16 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	if (ca->reconnecting)
 		return;
 
+	ca->reconnecting = true;
+
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
-	if (ret != 0)
+	if (ret != 0) {
 		blog(LOG_WARNING,
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
+		ca->reconnecting = false;
+	}
 }
 
 static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
@@ -774,6 +775,7 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 		os_event_signal(ca->exit_event);
 		pthread_join(ca->reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
+		ca->reconnecting = false;
 	}
 
 	coreaudio_uninit(ca);
