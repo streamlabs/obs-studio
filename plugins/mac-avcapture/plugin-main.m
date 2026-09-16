@@ -242,6 +242,17 @@ static void av_capture_destroy(void *av_capture)
     if (!capture) {
         return;
     }
+    /// Remove notification observers synchronously on the main thread before freeing captureInfo.
+    /// This ensures any in-flight deviceConnected:/deviceDisconnected: callback has finished
+    /// and no new ones will be delivered while captureInfo is being torn down.
+    if ([NSThread isMainThread]) {
+        [[NSNotificationCenter defaultCenter] removeObserver:capture];
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] removeObserver:capture];
+        });
+    }
+
     /// It is possible that the source's serial queue is still creating this source, so perform destruction
     /// synchronously on that queue to ensure the source is fully initialized before being destroyed.
     dispatch_sync(capture.sessionQueue, ^{

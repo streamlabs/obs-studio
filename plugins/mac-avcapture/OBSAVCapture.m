@@ -1123,6 +1123,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceConnected:(NSNotification *)notification
 {
+    if (!self.captureInfo) {
+        return;
+    }
+
     AVCaptureDevice *device = notification.object;
 
     if (!device) {
@@ -1174,6 +1178,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceDisconnected:(NSNotification *)notification
 {
+    if (!self.captureInfo) {
+        return;
+    }
+
     AVCaptureDevice *device = notification.object;
 
     if (!device) {
