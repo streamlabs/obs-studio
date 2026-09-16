@@ -1138,42 +1138,58 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
         return;
     }
 
-    if (self.deviceInput.device) {
-        [self AVCaptureLog:LOG_INFO withFormat:@"Received connect event with active device '%@' (UUID %@)",
-                                               self.deviceInput.device.localizedName, self.deviceInput.device.uniqueID];
-
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
     [self AVCaptureLog:LOG_INFO
             withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
 
-    NSError *error;
+    // Snapshot settings on the notification thread before dispatching; captureInfo is nonatomic.
+    NSString *deviceUUID = device.uniqueID;
     NSString *presetName = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"preset"];
     BOOL isPresetEnabled = obs_data_get_bool(self.captureInfo->settings, "use_preset");
     BOOL isFastPath = self.captureInfo->isFastPath;
 
-    if ([self switchCaptureDevice:device.uniqueID withError:&error]) {
-        BOOL success;
-        if (isPresetEnabled && !isFastPath) {
-            success = [self configureSessionWithPreset:presetName withError:&error];
-        } else {
-            success = [self configureSession:&error];
+    __weak OBSAVCapture *weakSelf = self;
+    dispatch_async(self.sessionQueue, ^{
+        OBSAVCapture *instance = weakSelf;
+        if (!instance) {
+            return;
         }
 
-        if (success) {
-            dispatch_async(self.sessionQueue, ^{
-                [self startCaptureSession];
-            });
-        } else {
-            [self AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
-        }
-    } else {
-        [self AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
-    }
+        @synchronized(instance) {
+            if (!instance.captureInfo) {
+                return;
+            }
 
-    obs_source_update_properties(self.captureInfo->source);
+            // Disconnect cleanup has completed by now; deviceInput.device reflects true state.
+            if (instance.deviceInput.device) {
+                [instance AVCaptureLog:LOG_INFO
+                            withFormat:@"Received connect event with active device '%@' (UUID %@)",
+                                       instance.deviceInput.device.localizedName,
+                                       instance.deviceInput.device.uniqueID];
+                obs_source_update_properties(instance.captureInfo->source);
+                return;
+            }
+
+            NSError *error;
+            if ([instance switchCaptureDevice:deviceUUID withError:&error]) {
+                BOOL success;
+                if (isPresetEnabled && !isFastPath) {
+                    success = [instance configureSessionWithPreset:presetName withError:&error];
+                } else {
+                    success = [instance configureSession:&error];
+                }
+
+                if (success) {
+                    [instance startCaptureSession];
+                } else {
+                    [instance AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+                }
+            } else {
+                [instance AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+            }
+
+            obs_source_update_properties(instance.captureInfo->source);
+        }
+    });
 }
 
 - (void)deviceDisconnected:(NSNotification *)notification
