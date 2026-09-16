@@ -242,21 +242,26 @@ static void av_capture_destroy(void *av_capture)
     if (!capture) {
         return;
     }
-    /// Remove notification observers synchronously on the main thread before freeing captureInfo.
-    /// This ensures any in-flight deviceConnected:/deviceDisconnected: callback has finished
-    /// and no new ones will be delivered while captureInfo is being torn down.
-    if ([NSThread isMainThread]) {
-        [[NSNotificationCenter defaultCenter] removeObserver:capture];
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            [[NSNotificationCenter defaultCenter] removeObserver:capture];
-        });
-    }
+    /// Remove notification observers before entering the sessionQueue block.
+    [[NSNotificationCenter defaultCenter] removeObserver:capture];
 
     /// It is possible that the source's serial queue is still creating this source, so perform destruction
     /// synchronously on that queue to ensure the source is fully initialized before being destroyed.
     dispatch_sync(capture.sessionQueue, ^{
         OBSAVCaptureInfo *capture_info = capture.captureInfo;
+
+        [capture.videoOutput setSampleBufferDelegate:nil queue:NULL];
+        [capture.audioOutput setSampleBufferDelegate:nil queue:NULL];
+
+        if (capture.videoQueue) {
+            dispatch_sync(capture.videoQueue, ^{
+            });
+        }
+
+        if (capture.audioQueue) {
+            dispatch_sync(capture.audioQueue, ^{
+            });
+        }
 
         [capture stopCaptureSession];
         [capture.deviceInput.device unlockForConfiguration];
@@ -279,6 +284,7 @@ static void av_capture_destroy(void *av_capture)
             capture_info->sampleBufferDescription = NULL;
         }
 
+        capture.captureInfo = NULL;
         bfree(capture_info);
 
         CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
