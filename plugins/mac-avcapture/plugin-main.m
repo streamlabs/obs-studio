@@ -248,46 +248,48 @@ static void av_capture_destroy(void *av_capture)
     /// It is possible that the source's serial queue is still creating this source, so perform destruction
     /// synchronously on that queue to ensure the source is fully initialized before being destroyed.
     dispatch_sync(capture.sessionQueue, ^{
-        OBSAVCaptureInfo *capture_info = capture.captureInfo;
+        @synchronized(capture) {
+            OBSAVCaptureInfo *capture_info = capture.captureInfo;
 
-        [capture.videoOutput setSampleBufferDelegate:nil queue:NULL];
-        [capture.audioOutput setSampleBufferDelegate:nil queue:NULL];
+            [capture.videoOutput setSampleBufferDelegate:nil queue:NULL];
+            [capture.audioOutput setSampleBufferDelegate:nil queue:NULL];
 
-        if (capture.videoQueue) {
-            dispatch_sync(capture.videoQueue, ^{
-            });
+            if (capture.videoQueue) {
+                dispatch_sync(capture.videoQueue, ^ {
+                              });
+            }
+
+            if (capture.audioQueue) {
+                dispatch_sync(capture.audioQueue, ^ {
+                              });
+            }
+
+            [capture stopCaptureSession];
+            [capture.deviceInput.device unlockForConfiguration];
+
+            if (capture_info->isFastPath) {
+                pthread_mutex_destroy(&capture_info->mutex);
+            }
+
+            if (capture_info->videoFrame) {
+                bfree(capture_info->videoFrame);
+                capture_info->videoFrame = NULL;
+            }
+
+            if (capture_info->audioFrame) {
+                bfree(capture_info->audioFrame);
+                capture_info->audioFrame = NULL;
+            }
+
+            if (capture_info->sampleBufferDescription) {
+                capture_info->sampleBufferDescription = NULL;
+            }
+
+            capture.captureInfo = NULL;
+            bfree(capture_info);
+
+            CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
         }
-
-        if (capture.audioQueue) {
-            dispatch_sync(capture.audioQueue, ^{
-            });
-        }
-
-        [capture stopCaptureSession];
-        [capture.deviceInput.device unlockForConfiguration];
-
-        if (capture_info->isFastPath) {
-            pthread_mutex_destroy(&capture_info->mutex);
-        }
-
-        if (capture_info->videoFrame) {
-            bfree(capture_info->videoFrame);
-            capture_info->videoFrame = NULL;
-        }
-
-        if (capture_info->audioFrame) {
-            bfree(capture_info->audioFrame);
-            capture_info->audioFrame = NULL;
-        }
-
-        if (capture_info->sampleBufferDescription) {
-            capture_info->sampleBufferDescription = NULL;
-        }
-
-        capture.captureInfo = NULL;
-        bfree(capture_info);
-
-        CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
     });
 }
 

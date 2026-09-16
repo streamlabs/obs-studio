@@ -1178,43 +1178,56 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceDisconnected:(NSNotification *)notification
 {
-    if (!self.captureInfo) {
-        return;
+    @synchronized(self) {
+        OBSAVCaptureInfo *captureInfo = self.captureInfo;
+
+        if (!captureInfo) {
+            return;
+        }
+
+        AVCaptureDevice *device = notification.object;
+
+        if (!device) {
+            return;
+        }
+
+        if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
+            obs_source_update_properties(captureInfo->source);
+            return;
+        }
+
+        if (!self.deviceInput.device) {
+            [self AVCaptureLog:LOG_ERROR withFormat:@"Received disconnect event for inactive device '%@' (UUID %@)",
+                                                    device.localizedName, device.uniqueID];
+            obs_source_update_properties(captureInfo->source);
+            return;
+        }
+
+        [self AVCaptureLog:LOG_INFO withFormat:@"Received disconnect event for device '%@' (UUID %@)",
+                                               device.localizedName, device.uniqueID];
+
+        __weak OBSAVCapture *weakSelf = self;
+        dispatch_async(self.sessionQueue, ^{
+            OBSAVCapture *instance = weakSelf;
+
+            if (!instance) {
+                return;
+            }
+
+            @synchronized(instance) {
+                if (!instance.captureInfo) {
+                    return;
+                }
+
+                [instance stopCaptureSession];
+                [instance.session removeInput:instance.deviceInput];
+
+                instance.deviceInput = nil;
+            }
+        });
+
+        obs_source_update_properties(captureInfo->source);
     }
-
-    AVCaptureDevice *device = notification.object;
-
-    if (!device) {
-        return;
-    }
-
-    if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    if (!self.deviceInput.device) {
-        [self AVCaptureLog:LOG_ERROR withFormat:@"Received disconnect event for inactive device '%@' (UUID %@)",
-                                                device.localizedName, device.uniqueID];
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    [self AVCaptureLog:LOG_INFO
-            withFormat:@"Received disconnect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
-
-    __weak OBSAVCapture *weakSelf = self;
-    dispatch_async(self.sessionQueue, ^{
-        OBSAVCapture *instance = weakSelf;
-
-        [instance stopCaptureSession];
-        [instance.session removeInput:instance.deviceInput];
-
-        instance.deviceInput = nil;
-        instance = nil;
-    });
-
-    obs_source_update_properties(self.captureInfo->source);
 }
 
 #pragma mark - AVCapture Delegate Methods
