@@ -1123,29 +1123,40 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceConnected:(NSNotification *)notification
 {
-    if (!self.captureInfo) {
-        return;
+    // @synchronized(self) serializes captureInfo access on the notification thread with
+    // av_capture_destroy's @synchronized(capture) teardown, preventing a use-after-free
+    // between the nil guard and the captureInfo dereferences that follow it.
+    NSString *deviceUUID;
+    NSString *presetName;
+    BOOL isPresetEnabled;
+    BOOL isFastPath;
+
+    @synchronized(self) {
+        if (!self.captureInfo) {
+            return;
+        }
+
+        AVCaptureDevice *device = notification.object;
+
+        if (!device) {
+            return;
+        }
+
+        if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
+            obs_source_update_properties(self.captureInfo->source);
+            return;
+        }
+
+        [self AVCaptureLog:LOG_INFO
+                withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName,
+                           device.uniqueID];
+
+        // Snapshot settings under the lock before dispatching; captureInfo is nonatomic.
+        deviceUUID = device.uniqueID;
+        presetName = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"preset"];
+        isPresetEnabled = obs_data_get_bool(self.captureInfo->settings, "use_preset");
+        isFastPath = self.captureInfo->isFastPath;
     }
-
-    AVCaptureDevice *device = notification.object;
-
-    if (!device) {
-        return;
-    }
-
-    if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    [self AVCaptureLog:LOG_INFO
-            withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
-
-    // Snapshot settings on the notification thread before dispatching; captureInfo is nonatomic.
-    NSString *deviceUUID = device.uniqueID;
-    NSString *presetName = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"preset"];
-    BOOL isPresetEnabled = obs_data_get_bool(self.captureInfo->settings, "use_preset");
-    BOOL isFastPath = self.captureInfo->isFastPath;
 
     __weak OBSAVCapture *weakSelf = self;
     dispatch_async(self.sessionQueue, ^{
