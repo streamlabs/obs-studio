@@ -52,8 +52,16 @@ struct coreaudio_data {
 	bool enable_downmix;
 
 	pthread_t reconnect_thread;
+	pthread_mutex_t reconnect_mutex;
+	pthread_mutex_t notification_mutex;
+	pthread_rwlock_t notification_rwlock;
+	pthread_cond_t reconnect_cond;
 	os_event_t *exit_event;
-	volatile bool reconnecting;
+	bool reconnect_thread_valid;
+	bool reconnecting;
+	bool shutting_down;
+	bool notification_shutdown;
+	unsigned int notification_callbacks;
 	unsigned long retry_time;
 
 	obs_source_t *source;
@@ -468,18 +476,42 @@ static void *reconnect_thread(void *param)
 			break;
 	}
 
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->reconnecting = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
 	blog(LOG_DEBUG, "coreaudio: exit the reconnect thread");
 	return NULL;
+}
+
+static void coreaudio_reap_reconnect_thread(struct coreaudio_data *ca)
+{
+	pthread_t reconnect_thread;
+	bool should_join = false;
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->reconnect_thread_valid && !ca->reconnecting) {
+		reconnect_thread = ca->reconnect_thread;
+		should_join = true;
+	}
+	if (should_join) {
+		pthread_join(reconnect_thread, NULL);
+		ca->reconnect_thread_valid = false;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 {
 	int ret;
 
-	if (ca->reconnecting)
-		return;
+	coreaudio_reap_reconnect_thread(ca);
 
-	ca->reconnecting = true;
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->shutting_down || ca->reconnecting || ca->reconnect_thread_valid) {
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		return;
+	}
 
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
 	if (ret != 0) {
@@ -487,14 +519,37 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
-		ca->reconnecting = false;
+	} else {
+		ca->reconnect_thread_valid = true;
+		ca->reconnecting = true;
 	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 				      const AudioObjectPropertyAddress addresses[], void *data)
 {
 	struct coreaudio_data *ca = data;
+	bool should_exit;
+	bool have_lifetime_lock = false;
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_callbacks++;
+	should_exit = ca->notification_shutdown;
+	pthread_mutex_unlock(&ca->notification_mutex);
+
+	if (should_exit)
+		goto done;
+
+	pthread_rwlock_rdlock(&ca->notification_rwlock);
+	have_lifetime_lock = true;
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->shutting_down) {
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		goto done;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	coreaudio_stop(ca);
 	coreaudio_uninit(ca);
@@ -510,6 +565,16 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 	     ca->device_name);
 
 	coreaudio_begin_reconnect(ca);
+
+done:
+	if (have_lifetime_lock)
+		pthread_rwlock_unlock(&ca->notification_rwlock);
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_callbacks--;
+	if (!ca->notification_callbacks)
+		pthread_cond_broadcast(&ca->reconnect_cond);
+	pthread_mutex_unlock(&ca->notification_mutex);
 
 	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(num_addresses);
@@ -729,7 +794,8 @@ static void coreaudio_uninit(struct coreaudio_data *ca)
 		OSStatus stat = AudioUnitUninitialize(ca->unit);
 		ca_success(stat, ca, "coreaudio_uninit", "uninitialize");
 
-		coreaudio_remove_hooks(ca);
+		if (!ca->shutting_down)
+			coreaudio_remove_hooks(ca);
 
 		stat = AudioComponentInstanceDispose(ca->unit);
 		ca_success(stat, ca, "coreaudio_uninit", "dispose");
@@ -771,14 +837,56 @@ static const char *coreaudio_output_getname(void *unused)
 
 static void coreaudio_shutdown(struct coreaudio_data *ca)
 {
-	if (ca->reconnecting) {
-		os_event_signal(ca->exit_event);
-		pthread_join(ca->reconnect_thread, NULL);
+	pthread_t reconnect_thread;
+	bool should_join = false;
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = true;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_shutdown = true;
+	pthread_mutex_unlock(&ca->notification_mutex);
+
+	pthread_rwlock_wrlock(&ca->notification_rwlock);
+	if (ca->au_initialized)
+		coreaudio_remove_hooks(ca);
+	pthread_rwlock_unlock(&ca->notification_rwlock);
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	while (ca->notification_callbacks)
+		pthread_cond_wait(&ca->reconnect_cond, &ca->notification_mutex);
+	pthread_mutex_unlock(&ca->notification_mutex);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->reconnect_thread_valid) {
+		if (ca->reconnecting)
+			os_event_signal(ca->exit_event);
+		reconnect_thread = ca->reconnect_thread;
+		should_join = true;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join) {
+		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
+
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		ca->reconnect_thread_valid = false;
 		ca->reconnecting = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
 	coreaudio_uninit(ca);
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	while (ca->notification_callbacks)
+		pthread_cond_wait(&ca->reconnect_cond, &ca->notification_mutex);
+	pthread_mutex_unlock(&ca->notification_mutex);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	if (ca->unit)
 		AudioComponentInstanceDispose(ca->unit);
@@ -795,6 +903,10 @@ static void coreaudio_destroy(void *data)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
 		os_event_destroy(ca->exit_event);
+		pthread_cond_destroy(&ca->reconnect_cond);
+		pthread_rwlock_destroy(&ca->notification_rwlock);
+		pthread_mutex_destroy(&ca->notification_mutex);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
 
 		if (ca->channel_map) {
 			bfree(ca->channel_map);
@@ -856,11 +968,45 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 {
 	struct coreaudio_data *ca = bzalloc(sizeof(struct coreaudio_data));
 
+	if (pthread_mutex_init(&ca->reconnect_mutex, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create reconnect mutex");
+		bfree(ca);
+		return NULL;
+	}
+
+	if (pthread_mutex_init(&ca->notification_mutex, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification mutex");
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		bfree(ca);
+		return NULL;
+	}
+
+	if (pthread_rwlock_init(&ca->notification_rwlock, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification rwlock");
+		pthread_mutex_destroy(&ca->notification_mutex);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		bfree(ca);
+		return NULL;
+	}
+
+	if (pthread_cond_init(&ca->reconnect_cond, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create reconnect condition");
+		pthread_rwlock_destroy(&ca->notification_rwlock);
+		pthread_mutex_destroy(&ca->notification_mutex);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		bfree(ca);
+		return NULL;
+	}
+
 	if (os_event_init(&ca->exit_event, OS_EVENT_TYPE_MANUAL) != 0) {
 		blog(LOG_ERROR,
 		     "[coreaudio_create] failed to create "
 		     "semephore: %d",
 		     errno);
+		pthread_cond_destroy(&ca->reconnect_cond);
+		pthread_rwlock_destroy(&ca->notification_rwlock);
+		pthread_mutex_destroy(&ca->notification_mutex);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
 		bfree(ca);
 		return NULL;
 	}
