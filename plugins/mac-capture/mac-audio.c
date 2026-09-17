@@ -486,8 +486,14 @@ static void *reconnect_thread(void *param)
 			 * then reset the exit event so the next iteration's
 			 * timedwait is not immediately interrupted. */
 			coreaudio_uninit(ca);
+			pthread_mutex_lock(&ca->reconnect_mutex);
+			if (ca->shutting_down) {
+				pthread_mutex_unlock(&ca->reconnect_mutex);
+				break;
+			}
 			os_event_reset(ca->exit_event);
-			continue;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			continue
 		}
 		ca->reconnecting = false;
 		pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -515,6 +521,8 @@ static void coreaudio_reap_reconnect_thread(struct coreaudio_data *ca)
 		pthread_join(reconnect_thread, NULL);
 }
 
+static void coreaudio_end_notification_callback(struct coreaudio_data *ca);
+
 static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
 {
 	/* Increment atomically before acquiring the mutex so the callback is
@@ -527,9 +535,6 @@ static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
 	pthread_mutex_lock(&ca->notification_mutex);
 	should_process = !ca->notification_shutdown;
 	pthread_mutex_unlock(&ca->notification_mutex);
-
-	if (!should_process)
-		coreaudio_end_notification_callback(ca);
 
 	return should_process;
 }
