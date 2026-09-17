@@ -875,6 +875,7 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = false;
+	ca->notification_shutdown = false;
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	if (ca->unit)
