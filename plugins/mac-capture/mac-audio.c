@@ -3,6 +3,7 @@
 #include <CoreAudio/CoreAudio.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 #include <obs-module.h>
 #include <mach/mach_time.h>
@@ -56,7 +57,7 @@ struct coreaudio_data {
 	pthread_mutex_t notification_mutex;
 	pthread_cond_t notification_cond;
 	os_event_t *exit_event;
-	size_t notification_callbacks;
+	_Atomic size_t notification_callbacks;
 	bool reconnect_thread_valid;
 	bool reconnecting;
 	bool reconnect_pending;
@@ -481,6 +482,11 @@ static void *reconnect_thread(void *param)
 		if (ca->reconnect_pending && !ca->shutting_down) {
 			ca->reconnect_pending = false;
 			pthread_mutex_unlock(&ca->reconnect_mutex);
+			/* Tear down whatever state coreaudio_init left behind,
+			 * then reset the exit event so the next iteration's
+			 * timedwait is not immediately interrupted. */
+			coreaudio_uninit(ca);
+			os_event_reset(ca->exit_event);
 			continue;
 		}
 		ca->reconnecting = false;
@@ -511,12 +517,19 @@ static void coreaudio_reap_reconnect_thread(struct coreaudio_data *ca)
 
 static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
 {
-	bool should_process;
+	/* Increment atomically before acquiring the mutex so the callback is
+	 * counted even while it is blocked waiting for the lock. Without this,
+	 * coreaudio_wait_for_notification_callbacks can observe zero callbacks
+	 * while a callback is pending entry and proceed to destroy ca. */
+	atomic_fetch_add_explicit(&ca->notification_callbacks, 1, memory_order_relaxed);
 
+	bool should_process;
 	pthread_mutex_lock(&ca->notification_mutex);
-	ca->notification_callbacks++;
 	should_process = !ca->notification_shutdown;
 	pthread_mutex_unlock(&ca->notification_mutex);
+
+	if (!should_process)
+		coreaudio_end_notification_callback(ca);
 
 	return should_process;
 }
@@ -524,8 +537,8 @@ static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
 static void coreaudio_end_notification_callback(struct coreaudio_data *ca)
 {
 	pthread_mutex_lock(&ca->notification_mutex);
-	ca->notification_callbacks--;
-	if (ca->notification_shutdown && ca->notification_callbacks == 0)
+	if (atomic_fetch_sub_explicit(&ca->notification_callbacks, 1, memory_order_relaxed) == 1 &&
+	    ca->notification_shutdown)
 		pthread_cond_signal(&ca->notification_cond);
 	pthread_mutex_unlock(&ca->notification_mutex);
 }
@@ -533,7 +546,7 @@ static void coreaudio_end_notification_callback(struct coreaudio_data *ca)
 static void coreaudio_wait_for_notification_callbacks(struct coreaudio_data *ca)
 {
 	pthread_mutex_lock(&ca->notification_mutex);
-	while (ca->notification_callbacks > 0)
+	while (atomic_load_explicit(&ca->notification_callbacks, memory_order_relaxed) > 0)
 		pthread_cond_wait(&ca->notification_cond, &ca->notification_mutex);
 	pthread_mutex_unlock(&ca->notification_mutex);
 }
@@ -585,6 +598,16 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ca->shutting_down) {
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		goto done;
+	}
+	if (ca->reconnecting) {
+		/* A reconnect is already in progress; enqueue a restart rather
+		 * than calling coreaudio_uninit concurrently with the reconnect
+		 * thread's coreaudio_init. The reconnect thread will call uninit
+		 * and restart when it sees reconnect_pending. */
+		ca->reconnect_pending = true;
+		os_event_signal(ca->exit_event);
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		goto done;
 	}
