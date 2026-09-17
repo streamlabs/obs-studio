@@ -59,6 +59,7 @@ struct coreaudio_data {
 	size_t notification_callbacks;
 	bool reconnect_thread_valid;
 	bool reconnecting;
+	bool reconnect_pending;
 	bool shutting_down;
 	bool notification_shutdown;
 	unsigned long retry_time;
@@ -470,14 +471,22 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
-		if (coreaudio_init(ca))
-			break;
-	}
+	for (;;) {
+		while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
+			if (coreaudio_init(ca))
+				break;
+		}
 
-	pthread_mutex_lock(&ca->reconnect_mutex);
-	ca->reconnecting = false;
-	pthread_mutex_unlock(&ca->reconnect_mutex);
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		if (ca->reconnect_pending && !ca->shutting_down) {
+			ca->reconnect_pending = false;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			continue;
+		}
+		ca->reconnecting = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		break;
+	}
 
 	blog(LOG_DEBUG, "coreaudio: exit the reconnect thread");
 	return NULL;
@@ -533,25 +542,37 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 {
 	int ret;
 
-	coreaudio_reap_reconnect_thread(ca);
+	for (;;) {
+		coreaudio_reap_reconnect_thread(ca);
 
-	pthread_mutex_lock(&ca->reconnect_mutex);
-	if (ca->shutting_down || ca->reconnecting || ca->reconnect_thread_valid) {
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		if (ca->shutting_down) {
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			return;
+		}
+		if (ca->reconnecting) {
+			ca->reconnect_pending = true;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			return;
+		}
+		if (ca->reconnect_thread_valid) {
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			continue;
+		}
+
+		ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
+		if (ret != 0) {
+			blog(LOG_WARNING,
+			     "[coreaudio_begin_reconnect] failed to "
+			     "create thread, error code: %d",
+			     ret);
+		} else {
+			ca->reconnect_thread_valid = true;
+			ca->reconnecting = true;
+		}
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		return;
 	}
-
-	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
-	if (ret != 0) {
-		blog(LOG_WARNING,
-		     "[coreaudio_begin_reconnect] failed to "
-		     "create thread, error code: %d",
-		     ret);
-	} else {
-		ca->reconnect_thread_valid = true;
-		ca->reconnecting = true;
-	}
-	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
@@ -852,6 +873,7 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = true;
+	ca->reconnect_pending = false;
 	if (ca->reconnect_thread_valid) {
 		if (ca->reconnecting)
 			os_event_signal(ca->exit_event);
