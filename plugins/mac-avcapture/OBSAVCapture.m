@@ -575,7 +575,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             break;
             default:
                 self.captureInfo->lastError = OBSAVCaptureError_NoError;
-                self.captureInfo->sampleBufferDescription = NULL;
+                if (self.captureInfo->sampleBufferDescription) {
+                    CFRelease(self.captureInfo->sampleBufferDescription);
+                    self.captureInfo->sampleBufferDescription = NULL;
+                }
                 break;
         }
     }
@@ -1123,90 +1126,137 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceConnected:(NSNotification *)notification
 {
-    AVCaptureDevice *device = notification.object;
+    NSString *deviceUUID;
+    NSString *presetName;
+    BOOL isPresetEnabled;
+    BOOL isFastPath;
 
-    if (!device) {
-        return;
-    }
-
-    if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    if (self.deviceInput.device) {
-        [self AVCaptureLog:LOG_INFO withFormat:@"Received connect event with active device '%@' (UUID %@)",
-                                               self.deviceInput.device.localizedName, self.deviceInput.device.uniqueID];
-
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    [self AVCaptureLog:LOG_INFO
-            withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
-
-    NSError *error;
-    NSString *presetName = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"preset"];
-    BOOL isPresetEnabled = obs_data_get_bool(self.captureInfo->settings, "use_preset");
-    BOOL isFastPath = self.captureInfo->isFastPath;
-
-    if ([self switchCaptureDevice:device.uniqueID withError:&error]) {
-        BOOL success;
-        if (isPresetEnabled && !isFastPath) {
-            success = [self configureSessionWithPreset:presetName withError:&error];
-        } else {
-            success = [self configureSession:&error];
+    @synchronized(self) {
+        if (!self.captureInfo) {
+            return;
         }
 
-        if (success) {
-            dispatch_async(self.sessionQueue, ^{
-                [self startCaptureSession];
-            });
-        } else {
-            [self AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+        AVCaptureDevice *device = notification.object;
+
+        if (!device) {
+            return;
         }
-    } else {
-        [self AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+
+        if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
+            obs_source_update_properties(self.captureInfo->source);
+            return;
+        }
+
+        [self AVCaptureLog:LOG_INFO
+                withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName,
+                           device.uniqueID];
+
+        // Snapshot settings under the lock before dispatching; captureInfo is nonatomic.
+        deviceUUID = device.uniqueID;
+        presetName = [OBSAVCapture stringFromSettings:self.captureInfo->settings withSetting:@"preset"];
+        isPresetEnabled = obs_data_get_bool(self.captureInfo->settings, "use_preset");
+        isFastPath = self.captureInfo->isFastPath;
     }
-
-    obs_source_update_properties(self.captureInfo->source);
-}
-
-- (void)deviceDisconnected:(NSNotification *)notification
-{
-    AVCaptureDevice *device = notification.object;
-
-    if (!device) {
-        return;
-    }
-
-    if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    if (!self.deviceInput.device) {
-        [self AVCaptureLog:LOG_ERROR withFormat:@"Received disconnect event for inactive device '%@' (UUID %@)",
-                                                device.localizedName, device.uniqueID];
-        obs_source_update_properties(self.captureInfo->source);
-        return;
-    }
-
-    [self AVCaptureLog:LOG_INFO
-            withFormat:@"Received disconnect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
 
     __weak OBSAVCapture *weakSelf = self;
     dispatch_async(self.sessionQueue, ^{
         OBSAVCapture *instance = weakSelf;
+        if (!instance) {
+            return;
+        }
 
-        [instance stopCaptureSession];
-        [instance.session removeInput:instance.deviceInput];
+        @synchronized(instance) {
+            if (!instance.captureInfo) {
+                return;
+            }
 
-        instance.deviceInput = nil;
-        instance = nil;
+            // Disconnect cleanup has completed by now; deviceInput.device reflects true state.
+            if (instance.deviceInput.device) {
+                [instance AVCaptureLog:LOG_INFO
+                            withFormat:@"Received connect event with active device '%@' (UUID %@)",
+                                       instance.deviceInput.device.localizedName,
+                                       instance.deviceInput.device.uniqueID];
+                obs_source_update_properties(instance.captureInfo->source);
+                return;
+            }
+
+            NSError *error = nil;
+            if ([instance switchCaptureDevice:deviceUUID withError:&error]) {
+                BOOL success;
+                if (isPresetEnabled && !isFastPath) {
+                    success = [instance configureSessionWithPreset:presetName withError:&error];
+                } else {
+                    success = [instance configureSession:&error];
+                }
+
+                if (success) {
+                    [instance startCaptureSession];
+                } else {
+                    [instance AVCaptureLog:LOG_ERROR
+                                withFormat:@"%@", error.localizedDescription ?: @"Unable to configure capture device"];
+                }
+            } else {
+                [instance AVCaptureLog:LOG_ERROR
+                            withFormat:@"%@", error.localizedDescription ?: @"Unable to switch capture device"];
+            }
+
+            obs_source_update_properties(instance.captureInfo->source);
+        }
     });
+}
 
-    obs_source_update_properties(self.captureInfo->source);
+- (void)deviceDisconnected:(NSNotification *)notification
+{
+    @synchronized(self) {
+        OBSAVCaptureInfo *captureInfo = self.captureInfo;
+
+        if (!captureInfo) {
+            return;
+        }
+
+        AVCaptureDevice *device = notification.object;
+
+        if (!device) {
+            return;
+        }
+
+        if (![[device uniqueID] isEqualTo:self.deviceUUID]) {
+            obs_source_update_properties(captureInfo->source);
+            return;
+        }
+
+        if (!self.deviceInput.device) {
+            [self AVCaptureLog:LOG_ERROR withFormat:@"Received disconnect event for inactive device '%@' (UUID %@)",
+                                                    device.localizedName, device.uniqueID];
+            obs_source_update_properties(captureInfo->source);
+            return;
+        }
+
+        [self AVCaptureLog:LOG_INFO withFormat:@"Received disconnect event for device '%@' (UUID %@)",
+                                               device.localizedName, device.uniqueID];
+
+        __weak OBSAVCapture *weakSelf = self;
+        dispatch_async(self.sessionQueue, ^{
+            OBSAVCapture *instance = weakSelf;
+
+            if (!instance) {
+                return;
+            }
+
+            @synchronized(instance) {
+                if (!instance.captureInfo) {
+                    return;
+                }
+
+                [instance stopCaptureSession];
+                [instance.session removeInput:instance.deviceInput];
+
+                instance.deviceInput = nil;
+            }
+        });
+
+        obs_source_update_properties(captureInfo->source);
+    }
 }
 
 #pragma mark - AVCapture Delegate Methods
@@ -1250,13 +1300,20 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                 if (mediaSubType != kCVPixelFormatType_32BGRA &&
                     mediaSubType != kCVPixelFormatType_ARGB2101010LEPacked) {
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
                     obs_source_update_properties(_captureInfo->source);
                     break;
                 } else {
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
-                    _captureInfo->sampleBufferDescription = NULL;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                 }
 
                 CVPixelBufferLockBaseAddress(imageBuffer, 0);
@@ -1305,11 +1362,18 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
                 if (videoFormat == VIDEO_FORMAT_NONE) {
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
                 } else {
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
-                    _captureInfo->sampleBufferDescription = NULL;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
 #ifdef DEBUG
                     if (frame->format != VIDEO_FORMAT_NONE && frame->format != videoFormat) {
                         [self AVCaptureLog:LOG_DEBUG
