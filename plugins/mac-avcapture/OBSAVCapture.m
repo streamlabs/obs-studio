@@ -1123,9 +1123,6 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (void)deviceConnected:(NSNotification *)notification
 {
-    // @synchronized(self) serializes captureInfo access on the notification thread with
-    // av_capture_destroy's @synchronized(capture) teardown, preventing a use-after-free
-    // between the nil guard and the captureInfo dereferences that follow it.
     NSString *deviceUUID;
     NSString *presetName;
     BOOL isPresetEnabled;
@@ -1180,7 +1177,7 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                 return;
             }
 
-            NSError *error;
+            NSError *error = nil;
             if ([instance switchCaptureDevice:deviceUUID withError:&error]) {
                 BOOL success;
                 if (isPresetEnabled && !isFastPath) {
@@ -1192,10 +1189,12 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                 if (success) {
                     [instance startCaptureSession];
                 } else {
-                    [instance AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+                    [instance AVCaptureLog:LOG_ERROR
+                                withFormat:@"%@", error.localizedDescription ?: @"Unable to configure capture device"];
                 }
             } else {
-                [instance AVCaptureLog:LOG_ERROR withFormat:error.localizedDescription];
+                [instance AVCaptureLog:LOG_ERROR
+                            withFormat:@"%@", error.localizedDescription ?: @"Unable to switch capture device"];
             }
 
             obs_source_update_properties(instance.captureInfo->source);

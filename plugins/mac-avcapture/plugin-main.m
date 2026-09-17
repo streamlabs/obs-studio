@@ -287,9 +287,9 @@ static void av_capture_destroy(void *av_capture)
 
             capture.captureInfo = NULL;
             bfree(capture_info);
-
-            CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
         }
+
+        CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
     });
 }
 
