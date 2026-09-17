@@ -1300,6 +1300,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                 if (mediaSubType != kCVPixelFormatType_32BGRA &&
                     mediaSubType != kCVPixelFormatType_ARGB2101010LEPacked) {
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
                     obs_source_update_properties(_captureInfo->source);
@@ -1358,6 +1362,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
                 if (videoFormat == VIDEO_FORMAT_NONE) {
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
                 } else {
