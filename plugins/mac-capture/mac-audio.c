@@ -781,7 +781,11 @@ static void coreaudio_uninit(struct coreaudio_data *ca)
 		OSStatus stat = AudioUnitUninitialize(ca->unit);
 		ca_success(stat, ca, "coreaudio_uninit", "uninitialize");
 
-		if (!ca->shutting_down)
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		bool removing_hooks = !ca->shutting_down;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+
+		if (removing_hooks)
 			coreaudio_remove_hooks(ca);
 
 		stat = AudioComponentInstanceDispose(ca->unit);
