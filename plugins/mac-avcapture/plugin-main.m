@@ -282,6 +282,7 @@ static void av_capture_destroy(void *av_capture)
             }
 
             if (capture_info->sampleBufferDescription) {
+                CFRelease(capture_info->sampleBufferDescription);
                 capture_info->sampleBufferDescription = NULL;
             }
 

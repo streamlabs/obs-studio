@@ -575,7 +575,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             break;
             default:
                 self.captureInfo->lastError = OBSAVCaptureError_NoError;
-                self.captureInfo->sampleBufferDescription = NULL;
+                if (self.captureInfo->sampleBufferDescription) {
+                    CFRelease(self.captureInfo->sampleBufferDescription);
+                    self.captureInfo->sampleBufferDescription = NULL;
+                }
                 break;
         }
     }
@@ -1303,7 +1306,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                     break;
                 } else {
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
-                    _captureInfo->sampleBufferDescription = NULL;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
                 }
 
                 CVPixelBufferLockBaseAddress(imageBuffer, 0);
@@ -1356,7 +1362,10 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                                               &_captureInfo->sampleBufferDescription);
                 } else {
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
-                    _captureInfo->sampleBufferDescription = NULL;
+                    if (_captureInfo->sampleBufferDescription) {
+                        CFRelease(_captureInfo->sampleBufferDescription);
+                        _captureInfo->sampleBufferDescription = NULL;
+                    }
 #ifdef DEBUG
                     if (frame->format != VIDEO_FORMAT_NONE && frame->format != videoFormat) {
                         [self AVCaptureLog:LOG_DEBUG
