@@ -494,7 +494,7 @@ static void *reconnect_thread(void *param)
 			}
 			os_event_reset(ca->exit_event);
 			pthread_mutex_unlock(&ca->reconnect_mutex);
-			continue
+			continue;
 		}
 		ca->reconnecting = false;
 		pthread_mutex_unlock(&ca->reconnect_mutex);
