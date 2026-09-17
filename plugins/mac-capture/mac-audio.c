@@ -61,6 +61,7 @@ struct coreaudio_data {
 	bool reconnect_thread_valid;
 	bool reconnecting;
 	bool reconnect_pending;
+	bool initializing;
 	bool tearing_down;
 	bool shutting_down;
 	bool notification_shutdown;
@@ -473,10 +474,23 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
 	for (;;) {
-		while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
+		unsigned long retry_time;
+
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		retry_time = ca->retry_time;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+
+		while (os_event_timedwait(ca->exit_event, retry_time) == ETIMEDOUT) {
 			if (coreaudio_init(ca))
 				break;
+
+			pthread_mutex_lock(&ca->reconnect_mutex);
+			retry_time = ca->retry_time;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
 		}
 
 		pthread_mutex_lock(&ca->reconnect_mutex);
@@ -526,16 +540,14 @@ static void coreaudio_end_notification_callback(struct coreaudio_data *ca);
 
 static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
 {
-	/* Increment atomically before acquiring the mutex so the callback is
-	 * counted even while it is blocked waiting for the lock. Without this,
-	 * coreaudio_wait_for_notification_callbacks can observe zero callbacks
-	 * while a callback is pending entry and proceed to destroy ca. */
-	atomic_fetch_add_explicit(&ca->notification_callbacks, 1, memory_order_relaxed);
-
 	bool should_process;
+
+	atomic_fetch_add_explicit(&ca->notification_callbacks, 1, memory_order_relaxed);
 	pthread_mutex_lock(&ca->notification_mutex);
 	should_process = !ca->notification_shutdown;
 	pthread_mutex_unlock(&ca->notification_mutex);
+	if (!should_process)
+		coreaudio_end_notification_callback(ca);
 
 	return should_process;
 }
@@ -569,7 +581,7 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 			pthread_mutex_unlock(&ca->reconnect_mutex);
 			return;
 		}
-		if (ca->reconnecting) {
+		if (ca->reconnecting || ca->tearing_down) {
 			ca->reconnect_pending = true;
 			pthread_mutex_unlock(&ca->reconnect_mutex);
 			return;
@@ -599,20 +611,28 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 {
 	struct coreaudio_data *ca = data;
 
-	if (!coreaudio_begin_notification_callback(ca))
-		goto done;
+	if (!coreaudio_begin_notification_callback(ca)) {
+		UNUSED_PARAMETER(id);
+		UNUSED_PARAMETER(num_addresses);
+		return noErr;
+	}
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ca->shutting_down) {
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		goto done;
 	}
-	if (ca->reconnecting || ca->tearing_down) {
+	if (ca->reconnecting || ca->initializing || ca->tearing_down) {
 		/* Either a reconnect thread is running (reconnecting) or another
-		 * callback already claimed the teardown (tearing_down). Enqueue
-		 * a restart rather than racing into coreaudio_uninit concurrently.
+		 * callback already claimed the teardown (tearing_down). When
+		 * synchronous initialization owns the device state, leave the
+		 * request pending for that owner to tear down once init finishes.
 		 * Only signal exit_event when the thread is actually running. */
 		ca->reconnect_pending = true;
+		if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
+			ca->retry_time = 300;
+		else
+			ca->retry_time = 2000;
 		if (ca->reconnecting)
 			os_event_signal(ca->exit_event);
 		pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -626,12 +646,11 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->tearing_down = false;
-	pthread_mutex_unlock(&ca->reconnect_mutex);
-
 	if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
 		ca->retry_time = 300;
 	else
 		ca->retry_time = 2000;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	blog(LOG_INFO,
 	     "coreaudio: device '%s' disconnected or changed.  "
@@ -835,13 +854,45 @@ fail:
 
 static void coreaudio_try_init(struct coreaudio_data *ca)
 {
-	if (!coreaudio_init(ca)) {
+	bool init_success;
+	bool retry_pending = false;
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->initializing = true;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	init_success = coreaudio_init(ca);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->initializing = false;
+	if (ca->reconnect_pending && !ca->shutting_down) {
+		ca->reconnect_pending = false;
+		ca->tearing_down = true;
+		retry_pending = true;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (retry_pending) {
+		coreaudio_stop(ca);
+		coreaudio_uninit(ca);
+
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		ca->tearing_down = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+
+		coreaudio_begin_reconnect(ca);
+		return;
+	}
+
+	if (!init_success) {
 		blog(LOG_INFO,
 		     "coreaudio: failed to find device "
 		     "uid: %s, waiting for connection",
 		     ca->device_uid);
 
+		pthread_mutex_lock(&ca->reconnect_mutex);
 		ca->retry_time = 2000;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
 
 		if (ca->no_devices)
 			blog(LOG_INFO, "coreaudio: no device found");
@@ -914,7 +965,6 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 			os_event_signal(ca->exit_event);
 		reconnect_thread = ca->reconnect_thread;
 		ca->reconnect_thread_valid = false;
-		ca->reconnecting = false;
 		should_join = true;
 	}
 	pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -927,6 +977,11 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 
 	if (should_join) {
 		pthread_join(reconnect_thread, NULL);
+
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		ca->reconnecting = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+
 		os_event_reset(ca->exit_event);
 	}
 
