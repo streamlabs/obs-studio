@@ -866,12 +866,13 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 	ca->notification_shutdown = true;
 	pthread_mutex_unlock(&ca->notification_mutex);
 
+	coreaudio_wait_for_notification_callbacks(ca);
+
 	if (should_join) {
 		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
 	}
 
-	coreaudio_wait_for_notification_callbacks(ca);
 	coreaudio_uninit(ca);
 	coreaudio_wait_for_notification_callbacks(ca);
 
