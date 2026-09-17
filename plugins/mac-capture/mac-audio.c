@@ -61,6 +61,7 @@ struct coreaudio_data {
 	bool reconnect_thread_valid;
 	bool reconnecting;
 	bool reconnect_pending;
+	bool tearing_down;
 	bool shutting_down;
 	bool notification_shutdown;
 	unsigned long retry_time;
@@ -606,20 +607,26 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		goto done;
 	}
-	if (ca->reconnecting) {
-		/* A reconnect is already in progress; enqueue a restart rather
-		 * than calling coreaudio_uninit concurrently with the reconnect
-		 * thread's coreaudio_init. The reconnect thread will call uninit
-		 * and restart when it sees reconnect_pending. */
+	if (ca->reconnecting || ca->tearing_down) {
+		/* Either a reconnect thread is running (reconnecting) or another
+		 * callback already claimed the teardown (tearing_down). Enqueue
+		 * a restart rather than racing into coreaudio_uninit concurrently.
+		 * Only signal exit_event when the thread is actually running. */
 		ca->reconnect_pending = true;
-		os_event_signal(ca->exit_event);
+		if (ca->reconnecting)
+			os_event_signal(ca->exit_event);
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		goto done;
 	}
+	ca->tearing_down = true;
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	coreaudio_stop(ca);
 	coreaudio_uninit(ca);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->tearing_down = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
 		ca->retry_time = 300;
@@ -1014,6 +1021,7 @@ static void coreaudio_defaults(obs_data_t *settings)
 static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool input)
 {
 	struct coreaudio_data *ca = bzalloc(sizeof(struct coreaudio_data));
+	atomic_init(&ca->notification_callbacks, 0);
 
 	if (pthread_mutex_init(&ca->reconnect_mutex, NULL) != 0) {
 		blog(LOG_ERROR, "[coreaudio_create] failed to create reconnect mutex");
