@@ -491,13 +491,13 @@ static void coreaudio_reap_reconnect_thread(struct coreaudio_data *ca)
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ca->reconnect_thread_valid && !ca->reconnecting) {
 		reconnect_thread = ca->reconnect_thread;
+		ca->reconnect_thread_valid = false;
 		should_join = true;
 	}
-	if (should_join) {
-		pthread_join(reconnect_thread, NULL);
-		ca->reconnect_thread_valid = false;
-	}
 	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join)
+		pthread_join(reconnect_thread, NULL);
 }
 
 static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
@@ -856,6 +856,8 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 		if (ca->reconnecting)
 			os_event_signal(ca->exit_event);
 		reconnect_thread = ca->reconnect_thread;
+		ca->reconnect_thread_valid = false;
+		ca->reconnecting = false;
 		should_join = true;
 	}
 	pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -867,15 +869,11 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 	if (should_join) {
 		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
-
-		pthread_mutex_lock(&ca->reconnect_mutex);
-		ca->reconnect_thread_valid = false;
-		ca->reconnecting = false;
-		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
 	coreaudio_wait_for_notification_callbacks(ca);
 	coreaudio_uninit(ca);
+	coreaudio_wait_for_notification_callbacks(ca);
 
 	if (!destroying) {
 		pthread_mutex_lock(&ca->notification_mutex);
