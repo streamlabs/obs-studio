@@ -53,8 +53,10 @@ struct coreaudio_data {
 
 	pthread_t reconnect_thread;
 	pthread_mutex_t reconnect_mutex;
-	pthread_rwlock_t notification_rwlock;
+	pthread_mutex_t notification_mutex;
+	pthread_cond_t notification_cond;
 	os_event_t *exit_event;
+	size_t notification_callbacks;
 	bool reconnect_thread_valid;
 	bool reconnecting;
 	bool shutting_down;
@@ -498,6 +500,35 @@ static void coreaudio_reap_reconnect_thread(struct coreaudio_data *ca)
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
+static bool coreaudio_begin_notification_callback(struct coreaudio_data *ca)
+{
+	bool should_process;
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_callbacks++;
+	should_process = !ca->notification_shutdown;
+	pthread_mutex_unlock(&ca->notification_mutex);
+
+	return should_process;
+}
+
+static void coreaudio_end_notification_callback(struct coreaudio_data *ca)
+{
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_callbacks--;
+	if (ca->notification_shutdown && ca->notification_callbacks == 0)
+		pthread_cond_signal(&ca->notification_cond);
+	pthread_mutex_unlock(&ca->notification_mutex);
+}
+
+static void coreaudio_wait_for_notification_callbacks(struct coreaudio_data *ca)
+{
+	pthread_mutex_lock(&ca->notification_mutex);
+	while (ca->notification_callbacks > 0)
+		pthread_cond_wait(&ca->notification_cond, &ca->notification_mutex);
+	pthread_mutex_unlock(&ca->notification_mutex);
+}
+
 static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 {
 	int ret;
@@ -528,14 +559,7 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 {
 	struct coreaudio_data *ca = data;
 
-	/* Acquire the lifetime read lock as the very first action. The rwlock
-	 * subsumes the old notification_callbacks counter: every callback —
-	 * including those still waiting to acquire this lock — is visible to
-	 * teardown's write lock, so coreaudio_shutdown cannot free ca while
-	 * any callback is in progress or pending entry. */
-	pthread_rwlock_rdlock(&ca->notification_rwlock);
-
-	if (ca->notification_shutdown)
+	if (!coreaudio_begin_notification_callback(ca))
 		goto done;
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
@@ -561,7 +585,7 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 	coreaudio_begin_reconnect(ca);
 
 done:
-	pthread_rwlock_unlock(&ca->notification_rwlock);
+	coreaudio_end_notification_callback(ca);
 
 	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(num_addresses);
@@ -781,12 +805,7 @@ static void coreaudio_uninit(struct coreaudio_data *ca)
 		OSStatus stat = AudioUnitUninitialize(ca->unit);
 		ca_success(stat, ca, "coreaudio_uninit", "uninitialize");
 
-		pthread_mutex_lock(&ca->reconnect_mutex);
-		bool removing_hooks = !ca->shutting_down;
-		pthread_mutex_unlock(&ca->reconnect_mutex);
-
-		if (removing_hooks)
-			coreaudio_remove_hooks(ca);
+		coreaudio_remove_hooks(ca);
 
 		stat = AudioComponentInstanceDispose(ca->unit);
 		ca_success(stat, ca, "coreaudio_uninit", "dispose");
@@ -826,30 +845,13 @@ static const char *coreaudio_output_getname(void *unused)
 	return TEXT_AUDIO_OUTPUT;
 }
 
-static void coreaudio_shutdown(struct coreaudio_data *ca)
+static void coreaudio_shutdown(struct coreaudio_data *ca, bool destroying)
 {
 	pthread_t reconnect_thread;
 	bool should_join = false;
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = true;
-	pthread_mutex_unlock(&ca->reconnect_mutex);
-
-	/* Acquire the write lock to:
-	 *   1. Wait for all callbacks currently holding the read lock to finish.
-	 *      Because callbacks acquire the read lock as their very first action,
-	 *      this also covers callbacks that are blocked waiting to acquire it —
-	 *      they are already in the rwlock's pending-reader queue and will be
-	 *      drained before any subsequent write lock can succeed.
-	 *   2. Set notification_shutdown and remove hooks while no callback is
-	 *      running, so no callback can observe a partially-torn-down state. */
-	pthread_rwlock_wrlock(&ca->notification_rwlock);
-	ca->notification_shutdown = true;
-	if (ca->au_initialized)
-		coreaudio_remove_hooks(ca);
-	pthread_rwlock_unlock(&ca->notification_rwlock);
-
-	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ca->reconnect_thread_valid) {
 		if (ca->reconnecting)
 			os_event_signal(ca->exit_event);
@@ -857,6 +859,10 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 		should_join = true;
 	}
 	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	pthread_mutex_lock(&ca->notification_mutex);
+	ca->notification_shutdown = true;
+	pthread_mutex_unlock(&ca->notification_mutex);
 
 	if (should_join) {
 		pthread_join(reconnect_thread, NULL);
@@ -868,19 +874,18 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
+	coreaudio_wait_for_notification_callbacks(ca);
 	coreaudio_uninit(ca);
 
-	/* coreaudio_uninit may trigger new callbacks; they will see
-	 * notification_shutdown = true and exit immediately after releasing
-	 * the read lock. Take the write lock once more to drain them before
-	 * proceeding to destroy ca. */
-	pthread_rwlock_wrlock(&ca->notification_rwlock);
-	pthread_rwlock_unlock(&ca->notification_rwlock);
+	if (!destroying) {
+		pthread_mutex_lock(&ca->notification_mutex);
+		ca->notification_shutdown = false;
+		pthread_mutex_unlock(&ca->notification_mutex);
 
-	pthread_mutex_lock(&ca->reconnect_mutex);
-	ca->shutting_down = false;
-	ca->notification_shutdown = false;
-	pthread_mutex_unlock(&ca->reconnect_mutex);
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		ca->shutting_down = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+	}
 
 	if (ca->unit)
 		AudioComponentInstanceDispose(ca->unit);
@@ -891,13 +896,14 @@ static void coreaudio_destroy(void *data)
 	struct coreaudio_data *ca = data;
 
 	if (ca) {
-		coreaudio_shutdown(ca);
+		coreaudio_shutdown(ca, true);
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
 		os_event_destroy(ca->exit_event);
-		pthread_rwlock_destroy(&ca->notification_rwlock);
+		pthread_cond_destroy(&ca->notification_cond);
+		pthread_mutex_destroy(&ca->notification_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 
 		if (ca->channel_map) {
@@ -936,7 +942,7 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	if (!ca->input && strcmp(new_id, ca->device_uid) != 0)
 		obs_source_audio_output_capture_device_changed(ca->source, new_id);
 
-	coreaudio_shutdown(ca);
+	coreaudio_shutdown(ca, false);
 
 	bfree(ca->device_uid);
 	ca->device_uid = bstrdup(new_id);
@@ -966,8 +972,16 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		return NULL;
 	}
 
-	if (pthread_rwlock_init(&ca->notification_rwlock, NULL) != 0) {
-		blog(LOG_ERROR, "[coreaudio_create] failed to create notification rwlock");
+	if (pthread_mutex_init(&ca->notification_mutex, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification mutex");
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		bfree(ca);
+		return NULL;
+	}
+
+	if (pthread_cond_init(&ca->notification_cond, NULL) != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification condition");
+		pthread_mutex_destroy(&ca->notification_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		bfree(ca);
 		return NULL;
@@ -978,7 +992,8 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		     "[coreaudio_create] failed to create "
 		     "semephore: %d",
 		     errno);
-		pthread_rwlock_destroy(&ca->notification_rwlock);
+		pthread_cond_destroy(&ca->notification_cond);
+		pthread_mutex_destroy(&ca->notification_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		bfree(ca);
 		return NULL;
