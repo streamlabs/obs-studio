@@ -1,6 +1,6 @@
 {
     "$schema": "schema/package-schema.json",
-    "url": "https://slobs-cdn.streamlabs.com/rtmp-services",
+    "url": "https://slobs-cdn.streamlabs.com/rtmp-services/v5",
     "version": 285,
     "files": [
         {
