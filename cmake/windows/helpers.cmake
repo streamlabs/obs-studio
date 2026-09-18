@@ -118,10 +118,7 @@ function(set_target_properties_obs target)
           cmake_path(GET cef_location PARENT_PATH cef_root_location)
 
           if(NOT CEF_BINARY_FILES OR NOT CEF_RESOURCE_FILES)
-            message(
-              FATAL_ERROR
-              "The CEF distribution does not declare its required runtime binary and resource files."
-            )
+            message(FATAL_ERROR "The CEF distribution does not declare its required runtime binary and resource files.")
           endif()
 
           set(cef_runtime_files)
@@ -214,24 +211,15 @@ function(set_target_properties_obs target)
           DESTINATION "${OBS_LIBRARY_DESTINATION}/cef/Release"
           COMPONENT Development
         )
-        install(
-          DIRECTORY "${CEF_INCLUDE_DIR}/"
-          DESTINATION "${OBS_INCLUDE_DESTINATION}/include"
-          COMPONENT Development
-        )
-        install(
-          FILES "${obs_browser_sandbox_header}"
-          DESTINATION "${OBS_INCLUDE_DESTINATION}"
-          COMPONENT Development
-        )
+        install(DIRECTORY "${CEF_INCLUDE_DIR}/" DESTINATION "${OBS_INCLUDE_DESTINATION}/include" COMPONENT Development)
+        install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
 
         if(NOT TARGET cef-sandbox-link-smoke)
           add_executable(cef-sandbox-link-smoke "${CMAKE_SOURCE_DIR}/cmake/windows/cef-sandbox-link-smoke.cpp")
           target_link_libraries(cef-sandbox-link-smoke PRIVATE CEF::Sandbox)
           set_target_properties(
             cef-sandbox-link-smoke
-            PROPERTIES FOLDER "CMake/Smoke Tests"
-                       MSVC_RUNTIME_LIBRARY "MultiThreaded"
+            PROPERTIES FOLDER "CMake/Smoke Tests" MSVC_RUNTIME_LIBRARY "MultiThreaded"
           )
           if(BUILD_TESTING)
             add_test(NAME cef-sandbox-link-smoke COMMAND cef-sandbox-link-smoke)
