@@ -53,6 +53,9 @@
               },
               "cef": {
                   "version": "6533",
+                  "versions": {
+                      "windows-x64": "6613"
+                  },
                   "baseUrl": "https://streamlabs-cef-dist.s3.us-west-2.amazonaws.com",
                   "label": "Chromium Embedded Framework",
                   "hashes": {
@@ -60,7 +63,7 @@
                       "macos-arm64": "429b50e74f6c174dcfe2f14d8204b54add497eaafe117f7b69ce6bb2354d2626",
                       "ubuntu-x86_64": "7963335519a19ccdc5233f7334c5ab023026e2f3e9a0cc417007c09d86608146",
                       "ubuntu-aarch64": "642514469eaa29a5c887891084d2e73f7dc2d7405f7dfa7726b2dbc24b309999",
-                      "windows-x64": "26460a8219b0d666427190efba47bae3bf3abc19589c19f9710b4cb75b8ae620",
+                      "windows-x64": "dce2b2932239a85aa646ede0d9fc00c8ae0bbcb383959028ca7d48d503bacbbb",
                       "windows-arm64": "df9df4bd85826b4c071c6db404fd59cf93efd9c58ec3ab64e204466ae19bb02a"
                   },
                   "revision": {
@@ -68,7 +71,7 @@
                       "macos-arm64": 5,
                       "ubuntu-x86_64": 6,
                       "ubuntu-aarch64": 6,
-                      "windows-x64": 4
+                      "windows-x64": 1
                   }
               },
               "openssl": {
