@@ -52,11 +52,19 @@ struct coreaudio_data {
 	bool enable_downmix;
 
 	pthread_t reconnect_thread;
+	pthread_mutex_t reconnect_mutex;
+	bool shutting_down;
 	os_event_t *exit_event;
-	volatile bool reconnecting;
+	bool reconnect_thread_valid;
+	bool reconnecting;
 	unsigned long retry_time;
 
 	obs_source_t *source;
+};
+
+enum shutdown_type {
+	FINAL_SHUTDOWN,
+	NOT_FINAL_SHUTDOWN
 };
 
 static bool get_default_output_device(struct coreaudio_data *ca)
@@ -463,15 +471,15 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	ca->reconnecting = true;
-
 	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
 		if (coreaudio_init(ca))
 			break;
 	}
 
 	blog(LOG_DEBUG, "coreaudio: exit the reconnect thread");
+	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->reconnecting = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 	return NULL;
 }
 
@@ -479,15 +487,30 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 {
 	int ret;
 
-	if (ca->reconnecting)
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->reconnecting || ca->shutting_down) {
+		pthread_mutex_unlock(&ca->reconnect_mutex);
 		return;
+	}
+
+	if (ca->reconnect_thread_valid) {
+		pthread_join(ca->reconnect_thread, NULL);
+		ca->reconnect_thread_valid = false;
+	}
+
+	ca->reconnecting = true;
 
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
-	if (ret != 0)
+	if (ret != 0) {
+		ca->reconnecting = false;
 		blog(LOG_WARNING,
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
+	} else {
+		ca->reconnect_thread_valid = true;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
@@ -768,15 +791,34 @@ static const char *coreaudio_output_getname(void *unused)
 	return TEXT_AUDIO_OUTPUT;
 }
 
-static void coreaudio_shutdown(struct coreaudio_data *ca)
+static void coreaudio_shutdown(struct coreaudio_data *ca, const enum shutdown_type shutdown_option)
 {
-	if (ca->reconnecting) {
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = true;
+	bool should_join = ca->reconnect_thread_valid;
+	pthread_t reconnect_thread = ca->reconnect_thread;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join) {
 		os_event_signal(ca->exit_event);
-		pthread_join(ca->reconnect_thread, NULL);
+		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		if (ca->reconnect_thread_valid &&
+		    pthread_equal(ca->reconnect_thread, reconnect_thread)) {
+			ca->reconnect_thread_valid = false;
+			ca->reconnecting = false;
+		}
+		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
 	coreaudio_uninit(ca);
+
+	if (shutdown_option != FINAL_SHUTDOWN) {
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		ca->shutting_down = false;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+	}
 
 	if (ca->unit)
 		AudioComponentInstanceDispose(ca->unit);
@@ -787,11 +829,12 @@ static void coreaudio_destroy(void *data)
 	struct coreaudio_data *ca = data;
 
 	if (ca) {
-		coreaudio_shutdown(ca);
+		coreaudio_shutdown(ca, FINAL_SHUTDOWN);
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
+		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
 		if (ca->channel_map) {
@@ -830,7 +873,7 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	if (!ca->input && strcmp(new_id, ca->device_uid) != 0)
 		obs_source_audio_output_capture_device_changed(ca->source, new_id);
 
-	coreaudio_shutdown(ca);
+	coreaudio_shutdown(ca, NOT_FINAL_SHUTDOWN);
 
 	bfree(ca->device_uid);
 	ca->device_uid = bstrdup(new_id);
@@ -859,6 +902,16 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		     "[coreaudio_create] failed to create "
 		     "semephore: %d",
 		     errno);
+		bfree(ca);
+		return NULL;
+	}
+
+	int err = pthread_mutex_init(&ca->reconnect_mutex, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR,
+		     "[coreaudio_create] failed to init reconnect mutex: %d",
+		     err);
+		os_event_destroy(ca->exit_event);
 		bfree(ca);
 		return NULL;
 	}
