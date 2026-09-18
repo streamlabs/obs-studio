@@ -66,8 +66,12 @@ runs:
         if ('${{ inputs.target }}' -eq 'x64') {
           $presets = Get-Content -LiteralPath 'CMakePresets.json' -Raw | ConvertFrom-Json
           $dependencyPreset = $presets.configurePresets | Where-Object name -eq 'dependencies'
-          $cefVersion = [string]$dependencyPreset.vendor.'obsproject.com/obs-studio'.dependencies.cef.version
-          $cefHash = [string]$dependencyPreset.vendor.'obsproject.com/obs-studio'.dependencies.cef.hashes.'windows-x64'
+          $cefDependency = $dependencyPreset.vendor.'obsproject.com/obs-studio'.dependencies.cef
+          $cefVersion = [string]$cefDependency.version
+          if ($cefDependency.versions -And $cefDependency.versions.'windows-x64') {
+            $cefVersion = [string]$cefDependency.versions.'windows-x64'
+          }
+          $cefHash = [string]$cefDependency.hashes.'windows-x64'
           $cefRootPath = Join-Path '.deps' "cef_binary_${cefVersion}_windows_x64"
           if (-Not (Test-Path -LiteralPath $cefRootPath -PathType Container)) {
             throw "The configured Windows x64 CEF dependency directory is missing: $cefRootPath"
