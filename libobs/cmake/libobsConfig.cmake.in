@@ -26,6 +26,49 @@ unset(_OBS_BUNDLED_DEPENDENCY_PREFIXES)
 unset(_OBS_DEPENDENCY_PREFIX)
 
 include("${CMAKE_CURRENT_LIST_DIR}/@TARGETS_EXPORT_NAME@.cmake")
+
+set(_OBS_CEF_SANDBOX_ENABLED FALSE)
+if("@CMAKE_VS_PLATFORM_NAME@" STREQUAL "x64" AND "@ENABLE_BROWSER@")
+  set(_OBS_CEF_SANDBOX_ENABLED TRUE)
+endif()
+if(WIN32 AND _OBS_CEF_SANDBOX_ENABLED AND NOT TARGET OBS::cef-sandbox)
+  set(_OBS_CEF_SANDBOX_RELEASE "${PACKAGE_PREFIX_DIR}/lib/cef/Release/cef_sandbox.lib")
+  set(_OBS_CEF_SANDBOX_HEADER "${PACKAGE_PREFIX_DIR}/include/include/cef_sandbox_win.h")
+  set(_OBS_BROWSER_SANDBOX_ABI_HEADER "${PACKAGE_PREFIX_DIR}/include/obs-browser-sandbox.h")
+  if(
+    NOT EXISTS "${_OBS_CEF_SANDBOX_RELEASE}"
+    OR NOT EXISTS "${_OBS_CEF_SANDBOX_HEADER}"
+    OR NOT EXISTS "${_OBS_BROWSER_SANDBOX_ABI_HEADER}"
+  )
+    message(
+      FATAL_ERROR
+      "The installed OBS development package is missing its Windows CEF sandbox "
+      "library or CEF include tree. Reinstall the matching development package."
+    )
+  endif()
+
+  add_library(OBS::cef-sandbox STATIC IMPORTED)
+  set_target_properties(
+    OBS::cef-sandbox
+    PROPERTIES
+      IMPORTED_CONFIGURATIONS "Release"
+      IMPORTED_LOCATION_RELEASE "${_OBS_CEF_SANDBOX_RELEASE}"
+      MAP_IMPORTED_CONFIG_DEBUG Release
+      MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+      MAP_IMPORTED_CONFIG_MINSIZEREL Release
+      INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
+      INTERFACE_COMPILE_DEFINITIONS
+        "PSAPI_VERSION=1;CEF_USE_SANDBOX;$<$<CONFIG:Debug>:NDEBUG>;$<$<CONFIG:Debug>:_HAS_ITERATOR_DEBUGGING=0>"
+      INTERFACE_COMPILE_OPTIONS "$<$<CONFIG:Debug>:/U_DEBUG>"
+      INTERFACE_LINK_LIBRARIES
+        "comctl32.lib;gdi32.lib;rpcrt4.lib;shlwapi.lib;ws2_32.lib;Advapi32.lib;Dbghelp.lib;Delayimp.lib;ntdll.lib;OleAut32.lib;PowrProf.lib;Propsys.lib;psapi.lib;SetupAPI.lib;Shell32.lib;Shcore.lib;Userenv.lib;version.lib;wbemuuid.lib;WindowsApp.lib;winmm.lib"
+  )
+  unset(_OBS_CEF_SANDBOX_RELEASE)
+  unset(_OBS_CEF_SANDBOX_HEADER)
+  unset(_OBS_BROWSER_SANDBOX_ABI_HEADER)
+endif()
+unset(_OBS_CEF_SANDBOX_ENABLED)
+
 check_required_components("@PROJECT_NAME@")
 
 set_property(TARGET OBS::libobs APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS HAVE_OBSCONFIG_H)

@@ -63,6 +63,47 @@ runs:
         $kept = 0
         $skipped = 0
 
+        if ('${{ inputs.target }}' -eq 'x64') {
+          $presets = Get-Content -LiteralPath 'CMakePresets.json' -Raw | ConvertFrom-Json
+          $dependencyPreset = $presets.configurePresets | Where-Object name -eq 'dependencies'
+          $cefVersion = [string]$dependencyPreset.vendor.'obsproject.com/obs-studio'.dependencies.cef.version
+          $cefHash = [string]$dependencyPreset.vendor.'obsproject.com/obs-studio'.dependencies.cef.hashes.'windows-x64'
+          $cefRootPath = Join-Path '.deps' "cef_binary_${cefVersion}_windows_x64"
+          if (-Not (Test-Path -LiteralPath $cefRootPath -PathType Container)) {
+            throw "The configured Windows x64 CEF dependency directory is missing: $cefRootPath"
+          }
+          $cefRoot = Get-Item -LiteralPath $cefRootPath
+
+          $installedCefHash = (Get-Content -LiteralPath '.deps/.dependency_cef_x64.sha256' -Raw).Trim()
+          if ($installedCefHash -ne $cefHash) {
+            throw "The extracted CEF dependency hash does not match CMakePresets.json"
+          }
+
+          $cefVersionHeader = Join-Path $cefRoot.FullName 'include/cef_version.h'
+          $cefBuild = Select-String -LiteralPath $cefVersionHeader -Pattern '^#define CHROME_VERSION_BUILD ([0-9]+)$'
+          if (-Not $cefBuild -Or $cefBuild.Matches[0].Groups[1].Value -ne $cefVersion) {
+            throw "CEF version header does not identify configured Chromium build $cefVersion"
+          }
+
+          $expectedCefPdbs = @(
+            'Release/chrome_elf.dll.pdb',
+            'Release/dxcompiler.dll.pdb',
+            'Release/libcef.dll.pdb',
+            'Release/libEGL.dll.pdb',
+            'Release/libGLESv2.dll.pdb',
+            'Release/vk_swiftshader.dll.pdb',
+            'Release/vulkan-1.dll.pdb',
+            'build/libcef_dll_wrapper/Release/libcef_dll_wrapper.pdb'
+          )
+          foreach ($relativePath in $expectedCefPdbs) {
+            $pdbPath = Join-Path $cefRoot.FullName $relativePath
+            if (-Not (Test-Path -LiteralPath $pdbPath -PathType Leaf)) {
+              throw "The CEF runtime dependency is missing required symbol file: $relativePath"
+            }
+          }
+          Write-Host "Validated all $($expectedCefPdbs.Count) embedded CEF PDBs in $($cefRoot.Name)"
+        }
+
         # The relative layout is preserved so the symbol server job can still report which pdb's
         # share a file name when it flattens them
         foreach ($searchPath in @("build_${{ inputs.target }}", '.deps')) {
