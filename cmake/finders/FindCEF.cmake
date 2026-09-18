@@ -220,10 +220,7 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED)
   file(READ "${CEF_SANDBOX_LIBRARY_RELEASE}" _CEF_SANDBOX_MAGIC OFFSET 0 LIMIT 8 HEX)
   string(TOLOWER "${_CEF_SANDBOX_MAGIC}" _CEF_SANDBOX_MAGIC)
   if(NOT _CEF_SANDBOX_MAGIC STREQUAL "213c617263683e0a")
-    message(
-      FATAL_ERROR
-      "${CEF_SANDBOX_LIBRARY_RELEASE} is not a valid MSVC archive for CEF sandbox support."
-    )
+    message(FATAL_ERROR "${CEF_SANDBOX_LIBRARY_RELEASE} is not a valid MSVC archive for CEF sandbox support.")
   endif()
 
   if(NOT CEF_SANDBOX_STANDARD_LIBS)
@@ -253,7 +250,14 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED)
   if(NOT CEF_STANDARD_LIBS)
     # Base CEF Windows dependencies are also used by objects pulled from
     # cef_sandbox.lib. CEF's generated project links both lists.
-    set(CEF_STANDARD_LIBS comctl32.lib gdi32.lib rpcrt4.lib shlwapi.lib ws2_32.lib)
+    set(
+      CEF_STANDARD_LIBS
+      comctl32.lib
+      gdi32.lib
+      rpcrt4.lib
+      shlwapi.lib
+      ws2_32.lib
+    )
   endif()
 endif()
 
@@ -337,10 +341,7 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED AND NOT TARGET CEF::Sandbox)
   set_property(TARGET CEF::Sandbox PROPERTY MAP_IMPORTED_CONFIG_DEBUG Release)
   set_property(TARGET CEF::Sandbox PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
   set_property(TARGET CEF::Sandbox PROPERTY MAP_IMPORTED_CONFIG_MINSIZEREL Release)
-  set_property(
-    TARGET CEF::Sandbox
-    PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${CEF_INCLUDE_DIR}" "${CEF_ROOT_DIR}"
-  )
+  set_property(TARGET CEF::Sandbox PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${CEF_INCLUDE_DIR}" "${CEF_ROOT_DIR}")
   set_property(
     TARGET CEF::Sandbox
     PROPERTY INTERFACE_LINK_LIBRARIES "${CEF_STANDARD_LIBS};${CEF_SANDBOX_STANDARD_LIBS}"
@@ -350,12 +351,9 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED AND NOT TARGET CEF::Sandbox)
     TARGET CEF::Sandbox
     PROPERTY
       INTERFACE_COMPILE_DEFINITIONS
-      "PSAPI_VERSION=1;CEF_USE_SANDBOX;$<$<CONFIG:Debug>:NDEBUG>;$<$<CONFIG:Debug>:_HAS_ITERATOR_DEBUGGING=0>"
+        "PSAPI_VERSION=1;CEF_USE_SANDBOX;$<$<CONFIG:Debug>:NDEBUG>;$<$<CONFIG:Debug>:_HAS_ITERATOR_DEBUGGING=0>"
   )
-  set_property(
-    TARGET CEF::Sandbox
-    PROPERTY INTERFACE_COMPILE_OPTIONS "$<$<CONFIG:Debug>:/U_DEBUG>"
-  )
+  set_property(TARGET CEF::Sandbox PROPERTY INTERFACE_COMPILE_OPTIONS "$<$<CONFIG:Debug>:/U_DEBUG>")
 endif()
 
 include(FeatureSummary)
