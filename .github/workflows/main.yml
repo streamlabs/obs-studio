@@ -19,7 +19,7 @@ env:
   PACKAGE_NAME: "libobs"
   CACHE_REVISION: '006'
   CEF_BUILD_VERSION_LINUX: '5060'
-  CEF_BUILD_VERSION_WIN: '5060'
+  CEF_BUILD_VERSION_WIN: '6533'
   QT_VERSION_MAC: '6.4.3'
   QT_VERSION_WIN: '6.4.3'
   DEPS_VERSION_WIN: '2023-08-31sl1'
@@ -422,8 +422,8 @@ jobs:
           CefBuildConfig: Debug
     env:
       OS_TAG: "windows64"
-      CEF_VERSION: 5060
-      CEF_REVISION: v3
+      CEF_VERSION: 6533
+      CEF_REVISION: v4
       WIN_DEPS_VERSION: windows-deps-2024-05-08sl2-x64
       WIN_DEPS_VERSION_X86: 2024-05-08
       GRPC_VERSION: v1.47.0

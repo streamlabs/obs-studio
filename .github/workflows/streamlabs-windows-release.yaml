@@ -93,6 +93,9 @@ jobs:
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           pdbPaths: ${{ env.PDB_PATH }}
+          # CEF's 5+ GiB PDB exceeds the CAB format's per-file size limit. It
+          # remains available in the build's debug-symbol artifact.
+          excludePdbNames: libcef.dll.pdb
           symsrvRef: ${{ inputs.symsrvRef }}
           forceUpload: ${{ inputs.forceUpload }}
           symsrvDebug: ${{ inputs.symsrvDebug }}

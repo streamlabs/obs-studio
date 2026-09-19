@@ -116,46 +116,114 @@ function(set_target_properties_obs target)
         if(imported_location)
           cmake_path(GET imported_location PARENT_PATH cef_location)
           cmake_path(GET cef_location PARENT_PATH cef_root_location)
+
+          if(NOT CEF_BINARY_FILES OR NOT CEF_RESOURCE_FILES)
+            message(FATAL_ERROR "The CEF distribution does not declare its required runtime binary and resource files.")
+          endif()
+
+          set(cef_runtime_files)
+          foreach(cef_binary_file IN LISTS CEF_BINARY_FILES)
+            set(cef_binary_path "${cef_location}/${cef_binary_file}")
+            if(NOT EXISTS "${cef_binary_path}")
+              message(FATAL_ERROR "The CEF runtime is missing required binary: ${cef_binary_path}")
+            endif()
+            list(APPEND cef_runtime_files "${cef_binary_path}")
+          endforeach()
+
+          set(cef_resource_files)
+          set(cef_resource_directories)
+          foreach(cef_resource_file IN LISTS CEF_RESOURCE_FILES)
+            set(cef_resource_path "${cef_root_location}/Resources/${cef_resource_file}")
+            if(IS_DIRECTORY "${cef_resource_path}")
+              list(APPEND cef_resource_directories "${cef_resource_path}")
+            elseif(EXISTS "${cef_resource_path}")
+              list(APPEND cef_resource_files "${cef_resource_path}")
+            else()
+              message(FATAL_ERROR "The CEF runtime is missing required resource: ${cef_resource_path}")
+            endif()
+          endforeach()
+
           add_custom_command(
             TARGET ${target}
             POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E echo "Add Chromium Embedded Framework to library directory"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}"
             COMMAND
-              "${CMAKE_COMMAND}" -E copy_if_different "${imported_location}" "${cef_location}/chrome_elf.dll"
-              "${cef_location}/libEGL.dll" "${cef_location}/libGLESv2.dll" "${cef_location}/v8_context_snapshot.bin"
-              "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}"
-            COMMAND
-              "${CMAKE_COMMAND}" -E copy_if_different "${cef_root_location}/Resources/chrome_100_percent.pak"
-              "${cef_root_location}/Resources/chrome_200_percent.pak" "${cef_root_location}/Resources/icudtl.dat"
-              "${cef_root_location}/Resources/resources.pak" "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}/"
-            COMMAND
-              "${CMAKE_COMMAND}" -E copy_directory "${cef_root_location}/Resources/locales"
-              "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}/locales"
+              "${CMAKE_COMMAND}" -E copy_if_different ${cef_runtime_files} ${cef_resource_files}
+              "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}/"
             COMMENT ""
           )
 
+          foreach(cef_resource_directory IN LISTS cef_resource_directories)
+            cmake_path(GET cef_resource_directory FILENAME cef_resource_directory_name)
+            add_custom_command(
+              TARGET ${target}
+              POST_BUILD
+              COMMAND
+                "${CMAKE_COMMAND}" -E copy_directory "${cef_resource_directory}"
+                "${OBS_OUTPUT_DIR}/$<CONFIG>/${target_destination}/${cef_resource_directory_name}"
+              COMMENT ""
+            )
+          endforeach()
+
           install(
-            FILES
-              "${imported_location}"
-              "${cef_location}/chrome_elf.dll"
-              "${cef_location}/libEGL.dll"
-              "${cef_location}/libGLESv2.dll"
-              "${cef_location}/v8_context_snapshot.bin"
-              "${cef_root_location}/Resources/chrome_100_percent.pak"
-              "${cef_root_location}/Resources/chrome_200_percent.pak"
-              "${cef_root_location}/Resources/icudtl.dat"
-              "${cef_root_location}/Resources/resources.pak"
+            FILES ${cef_runtime_files} ${cef_resource_files}
             DESTINATION "${target_destination}"
             COMPONENT Runtime
           )
 
-          install(
-            DIRECTORY "${cef_root_location}/Resources/locales"
-            DESTINATION "${target_destination}"
-            USE_SOURCE_PERMISSIONS
-            COMPONENT Runtime
+          foreach(cef_resource_directory IN LISTS cef_resource_directories)
+            install(
+              DIRECTORY "${cef_resource_directory}"
+              DESTINATION "${target_destination}"
+              USE_SOURCE_PERMISSIONS
+              COMPONENT Runtime
+            )
+          endforeach()
+        endif()
+      endif()
+
+      if(CMAKE_VS_PLATFORM_NAME STREQUAL "x64")
+        if(NOT TARGET CEF::Sandbox)
+          message(
+            FATAL_ERROR
+            "64-bit Windows obs-browser requires the CEF::Sandbox target. "
+            "Use the CEF 6533 v4 distribution containing Release/cef_sandbox.lib."
           )
+        endif()
+
+        get_target_property(cef_sandbox_release CEF::Sandbox IMPORTED_LOCATION_RELEASE)
+        if(NOT cef_sandbox_release)
+          message(FATAL_ERROR "CEF::Sandbox must provide its Release import location.")
+        endif()
+
+        set(obs_browser_sandbox_header "${CMAKE_SOURCE_DIR}/plugins/obs-browser/obs-browser-sandbox.h")
+        if(NOT EXISTS "${obs_browser_sandbox_header}")
+          message(
+            FATAL_ERROR
+            "obs-browser-sandbox.h is required for the Windows browser sandbox development package: "
+            "${obs_browser_sandbox_header}"
+          )
+        endif()
+
+        install(
+          FILES "${cef_sandbox_release}"
+          DESTINATION "${OBS_LIBRARY_DESTINATION}/cef/Release"
+          COMPONENT Development
+        )
+        install(DIRECTORY "${CEF_INCLUDE_DIR}/" DESTINATION "${OBS_INCLUDE_DESTINATION}/include" COMPONENT Development)
+        install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
+
+        if(NOT TARGET cef-sandbox-link-smoke)
+          add_executable(cef-sandbox-link-smoke "${CMAKE_SOURCE_DIR}/cmake/windows/cef-sandbox-link-smoke.cpp")
+          target_link_libraries(cef-sandbox-link-smoke PRIVATE CEF::Sandbox)
+          set_target_properties(
+            cef-sandbox-link-smoke
+            PROPERTIES FOLDER "CMake/Smoke Tests" MSVC_RUNTIME_LIBRARY "MultiThreaded"
+          )
+          if(BUILD_TESTING)
+            add_test(NAME cef-sandbox-link-smoke COMMAND cef-sandbox-link-smoke)
+          endif()
         endif()
       endif()
     endif()
