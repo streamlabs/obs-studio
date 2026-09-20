@@ -85,6 +85,23 @@ jobs:
           Write-Host "Unpacked $count pdb's"
           "PDB_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Create public CEF symbols
+        run: |
+          $cefPdbs = @(Get-ChildItem -LiteralPath $env:PDB_PATH -Filter 'libcef.dll.pdb' -Recurse -File)
+          if ($cefPdbs.Count -ne 1) {
+            throw "Expected one libcef.dll.pdb in the symbol artifact; found $($cefPdbs.Count)"
+          }
+
+          $privatePdb = $cefPdbs[0]
+          $publicPdb = Join-Path $privatePdb.DirectoryName 'libcef.dll.public.pdb'
+          & ./.github/scripts/Create-CefPublicPdb.ps1 `
+            -CefOutDirectory $privatePdb.DirectoryName `
+            -OutputPath $publicPdb `
+            -MaximumBytes 2147483647
+
+          Remove-Item -LiteralPath $privatePdb.FullName -Force
+          Move-Item -LiteralPath $publicPdb -Destination $privatePdb.FullName
+
       - name: Symbol Server Integration 🪲
         uses: ./.github/actions/upload-debug-symbols
         with:
@@ -93,9 +110,6 @@ jobs:
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           pdbPaths: ${{ env.PDB_PATH }}
-          # CEF's 5+ GiB PDB exceeds the CAB format's per-file size limit. It
-          # remains available in the build's debug-symbol artifact.
-          excludePdbNames: libcef.dll.pdb
           symsrvRef: ${{ inputs.symsrvRef }}
           forceUpload: ${{ inputs.forceUpload }}
           symsrvDebug: ${{ inputs.symsrvDebug }}
