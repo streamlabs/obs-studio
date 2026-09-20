@@ -9,8 +9,9 @@ Chromium 128 writes 8 KiB PDB pages by default. Older pdbcopy readers reject
 those PDBs with EC_FORMAT. This helper obtains the exact libcef link command
 from Ninja, copies (but never modifies) libcef.dll.rsp, changes its one
 /pdbpagesize:8192 flag to /pdbpagesize:4096, and relinks into a separate output
-directory. It then invokes Create-CefPublicPdb.ps1, which validates the public
-PDB's GUID, age, stripped state, and configured size limit.
+directory. It verifies the relinked private PDB has 4 KiB blocks, then invokes
+Create-CefPublicPdb.ps1, which validates the public PDB's GUID, age, stripped
+state, and configured size limit.
 
 No build target is run: `ninja -t commands` is read-only, all linker output is
 redirected to OutputDirectory, and the original response file is hash-checked
@@ -93,6 +94,103 @@ function Test-IsSameOrChildPath {
     $candidatePath.StartsWith("$parentPath$([System.IO.Path]::DirectorySeparatorChar)", $comparison)
 }
 
+function Resolve-ExistingPhysicalPath {
+  param(
+    [Parameter(Mandatory)]
+    [string] $Path
+  )
+
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  if (-not (Test-Path -LiteralPath $fullPath)) {
+    throw "Cannot canonicalize a path that does not exist: $fullPath"
+  }
+
+  $root = [System.IO.Path]::GetPathRoot($fullPath)
+  $remainder = $fullPath.Substring($root.Length).TrimStart('\', '/')
+  $current = $root
+  if ($remainder) {
+    foreach ($component in ($remainder -split '[\\/]+')) {
+      $current = Join-Path $current $component
+      $item = Get-Item -LiteralPath $current -Force
+      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $target = $item.ResolveLinkTarget($true)
+        if ($null -eq $target) {
+          throw "Could not resolve reparse point while canonicalizing: $current"
+        }
+        $current = $target.FullName
+      }
+    }
+  }
+  return [System.IO.Path]::GetFullPath($current)
+}
+
+function Resolve-ProspectivePhysicalPath {
+  param(
+    [Parameter(Mandatory)]
+    [string] $Path
+  )
+
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $missingComponents = [System.Collections.Generic.List[string]]::new()
+  $existingPath = $fullPath
+  while (-not (Test-Path -LiteralPath $existingPath)) {
+    $leaf = Split-Path -Leaf $existingPath
+    if (-not $leaf) {
+      throw "Could not find an existing parent while canonicalizing: $fullPath"
+    }
+    $missingComponents.Add($leaf)
+    $parent = Split-Path -Parent $existingPath
+    if (-not $parent -or $parent -eq $existingPath) {
+      throw "Could not find an existing parent while canonicalizing: $fullPath"
+    }
+    $existingPath = $parent
+  }
+
+  $physicalPath = Resolve-ExistingPhysicalPath -Path $existingPath
+  for ($index = $missingComponents.Count - 1; $index -ge 0; $index--) {
+    $physicalPath = Join-Path $physicalPath $missingComponents[$index]
+  }
+  return [System.IO.Path]::GetFullPath($physicalPath)
+}
+
+function Assert-OutputOutsideBuild {
+  param(
+    [Parameter(Mandatory)]
+    [string] $Candidate,
+
+    [Parameter(Mandatory)]
+    [string] $CefOutCanonical,
+
+    [Parameter(Mandatory)]
+    [string] $Description
+  )
+
+  $candidateCanonical = Resolve-ProspectivePhysicalPath -Path $Candidate
+  if ((Test-IsSameOrChildPath -Candidate $candidateCanonical -Parent $CefOutCanonical) -or
+      (Test-IsSameOrChildPath -Candidate $CefOutCanonical -Parent $candidateCanonical)) {
+    throw "$Description resolves to or overlaps the CEF build directory: $candidateCanonical"
+  }
+  return $candidateCanonical
+}
+
+function Assert-GeneratedOutputParentsOutsideBuild {
+  param(
+    [Parameter(Mandatory)]
+    [string[]] $GeneratedPaths,
+
+    [Parameter(Mandatory)]
+    [string] $CefOutCanonical
+  )
+
+  foreach ($generatedPath in $GeneratedPaths) {
+    $parent = Split-Path -Parent $generatedPath
+    $parentCanonical = Resolve-ExistingPhysicalPath -Path $parent
+    if (Test-IsSameOrChildPath -Candidate $parentCanonical -Parent $CefOutCanonical) {
+      throw "Generated output parent resolves inside the CEF build directory: $generatedPath -> $parentCanonical"
+    }
+  }
+}
+
 function Resolve-PathFromBuildDirectory {
   param(
     [Parameter(Mandatory)]
@@ -109,9 +207,29 @@ function Resolve-PathFromBuildDirectory {
   }
   $fullPath = [System.IO.Path]::GetFullPath($candidate)
   if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-    throw "The linker reported by Ninja does not exist: $fullPath"
+    throw "The path reported by Ninja does not exist: $fullPath"
   }
   return (Resolve-Path -LiteralPath $fullPath).Path
+}
+
+function Get-PdbBlockSize {
+  param(
+    [Parameter(Mandatory)]
+    [string] $PdbPath,
+
+    [Parameter(Mandatory)]
+    [string] $PdbUtil
+  )
+
+  $summary = @(& $PdbUtil dump -summary $PdbPath 2>&1)
+  if ($LASTEXITCODE -ne 0) {
+    throw "llvm-pdbutil could not inspect '$PdbPath':`n$($summary -join "`n")"
+  }
+  $match = [regex]::Match(($summary -join "`n"), '(?m)^\s*Block Size:\s*(\d+)\s*$')
+  if (-not $match.Success) {
+    throw "llvm-pdbutil returned no recognizable PDB block size for '$PdbPath'."
+  }
+  return [int] $match.Groups[1].Value
 }
 
 function Split-WindowsCommandLine {
@@ -193,6 +311,7 @@ function Write-CommandDiagnostic {
 }
 
 $cefOut = (Resolve-Path -LiteralPath $CefReleaseBuildDirectory).Path
+$cefOutCanonical = Resolve-ExistingPhysicalPath -Path $cefOut
 $cefSource = (Resolve-Path -LiteralPath (Join-Path $cefOut '..\..')).Path
 $outputFull = [System.IO.Path]::GetFullPath($OutputDirectory)
 $outputParent = Split-Path -Parent $outputFull
@@ -200,10 +319,7 @@ if (-not (Test-Path -LiteralPath $outputParent -PathType Container)) {
   throw "The output directory's parent does not exist: $outputParent"
 }
 
-if ((Test-IsSameOrChildPath -Candidate $outputFull -Parent $cefOut) -or
-    (Test-IsSameOrChildPath -Candidate $cefOut -Parent $outputFull)) {
-  throw 'OutputDirectory must not be the CEF build directory, its child, or its parent.'
-}
+$null = Assert-OutputOutsideBuild -Candidate $outputFull -CefOutCanonical $cefOutCanonical -Description 'OutputDirectory'
 
 if (Test-Path -LiteralPath $outputFull) {
   if (-not (Test-Path -LiteralPath $outputFull -PathType Container)) {
@@ -216,12 +332,8 @@ if (Test-Path -LiteralPath $outputFull) {
   New-Item -ItemType Directory -Path $outputFull | Out-Null
 }
 $output = (Resolve-Path -LiteralPath $outputFull).Path
-
-$sourceRsp = Join-Path $cefOut 'libcef.dll.rsp'
-if (-not (Test-Path -LiteralPath $sourceRsp -PathType Leaf)) {
-  throw "The Ninja-generated response file does not exist: $sourceRsp"
-}
-$sourceRspHashBefore = (Get-FileHash -LiteralPath $sourceRsp -Algorithm SHA256).Hash
+$outputCanonical = Resolve-ExistingPhysicalPath -Path $output
+$null = Assert-OutputOutsideBuild -Candidate $outputCanonical -CefOutCanonical $cefOutCanonical -Description 'OutputDirectory after creation'
 
 $relinkedDll = Join-Path $output 'libcef.dll'
 $relinkedImportLibrary = Join-Path $output 'libcef.dll.lib'
@@ -229,6 +341,7 @@ $privatePdb = Join-Path $output 'libcef.dll.pdb'
 $publicPdb = Join-Path $output 'libcef.dll.public.pdb'
 $temporaryRsp = Join-Path $output 'libcef.dll.pdbpagesize-4096.rsp'
 $generatedOutputs = @($relinkedDll, $relinkedImportLibrary, $privatePdb, $publicPdb, $temporaryRsp)
+Assert-GeneratedOutputParentsOutsideBuild -GeneratedPaths $generatedOutputs -CefOutCanonical $cefOutCanonical
 if (-not $ReplaceExistingOutputs) {
   $existingGeneratedOutput = $generatedOutputs | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if ($existingGeneratedOutput) {
@@ -292,6 +405,13 @@ $linkCandidate = $linkCandidates[0]
 $ninjaLinker = Resolve-PathFromBuildDirectory -Path $linkCandidate.Tokens[0] -BuildDirectory $cefOut
 $linker = Resolve-Executable -Name 'lld-link.exe' -RequestedPath $LinkerPath -Candidates @($ninjaLinker)
 
+$sourceRspArgument = $linkCandidate.ResponseArgument.Substring(1)
+$sourceRsp = Resolve-PathFromBuildDirectory -Path $sourceRspArgument -BuildDirectory $cefOut
+if (-not (Test-Path -LiteralPath $sourceRsp -PathType Leaf)) {
+  throw "The response file selected from Ninja does not exist: $sourceRsp"
+}
+$sourceRspHashBefore = (Get-FileHash -LiteralPath $sourceRsp -Algorithm SHA256).Hash
+
 $sourceRspText = [System.IO.File]::ReadAllText($sourceRsp)
 $oldPageSize = [regex]::Matches($sourceRspText, '(?i)/pdbpagesize:8192\b')
 $newPageSize = [regex]::Matches($sourceRspText, '(?i)/pdbpagesize:4096\b')
@@ -352,6 +472,12 @@ try {
   $pdbUtil = Resolve-Executable -Name 'llvm-pdbutil.exe' -RequestedPath $LlvmPdbUtilPath -Candidates @(
     (Join-Path $cefSource 'third_party\llvm-build\Release+Asserts\bin\llvm-pdbutil.exe')
   )
+  $privatePdbBlockSize = Get-PdbBlockSize -PdbPath $privatePdb -PdbUtil $pdbUtil
+  if ($privatePdbBlockSize -ne 4096) {
+    throw "Relinked private PDB has a $privatePdbBlockSize-byte block size, not the required 4096 bytes: $privatePdb"
+  }
+  Write-Host "Verified private PDB block size: $privatePdbBlockSize"
+
   $createPublicPdb = Join-Path $PSScriptRoot 'Create-CefPublicPdb.ps1'
   if (-not (Test-Path -LiteralPath $createPublicPdb -PathType Leaf)) {
     throw "The public PDB helper is missing: $createPublicPdb"
@@ -369,6 +495,12 @@ try {
     $publicPdbArguments.ReplaceExisting = $true
   }
   & $createPublicPdb @publicPdbArguments
+
+  $publicPdbBlockSize = Get-PdbBlockSize -PdbPath $publicPdb -PdbUtil $pdbUtil
+  if ($publicPdbBlockSize -ne 4096) {
+    throw "Generated public PDB has a $publicPdbBlockSize-byte block size, not the required 4096 bytes: $publicPdb"
+  }
+  Write-Host "Verified public PDB block size: $publicPdbBlockSize"
 
   $sourceRspHashAfter = (Get-FileHash -LiteralPath $sourceRsp -Algorithm SHA256).Hash
   if ($sourceRspHashBefore -ne $sourceRspHashAfter) {
