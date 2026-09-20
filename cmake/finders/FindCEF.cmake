@@ -76,7 +76,7 @@ find_path(
 )
 
 set(_CEF_WINDOWS_SANDBOX_REQUIRED FALSE)
-if(WIN32 AND ((CMAKE_VS_PLATFORM_NAME STREQUAL "x64" AND ENABLE_BROWSER) OR CEF_REQUIRE_SANDBOX))
+if(WIN32 AND ((CMAKE_SIZEOF_VOID_P EQUAL 8 AND ENABLE_BROWSER) OR CEF_REQUIRE_SANDBOX))
   set(_CEF_WINDOWS_SANDBOX_REQUIRED TRUE)
 endif()
 
@@ -211,7 +211,7 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED)
     message(
       FATAL_ERROR
       "64-bit Windows browser sandbox support requires Release/cef_sandbox.lib "
-      "in CEF_ROOT_DIR (${CEF_ROOT_DIR}). Install the matching CEF 6533 v4 distribution."
+      "in CEF_ROOT_DIR (${CEF_ROOT_DIR}). Install the matching CEF distribution."
     )
   endif()
 

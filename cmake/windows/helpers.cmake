@@ -183,12 +183,12 @@ function(set_target_properties_obs target)
         endif()
       endif()
 
-      if(CMAKE_VS_PLATFORM_NAME STREQUAL "x64")
+      if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         if(NOT TARGET CEF::Sandbox)
           message(
             FATAL_ERROR
             "64-bit Windows obs-browser requires the CEF::Sandbox target. "
-            "Use the CEF 6533 v4 distribution containing Release/cef_sandbox.lib."
+            "Use the matching CEF distribution containing Release/cef_sandbox.lib."
           )
         endif()
 
