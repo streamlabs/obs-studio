@@ -834,10 +834,15 @@ static void coreaudio_destroy(void *data)
 	struct coreaudio_data *ca = data;
 
 	if (ca) {
+		/* Wait for any in-progress callback before shutting down to
+		 * prevent concurrent coreaudio_uninit calls. */
+		pthread_mutex_lock(&ca->callback_mutex);
 		coreaudio_shutdown(ca, FINAL_SHUTDOWN);
+		/* Listeners are now removed; no new callbacks will be dispatched. */
+		pthread_mutex_unlock(&ca->callback_mutex);
 
-		/* Drain any notification_callback that started before shutdown
-		 * removed the listeners but hasn't finished yet. */
+		/* Drain any callback that CoreAudio had already queued before
+		 * listener removal but that had not yet acquired callback_mutex. */
 		pthread_mutex_lock(&ca->callback_mutex);
 		pthread_mutex_unlock(&ca->callback_mutex);
 
