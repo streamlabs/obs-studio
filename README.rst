@@ -42,37 +42,26 @@ Quick Links
 Native Tests
 ------------
 
-Native libobs tests use Catch2 v3.11.0 and CTest. The basic cases cover OBS
-startup/shutdown, settings objects, scenes, arrays, serialization, bitstream
-reads, and path parsing without rendering video or loading plugins. Windows
-also has temporary-file tests for concurrent writers and rejection of junctions
-and symbolic links. The normal OBS build dependencies are required; CMake
+Native tests run through CTest, with Catch2 v3.11.0 matching OSN.
+The normal OBS build dependencies are required; CMake
 downloads Catch2 on the first configure unless it is already cached.
 
 Run the following commands from the repository root on Windows to configure,
-build, and run all currently registered tests, including the existing x264
-options-parser test:
+build, and run all native tests:
 
 .. code-block:: powershell
 
    cmake --preset windows-ci-x64
-   cmake --build build_x64 --config RelWithDebInfo --target libobs_unit_tests obs-x264-test
+   cmake --build build_x64 --config RelWithDebInfo --target tests
    ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error
 
-To run only the Catch2 suite, add ``-R "^libobs_unit_tests::"`` to the CTest
-command. To run only the OBS startup/shutdown case:
-
-.. code-block:: powershell
-
-   ctest --test-dir build_x64 -C RelWithDebInfo -R "^libobs_unit_tests::OBS initializes and shuts down$" --output-on-failure --no-tests=error
-
-On macOS, build and run the Catch2 suite with:
+On macOS:
 
 .. code-block:: console
 
    cmake --preset macos-ci
-   cmake --build build_macos --config RelWithDebInfo --target libobs_unit_tests
-   ctest --test-dir build_macos -C RelWithDebInfo -R "^libobs_unit_tests::" --output-on-failure --no-tests=error
+   cmake --build build_macos --config RelWithDebInfo --target tests
+   ctest --test-dir build_macos -C RelWithDebInfo --output-on-failure --no-tests=error
 
 The ``windows-ci-x64`` and ``macos-ci`` presets enable ``BUILD_TESTING``.
 It defaults to ``OFF`` for other presets; pass ``-DBUILD_TESTING=ON`` when

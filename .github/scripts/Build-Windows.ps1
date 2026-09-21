@@ -88,8 +88,9 @@ function Build {
     Invoke-External cmake @CmakeBuildArgs
 
     if ( $Target -eq 'x64' ) {
-        Log-Group "Testing libobs..."
-        Invoke-External ctest --test-dir "build_${Target}" -C $Configuration -R '^libobs_unit_tests::' --output-on-failure --no-tests=error
+        Log-Group "Building and running native tests..."
+        Invoke-External cmake --build "build_${Target}" --config $Configuration --target tests
+        Invoke-External ctest --test-dir "build_${Target}" -C $Configuration --output-on-failure --no-tests=error
     }
 
     try {

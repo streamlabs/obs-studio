@@ -15,11 +15,12 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 include(Catch)
 
 add_executable(libobs_unit_tests test-basic-lifecycle.cpp test-util.cpp)
+add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
 endif()
 target_link_libraries(libobs_unit_tests PRIVATE OBS::libobs Catch2::Catch2WithMain)
-# The OBS target helper installs executables; tests must stay out of the product.
+# Use plain CMake properties: set_target_properties_obs() would also install this test executable.
 set_target_properties(libobs_unit_tests PROPERTIES FOLDER "Tests and Examples")
 
 set(test_dl_paths "$<TARGET_FILE_DIR:OBS::libobs>" "$<TARGET_FILE_DIR:FFmpeg::avformat>")
