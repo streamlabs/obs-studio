@@ -53,6 +53,7 @@ struct coreaudio_data {
 
 	pthread_t reconnect_thread;
 	pthread_mutex_t reconnect_mutex;
+	pthread_mutex_t callback_mutex;
 	bool shutting_down;
 	os_event_t *exit_event;
 	bool reconnect_thread_valid;
@@ -518,6 +519,8 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 {
 	struct coreaudio_data *ca = data;
 
+	pthread_mutex_lock(&ca->callback_mutex);
+
 	coreaudio_stop(ca);
 	coreaudio_uninit(ca);
 
@@ -532,6 +535,8 @@ static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
 	     ca->device_name);
 
 	coreaudio_begin_reconnect(ca);
+
+	pthread_mutex_unlock(&ca->callback_mutex);
 
 	UNUSED_PARAMETER(id);
 	UNUSED_PARAMETER(num_addresses);
@@ -830,10 +835,17 @@ static void coreaudio_destroy(void *data)
 
 	if (ca) {
 		coreaudio_shutdown(ca, FINAL_SHUTDOWN);
+
+		/* Drain any notification_callback that started before shutdown
+		 * removed the listeners but hasn't finished yet. */
+		pthread_mutex_lock(&ca->callback_mutex);
+		pthread_mutex_unlock(&ca->callback_mutex);
+
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
+		pthread_mutex_destroy(&ca->callback_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
@@ -911,6 +923,17 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		blog(LOG_ERROR,
 		     "[coreaudio_create] failed to init reconnect mutex: %d",
 		     err);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
+	err = pthread_mutex_init(&ca->callback_mutex, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR,
+		     "[coreaudio_create] failed to init callback mutex: %d",
+		     err);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 		bfree(ca);
 		return NULL;
