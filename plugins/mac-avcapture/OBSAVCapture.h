@@ -57,6 +57,7 @@ typedef struct av_capture {
     OBSAVCaptureError lastError;
     CMFormatDescriptionRef sampleBufferDescription;
     OBSAVCaptureError lastAudioError;
+    pthread_mutex_t sampleBufferMutex;
 } OBSAVCaptureInfo;
 
 /// C struct for sample buffer validity checks in capture callback

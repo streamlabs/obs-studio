@@ -22,6 +22,7 @@ static void *av_capture_create(obs_data_t *settings, obs_source_t *source)
     capture_data->source = source;
     capture_data->videoFrame = bzalloc(sizeof(OBSAVCaptureVideoFrame));
     capture_data->audioFrame = bzalloc(sizeof(OBSAVCaptureAudioFrame));
+    pthread_mutex_init(&capture_data->sampleBufferMutex, NULL);
 
     OBSAVCapture *capture = [[OBSAVCapture alloc] initWithCaptureInfo:capture_data];
 
@@ -50,6 +51,7 @@ static void *av_fast_capture_create(obs_data_t *settings, obs_source_t *source)
     }
 
     pthread_mutex_init(&capture_info->mutex, NULL);
+    pthread_mutex_init(&capture_info->sampleBufferMutex, NULL);
 
     OBSAVCapture *capture = [[OBSAVCapture alloc] initWithCaptureInfo:capture_info];
 
@@ -242,33 +244,54 @@ static void av_capture_destroy(void *av_capture)
     if (!capture) {
         return;
     }
+    /// Remove notification observers before entering the sessionQueue block.
+    [[NSNotificationCenter defaultCenter] removeObserver:capture];
+
     /// It is possible that the source's serial queue is still creating this source, so perform destruction
     /// synchronously on that queue to ensure the source is fully initialized before being destroyed.
     dispatch_sync(capture.sessionQueue, ^{
-        OBSAVCaptureInfo *capture_info = capture.captureInfo;
+        @synchronized(capture) {
+            OBSAVCaptureInfo *capture_info = capture.captureInfo;
 
-        [capture stopCaptureSession];
-        [capture.deviceInput.device unlockForConfiguration];
+            [capture.videoOutput setSampleBufferDelegate:nil queue:NULL];
+            [capture.audioOutput setSampleBufferDelegate:nil queue:NULL];
 
-        if (capture_info->isFastPath) {
-            pthread_mutex_destroy(&capture_info->mutex);
+            if (capture.videoQueue) {
+                dispatch_sync(capture.videoQueue, ^ {
+                              });
+            }
+
+            if (capture.audioQueue) {
+                dispatch_sync(capture.audioQueue, ^ {
+                              });
+            }
+
+            [capture stopCaptureSession];
+            [capture.deviceInput.device unlockForConfiguration];
+
+            if (capture_info->isFastPath) {
+                pthread_mutex_destroy(&capture_info->mutex);
+            }
+            pthread_mutex_destroy(&capture_info->sampleBufferMutex);
+
+            if (capture_info->videoFrame) {
+                bfree(capture_info->videoFrame);
+                capture_info->videoFrame = NULL;
+            }
+
+            if (capture_info->audioFrame) {
+                bfree(capture_info->audioFrame);
+                capture_info->audioFrame = NULL;
+            }
+
+            if (capture_info->sampleBufferDescription) {
+                CFRelease(capture_info->sampleBufferDescription);
+                capture_info->sampleBufferDescription = NULL;
+            }
+
+            capture.captureInfo = NULL;
+            bfree(capture_info);
         }
-
-        if (capture_info->videoFrame) {
-            bfree(capture_info->videoFrame);
-            capture_info->videoFrame = NULL;
-        }
-
-        if (capture_info->audioFrame) {
-            bfree(capture_info->audioFrame);
-            capture_info->audioFrame = NULL;
-        }
-
-        if (capture_info->sampleBufferDescription) {
-            capture_info->sampleBufferDescription = NULL;
-        }
-
-        bfree(capture_info);
 
         CFBridgingRelease((__bridge CFTypeRef _Nullable)(capture));
     });
@@ -277,7 +300,8 @@ static void av_capture_destroy(void *av_capture)
 #pragma mark - OBS Module API
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("macOS_avcapture", "en-US") // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+OBS_MODULE_USE_DEFAULT_LOCALE("macOS_avcapture",
+                              "en-US")  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
@@ -287,7 +311,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 bool obs_module_load(void)
 {
     struct obs_source_info av_capture_info = {
-        .id = "macos_avcapture", // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+        .id = "macos_avcapture",  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
         .type = OBS_SOURCE_TYPE_INPUT,
         .output_flags = OBS_SOURCE_ASYNC_VIDEO | OBS_SOURCE_AUDIO | OBS_SOURCE_DO_NOT_DUPLICATE,
         .create = av_capture_create,
@@ -302,7 +326,7 @@ bool obs_module_load(void)
     obs_register_source(&av_capture_info);
 
     struct obs_source_info av_capture_sync_info = {
-        .id = "macos_avcapture_fast", // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+        .id = "macos_avcapture_fast",  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
         .type = OBS_SOURCE_TYPE_INPUT,
         .output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_AUDIO | OBS_SOURCE_SRGB |
                         OBS_SOURCE_DO_NOT_DUPLICATE,
