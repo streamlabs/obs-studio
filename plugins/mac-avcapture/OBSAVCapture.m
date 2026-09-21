@@ -547,11 +547,17 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
 
 - (BOOL)updateSessionwithError:(NSError *__autoreleasing *)error
 {
-    switch (self.captureInfo->lastError) {
+    pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
+    OBSAVCaptureError lastError = self.captureInfo->lastError;
+    CMFormatDescriptionRef sampleBufferDescription = self.captureInfo->sampleBufferDescription;
+    if (sampleBufferDescription) {
+        CFRetain(sampleBufferDescription);
+    }
+    pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
+    switch (lastError) {
         case OBSAVCaptureError_SampleBufferFormat:
-            if (self.captureInfo->sampleBufferDescription) {
-                FourCharCode mediaSubType =
-                    CMFormatDescriptionGetMediaSubType(self.captureInfo->sampleBufferDescription);
+            if (sampleBufferDescription) {
+                FourCharCode mediaSubType = CMFormatDescriptionGetMediaSubType(sampleBufferDescription);
 
                 [self AVCaptureLog:LOG_ERROR
                         withFormat:@"Incompatible sample buffer format received for sync AVCapture source: %@ (0x%x)",
@@ -559,12 +565,11 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             }
             break;
         case OBSAVCaptureError_ColorSpace: {
-            if (self.captureInfo->sampleBufferDescription) {
-                FourCharCode mediaSubType =
-                    CMFormatDescriptionGetMediaSubType(self.captureInfo->sampleBufferDescription);
+            if (sampleBufferDescription) {
+                FourCharCode mediaSubType = CMFormatDescriptionGetMediaSubType(sampleBufferDescription);
                 BOOL isSampleBufferFullRange = [OBSAVCapture isFullRangeFormat:mediaSubType];
                 OBSAVCaptureColorSpace sampleBufferColorSpace =
-                    [OBSAVCapture colorspaceFromDescription:self.captureInfo->sampleBufferDescription];
+                    [OBSAVCapture colorspaceFromDescription:sampleBufferDescription];
                 OBSAVCaptureVideoRange sampleBufferRangeType = isSampleBufferFullRange ? VIDEO_RANGE_FULL
                                                                                        : VIDEO_RANGE_PARTIAL;
 
@@ -574,13 +579,18 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             }
             break;
             default:
+                pthread_mutex_lock(&self.captureInfo->sampleBufferMutex);
                 self.captureInfo->lastError = OBSAVCaptureError_NoError;
                 if (self.captureInfo->sampleBufferDescription) {
                     CFRelease(self.captureInfo->sampleBufferDescription);
                     self.captureInfo->sampleBufferDescription = NULL;
                 }
+                pthread_mutex_unlock(&self.captureInfo->sampleBufferMutex);
                 break;
         }
+    }
+    if (sampleBufferDescription) {
+        CFRelease(sampleBufferDescription);
     }
 
     switch (self.captureInfo->lastAudioError) {
@@ -1148,8 +1158,7 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
         }
 
         [self AVCaptureLog:LOG_INFO
-                withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName,
-                           device.uniqueID];
+                withFormat:@"Received connect event for device '%@' (UUID %@)", device.localizedName, device.uniqueID];
 
         // Snapshot settings under the lock before dispatching; captureInfo is nonatomic.
         deviceUUID = device.uniqueID;
@@ -1174,8 +1183,7 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             if (instance.deviceInput.device) {
                 [instance AVCaptureLog:LOG_INFO
                             withFormat:@"Received connect event with active device '%@' (UUID %@)",
-                                       instance.deviceInput.device.localizedName,
-                                       instance.deviceInput.device.uniqueID];
+                                       instance.deviceInput.device.localizedName, instance.deviceInput.device.uniqueID];
                 obs_source_update_properties(instance.captureInfo->source);
                 return;
             }
@@ -1299,6 +1307,7 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
             if (_isFastPath) {
                 if (mediaSubType != kCVPixelFormatType_32BGRA &&
                     mediaSubType != kCVPixelFormatType_ARGB2101010LEPacked) {
+                    pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
                     if (_captureInfo->sampleBufferDescription) {
                         CFRelease(_captureInfo->sampleBufferDescription);
@@ -1306,14 +1315,17 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                     }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
+                    pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
                     obs_source_update_properties(_captureInfo->source);
                     break;
                 } else {
+                    pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
                     if (_captureInfo->sampleBufferDescription) {
                         CFRelease(_captureInfo->sampleBufferDescription);
                         _captureInfo->sampleBufferDescription = NULL;
                     }
+                    pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
                 }
 
                 CVPixelBufferLockBaseAddress(imageBuffer, 0);
@@ -1361,6 +1373,7 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                 enum video_format videoFormat = [OBSAVCapture formatFromSubtype:mediaSubType];
 
                 if (videoFormat == VIDEO_FORMAT_NONE) {
+                    pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
                     _captureInfo->lastError = OBSAVCaptureError_SampleBufferFormat;
                     if (_captureInfo->sampleBufferDescription) {
                         CFRelease(_captureInfo->sampleBufferDescription);
@@ -1368,17 +1381,20 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                     }
                     CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                               &_captureInfo->sampleBufferDescription);
+                    pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
                 } else {
+                    pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
                     _captureInfo->lastError = OBSAVCaptureError_NoError;
                     if (_captureInfo->sampleBufferDescription) {
                         CFRelease(_captureInfo->sampleBufferDescription);
                         _captureInfo->sampleBufferDescription = NULL;
                     }
+                    pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
 #ifdef DEBUG
                     if (frame->format != VIDEO_FORMAT_NONE && frame->format != videoFormat) {
                         [self AVCaptureLog:LOG_DEBUG
                                 withFormat:@"Switching fourcc: '%@' (0x%x) -> '%@' (0x%x)",
-                                           [OBSAVCapture stringFromFourCharCode:frame->format], frame -> format,
+                                           [OBSAVCapture stringFromFourCharCode:frame->format], frame->format,
                                            [OBSAVCapture stringFromFourCharCode:mediaSubType], mediaSubType];
                     }
 #endif
@@ -1425,9 +1441,11 @@ static const UInt32 kMaxFrameRateRangesInDescription = 10;
                                 frame->color_range_min, frame->color_range_max);
 
                             if (!success) {
+                                pthread_mutex_lock(&_captureInfo->sampleBufferMutex);
                                 _captureInfo->lastError = OBSAVCaptureError_ColorSpace;
                                 CMFormatDescriptionCreate(kCFAllocatorDefault, mediaType, mediaSubType, NULL,
                                                           &_captureInfo->sampleBufferDescription);
+                                pthread_mutex_unlock(&_captureInfo->sampleBufferMutex);
                                 newInfo.isValid = false;
                             } else {
                                 newInfo.colorSpace = sampleBufferColorSpace;

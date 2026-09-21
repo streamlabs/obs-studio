@@ -22,6 +22,7 @@ static void *av_capture_create(obs_data_t *settings, obs_source_t *source)
     capture_data->source = source;
     capture_data->videoFrame = bzalloc(sizeof(OBSAVCaptureVideoFrame));
     capture_data->audioFrame = bzalloc(sizeof(OBSAVCaptureAudioFrame));
+    pthread_mutex_init(&capture_data->sampleBufferMutex, NULL);
 
     OBSAVCapture *capture = [[OBSAVCapture alloc] initWithCaptureInfo:capture_data];
 
@@ -50,6 +51,7 @@ static void *av_fast_capture_create(obs_data_t *settings, obs_source_t *source)
     }
 
     pthread_mutex_init(&capture_info->mutex, NULL);
+    pthread_mutex_init(&capture_info->sampleBufferMutex, NULL);
 
     OBSAVCapture *capture = [[OBSAVCapture alloc] initWithCaptureInfo:capture_info];
 
@@ -270,6 +272,7 @@ static void av_capture_destroy(void *av_capture)
             if (capture_info->isFastPath) {
                 pthread_mutex_destroy(&capture_info->mutex);
             }
+            pthread_mutex_destroy(&capture_info->sampleBufferMutex);
 
             if (capture_info->videoFrame) {
                 bfree(capture_info->videoFrame);
@@ -297,7 +300,8 @@ static void av_capture_destroy(void *av_capture)
 #pragma mark - OBS Module API
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("macOS_avcapture", "en-US") // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+OBS_MODULE_USE_DEFAULT_LOCALE("macOS_avcapture",
+                              "en-US")  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
@@ -307,7 +311,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 bool obs_module_load(void)
 {
     struct obs_source_info av_capture_info = {
-        .id = "macos_avcapture", // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+        .id = "macos_avcapture",  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
         .type = OBS_SOURCE_TYPE_INPUT,
         .output_flags = OBS_SOURCE_ASYNC_VIDEO | OBS_SOURCE_AUDIO | OBS_SOURCE_DO_NOT_DUPLICATE,
         .create = av_capture_create,
@@ -322,7 +326,7 @@ bool obs_module_load(void)
     obs_register_source(&av_capture_info);
 
     struct obs_source_info av_capture_sync_info = {
-        .id = "macos_avcapture_fast", // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
+        .id = "macos_avcapture_fast",  // Streamlabs renamed w/underscore for easy lookups in Desktop frontend JS code
         .type = OBS_SOURCE_TYPE_INPUT,
         .output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW | OBS_SOURCE_AUDIO | OBS_SOURCE_SRGB |
                         OBS_SOURCE_DO_NOT_DUPLICATE,
