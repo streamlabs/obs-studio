@@ -39,6 +39,50 @@ Quick Links
 
 - Bug Tracker: https://github.com/obsproject/obs-studio/issues
 
+Native Tests
+------------
+
+Native libobs tests use Catch2 v3.11.0 and CTest. The basic cases cover OBS
+startup/shutdown, settings objects, scenes, arrays, serialization, bitstream
+reads, and path parsing without rendering video or loading plugins. Windows
+also has temporary-file tests for concurrent writers and rejection of junctions
+and symbolic links. The normal OBS build dependencies are required; CMake
+downloads Catch2 on the first configure unless it is already cached.
+
+Run the following commands from the repository root on Windows to configure,
+build, and run all currently registered tests, including the existing x264
+options-parser test:
+
+.. code-block:: powershell
+
+   cmake --preset windows-ci-x64
+   cmake --build build_x64 --config RelWithDebInfo --target libobs_unit_tests obs-x264-test
+   ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error
+
+To run only the Catch2 suite, add ``-R "^libobs_unit_tests::"`` to the CTest
+command. To run only the OBS startup/shutdown case:
+
+.. code-block:: powershell
+
+   ctest --test-dir build_x64 -C RelWithDebInfo -R "^libobs_unit_tests::OBS initializes and shuts down$" --output-on-failure --no-tests=error
+
+On macOS, build and run the Catch2 suite with:
+
+.. code-block:: console
+
+   cmake --preset macos-ci
+   cmake --build build_macos --config RelWithDebInfo --target libobs_unit_tests
+   ctest --test-dir build_macos -C RelWithDebInfo -R "^libobs_unit_tests::" --output-on-failure --no-tests=error
+
+The ``windows-ci-x64`` and ``macos-ci`` presets enable ``BUILD_TESTING``.
+It defaults to ``OFF`` for other presets; pass ``-DBUILD_TESTING=ON`` when
+configuring to enable it explicitly. CTest does not build tests, so repeat
+the build step after code changes. Test executables and Catch2 are excluded
+from installed product packages.
+
+See `test/libobs/README.md <test/libobs/README.md>`_ for details about the
+suite and adding cases.
+
 Contributing
 ------------
 

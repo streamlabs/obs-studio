@@ -154,6 +154,7 @@
       "cacheVariables": {
         "CMAKE_COMPILE_WARNING_AS_ERROR": true,
         "CMAKE_XCODE_ATTRIBUTE_COMPILATION_CACHE_ENABLE_CACHING": "YES",
+        "BUILD_TESTING": true,
         "CMAKE_XCODE_ATTRIBUTE_COMPILATION_CACHE_CAS_PATH": "$penv{XCODE_CAS_PATH}"
       }
     },
@@ -219,6 +220,7 @@
       "inherits": ["windows-x64"],
       "warnings": {"dev": true, "deprecated": true},
       "cacheVariables": {
+        "BUILD_TESTING": true,
         "CMAKE_COMPILE_WARNING_AS_ERROR": true
       }
     },

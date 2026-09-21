@@ -83,7 +83,7 @@ sudo apt-get install -y --no-install-recommends \
   libluajit-5.1-dev python3-dev \
   libx11-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xinerama0-dev \
   libxcb-composite0-dev libxinerama-dev libxcb1-dev libx11-xcb-dev libxcb-xfixes0-dev \
-  swig libcmocka-dev libxss-dev libglvnd-dev \
+  swig libxss-dev libglvnd-dev \
   libxkbcommon-dev libatk1.0-dev libatk-bridge2.0-dev libxcomposite-dev libxdamage-dev \
   libasound2-dev libfdk-aac-dev libfontconfig-dev libfreetype6-dev libjack-jackd2-dev \
   libpulse-dev libsndio-dev libspeexdsp-dev libudev-dev libv4l-dev libva-dev libvlc-dev \
