@@ -497,14 +497,18 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 		return;
 	}
 
-	if (ca->reconnect_thread_valid) {
-		pthread_join(ca->reconnect_thread, NULL);
-		ca->reconnect_thread_valid = false;
-	}
-
+	bool should_join = ca->reconnect_thread_valid;
+	pthread_t old_thread = ca->reconnect_thread;
+	ca->reconnect_thread_valid = false;
 	ca->reconnecting = true;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join)
+		pthread_join(old_thread, NULL);
 
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ret != 0) {
 		ca->reconnecting = false;
 		blog(LOG_WARNING,
@@ -521,26 +525,6 @@ static bool coreaudio_init_hooks(struct coreaudio_data *ca)
 {
 	OSStatus stat;
 	AURenderCallbackStruct callback_info = {.inputProc = input_callback, .inputProcRefCon = ca};
-
-	ca->notification_block =
-		Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
-			coreaudio_stop(ca);
-			coreaudio_uninit(ca);
-
-			if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
-				ca->retry_time = 300;
-			else
-				ca->retry_time = 2000;
-
-			blog(LOG_INFO,
-			     "coreaudio: device '%s' disconnected or changed.  "
-			     "attempting to reconnect",
-			     ca->device_name);
-
-			coreaudio_begin_reconnect(ca);
-
-			UNUSED_PARAMETER(num_addresses);
-		});
 
 	AudioObjectPropertyAddress addr = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal,
 					   kAudioObjectPropertyElementMain};
@@ -598,8 +582,6 @@ static void coreaudio_remove_hooks(struct coreaudio_data *ca)
 						       ca->notification_queue, ca->notification_block);
 	}
 
-	Block_release(ca->notification_block);
-	ca->notification_block = NULL;
 }
 
 static bool coreaudio_get_device_name(struct coreaudio_data *ca)
@@ -842,6 +824,7 @@ static void coreaudio_destroy(void *data)
 			coreaudio_shutdown(ca, FINAL_SHUTDOWN);
 		});
 		dispatch_release(ca->notification_queue);
+		Block_release(ca->notification_block);
 
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
@@ -940,6 +923,26 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		bfree(ca);
 		return NULL;
 	}
+
+	ca->notification_block =
+		Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
+			coreaudio_stop(ca);
+			coreaudio_uninit(ca);
+
+			if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
+				ca->retry_time = 300;
+			else
+				ca->retry_time = 2000;
+
+			blog(LOG_INFO,
+			     "coreaudio: device '%s' disconnected or changed.  "
+			     "attempting to reconnect",
+			     ca->device_name);
+
+			coreaudio_begin_reconnect(ca);
+
+			UNUSED_PARAMETER(num_addresses);
+		});
 
 	ca->device_uid = bstrdup(obs_data_get_string(settings, "device_id"));
 	ca->source = source;
