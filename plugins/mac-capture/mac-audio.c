@@ -818,10 +818,9 @@ static void coreaudio_destroy(void *data)
 		 * in-progress or queued callbacks, preventing concurrent
 		 * coreaudio_uninit. After dispatch_sync returns, all listeners
 		 * have been removed and no further callbacks can be dispatched. */
-dispatch_sync(ca->notification_queue, ^{
-	coreaudio_shutdown(ca);
-});
-dispatch_sync(ca->notification_queue, ^{});
+		dispatch_sync(ca->notification_queue, ^{
+			coreaudio_shutdown(ca);
+		});
 		dispatch_release(ca->notification_queue);
 		Block_release(ca->notification_block);
 
