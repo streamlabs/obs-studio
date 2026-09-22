@@ -54,6 +54,7 @@ struct coreaudio_data {
 
 	pthread_t reconnect_thread;
 	pthread_mutex_t reconnect_mutex;
+	pthread_mutex_t init_mutex;
 	bool shutting_down;
 	os_event_t *exit_event;
 	bool reconnect_thread_valid;
@@ -476,7 +477,10 @@ static void *reconnect_thread(void *param)
 	struct coreaudio_data *ca = param;
 
 	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
-		if (coreaudio_init(ca))
+		pthread_mutex_lock(&ca->init_mutex);
+		bool success = coreaudio_init(ca);
+		pthread_mutex_unlock(&ca->init_mutex);
+		if (success)
 			break;
 	}
 
@@ -712,7 +716,10 @@ fail:
 
 static void coreaudio_try_init(struct coreaudio_data *ca)
 {
-	if (!coreaudio_init(ca)) {
+	pthread_mutex_lock(&ca->init_mutex);
+	bool success = coreaudio_init(ca);
+	pthread_mutex_unlock(&ca->init_mutex);
+	if (!success) {
 		blog(LOG_INFO,
 		     "coreaudio: failed to find device "
 		     "uid: %s, waiting for connection",
@@ -799,7 +806,9 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, const enum shutdown_ty
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
+	pthread_mutex_lock(&ca->init_mutex);
 	coreaudio_uninit(ca);
+	pthread_mutex_unlock(&ca->init_mutex);
 
 	if (shutdown_option != FINAL_SHUTDOWN) {
 		pthread_mutex_lock(&ca->reconnect_mutex);
@@ -830,6 +839,7 @@ static void coreaudio_destroy(void *data)
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
+		pthread_mutex_destroy(&ca->init_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
@@ -914,10 +924,22 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		return NULL;
 	}
 
+	err = pthread_mutex_init(&ca->init_mutex, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR,
+		     "[coreaudio_create] failed to init init mutex: %d",
+		     err);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
 	ca->notification_queue =
 		dispatch_queue_create("com.obsproject.mac-capture.notification", DISPATCH_QUEUE_SERIAL);
 	if (!ca->notification_queue) {
 		blog(LOG_ERROR, "[coreaudio_create] failed to create notification queue");
+		pthread_mutex_destroy(&ca->init_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 		bfree(ca);
@@ -926,8 +948,10 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 
 	ca->notification_block =
 		Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
+			pthread_mutex_lock(&ca->init_mutex);
 			coreaudio_stop(ca);
 			coreaudio_uninit(ca);
+			pthread_mutex_unlock(&ca->init_mutex);
 
 			if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
 				ca->retry_time = 300;
