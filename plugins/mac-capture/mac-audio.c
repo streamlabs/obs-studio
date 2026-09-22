@@ -978,7 +978,6 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 			pthread_mutex_lock(&ca->init_mutex);
 			coreaudio_stop(ca);
 			coreaudio_uninit(ca);
-			pthread_mutex_unlock(&ca->init_mutex);
 
 			if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
 				ca->retry_time = 300;
@@ -989,6 +988,7 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 			     "coreaudio: device '%s' disconnected or changed.  "
 			     "attempting to reconnect",
 			     ca->device_name);
+			pthread_mutex_unlock(&ca->init_mutex);
 
 			coreaudio_begin_reconnect(ca);
 
