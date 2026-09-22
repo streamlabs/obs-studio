@@ -1,6 +1,7 @@
 #include <AudioUnit/AudioUnit.h>
 #include <CoreFoundation/CFString.h>
 #include <CoreAudio/CoreAudio.h>
+#include <dispatch/dispatch.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -53,12 +54,14 @@ struct coreaudio_data {
 
 	pthread_t reconnect_thread;
 	pthread_mutex_t reconnect_mutex;
-	pthread_mutex_t callback_mutex;
 	bool shutting_down;
 	os_event_t *exit_event;
 	bool reconnect_thread_valid;
 	bool reconnecting;
 	unsigned long retry_time;
+
+	dispatch_queue_t notification_queue;
+	AudioObjectPropertyListenerBlock notification_block;
 
 	obs_source_t *source;
 };
@@ -514,61 +517,49 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
-static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
-				      const AudioObjectPropertyAddress addresses[], void *data)
-{
-	struct coreaudio_data *ca = data;
-
-	pthread_mutex_lock(&ca->callback_mutex);
-
-	coreaudio_stop(ca);
-	coreaudio_uninit(ca);
-
-	if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
-		ca->retry_time = 300;
-	else
-		ca->retry_time = 2000;
-
-	blog(LOG_INFO,
-	     "coreaudio: device '%s' disconnected or changed.  "
-	     "attempting to reconnect",
-	     ca->device_name);
-
-	coreaudio_begin_reconnect(ca);
-
-	pthread_mutex_unlock(&ca->callback_mutex);
-
-	UNUSED_PARAMETER(id);
-	UNUSED_PARAMETER(num_addresses);
-
-	return noErr;
-}
-
-static OSStatus add_listener(struct coreaudio_data *ca, UInt32 property)
-{
-	AudioObjectPropertyAddress addr = {property, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
-
-	return AudioObjectAddPropertyListener(ca->device_id, &addr, notification_callback, ca);
-}
-
 static bool coreaudio_init_hooks(struct coreaudio_data *ca)
 {
 	OSStatus stat;
 	AURenderCallbackStruct callback_info = {.inputProc = input_callback, .inputProcRefCon = ca};
 
-	stat = add_listener(ca, kAudioDevicePropertyDeviceIsAlive);
+	ca->notification_block =
+		Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
+			coreaudio_stop(ca);
+			coreaudio_uninit(ca);
+
+			if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
+				ca->retry_time = 300;
+			else
+				ca->retry_time = 2000;
+
+			blog(LOG_INFO,
+			     "coreaudio: device '%s' disconnected or changed.  "
+			     "attempting to reconnect",
+			     ca->device_name);
+
+			coreaudio_begin_reconnect(ca);
+
+			UNUSED_PARAMETER(num_addresses);
+		});
+
+	AudioObjectPropertyAddress addr = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal,
+					   kAudioObjectPropertyElementMain};
+
+	stat = AudioObjectAddPropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+						   ca->notification_block);
 	if (!ca_success(stat, ca, "coreaudio_init_hooks", "set disconnect callback"))
 		return false;
 
-	stat = add_listener(ca, PROPERTY_FORMATS);
+	addr.mSelector = PROPERTY_FORMATS;
+	stat = AudioObjectAddPropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+						   ca->notification_block);
 	if (!ca_success(stat, ca, "coreaudio_init_hooks", "set format change callback"))
 		return false;
 
 	if (ca->default_device) {
-		AudioObjectPropertyAddress addr = {PROPERTY_DEFAULT_DEVICE, kAudioObjectPropertyScopeGlobal,
-						   kAudioObjectPropertyElementMain};
-
-		stat = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &addr, notification_callback, ca);
+		addr.mSelector = PROPERTY_DEFAULT_DEVICE;
+		stat = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &addr,
+							  ca->notification_queue, ca->notification_block);
 		if (!ca_success(stat, ca, "coreaudio_init_hooks", "set device change callback"))
 			return false;
 	}
@@ -585,21 +576,30 @@ static void coreaudio_remove_hooks(struct coreaudio_data *ca)
 {
 	AURenderCallbackStruct callback_info = {.inputProc = NULL, .inputProcRefCon = NULL};
 
+	set_property(ca->unit, kAudioOutputUnitProperty_SetInputCallback, SCOPE_GLOBAL, 0, &callback_info,
+		     sizeof(callback_info));
+
+	if (!ca->notification_block)
+		return;
+
 	AudioObjectPropertyAddress addr = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal,
 					   kAudioObjectPropertyElementMain};
 
-	AudioObjectRemovePropertyListener(ca->device_id, &addr, notification_callback, ca);
+	AudioObjectRemovePropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+					       ca->notification_block);
 
 	addr.mSelector = PROPERTY_FORMATS;
-	AudioObjectRemovePropertyListener(ca->device_id, &addr, notification_callback, ca);
+	AudioObjectRemovePropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+					       ca->notification_block);
 
 	if (ca->default_device) {
 		addr.mSelector = PROPERTY_DEFAULT_DEVICE;
-		AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addr, notification_callback, ca);
+		AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject, &addr,
+						       ca->notification_queue, ca->notification_block);
 	}
 
-	set_property(ca->unit, kAudioOutputUnitProperty_SetInputCallback, SCOPE_GLOBAL, 0, &callback_info,
-		     sizeof(callback_info));
+	Block_release(ca->notification_block);
+	ca->notification_block = NULL;
 }
 
 static bool coreaudio_get_device_name(struct coreaudio_data *ca)
@@ -834,23 +834,19 @@ static void coreaudio_destroy(void *data)
 	struct coreaudio_data *ca = data;
 
 	if (ca) {
-		/* Wait for any in-progress callback before shutting down to
-		 * prevent concurrent coreaudio_uninit calls. */
-		pthread_mutex_lock(&ca->callback_mutex);
-		coreaudio_shutdown(ca, FINAL_SHUTDOWN);
-		/* Listeners are now removed; no new callbacks will be dispatched. */
-		pthread_mutex_unlock(&ca->callback_mutex);
-
-		/* Drain any callback that CoreAudio had already queued before
-		 * listener removal but that had not yet acquired callback_mutex. */
-		pthread_mutex_lock(&ca->callback_mutex);
-		pthread_mutex_unlock(&ca->callback_mutex);
+		/* Run shutdown on the notification queue to serialize with any
+		 * in-progress or queued callbacks, preventing concurrent
+		 * coreaudio_uninit. After dispatch_sync returns, all listeners
+		 * have been removed and no further callbacks can be dispatched. */
+		dispatch_sync(ca->notification_queue, ^{
+			coreaudio_shutdown(ca, FINAL_SHUTDOWN);
+		});
+		dispatch_release(ca->notification_queue);
 
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
-		pthread_mutex_destroy(&ca->callback_mutex);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
@@ -890,7 +886,9 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	if (!ca->input && strcmp(new_id, ca->device_uid) != 0)
 		obs_source_audio_output_capture_device_changed(ca->source, new_id);
 
-	coreaudio_shutdown(ca, NOT_FINAL_SHUTDOWN);
+	dispatch_sync(ca->notification_queue, ^{
+		coreaudio_shutdown(ca, NOT_FINAL_SHUTDOWN);
+	});
 
 	bfree(ca->device_uid);
 	ca->device_uid = bstrdup(new_id);
@@ -933,11 +931,10 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		return NULL;
 	}
 
-	err = pthread_mutex_init(&ca->callback_mutex, NULL);
-	if (err != 0) {
-		blog(LOG_ERROR,
-		     "[coreaudio_create] failed to init callback mutex: %d",
-		     err);
+	ca->notification_queue =
+		dispatch_queue_create("com.obsproject.mac-capture.notification", DISPATCH_QUEUE_SERIAL);
+	if (!ca->notification_queue) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification queue");
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 		bfree(ca);
