@@ -818,9 +818,10 @@ static void coreaudio_destroy(void *data)
 		 * in-progress or queued callbacks, preventing concurrent
 		 * coreaudio_uninit. After dispatch_sync returns, all listeners
 		 * have been removed and no further callbacks can be dispatched. */
-		dispatch_sync(ca->notification_queue, ^{
-			coreaudio_shutdown(ca);
-		});
+dispatch_sync(ca->notification_queue, ^{
+	coreaudio_shutdown(ca);
+});
+dispatch_sync(ca->notification_queue, ^{});
 		dispatch_release(ca->notification_queue);
 		Block_release(ca->notification_block);
 
@@ -881,11 +882,11 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 		coreaudio_set_channels(ca, settings);
 	}
 
-	coreaudio_try_init(ca);
-
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = false;
 	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	coreaudio_try_init(ca);
 }
 
 static void coreaudio_defaults(obs_data_t *settings)
