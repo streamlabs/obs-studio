@@ -54,6 +54,7 @@ struct coreaudio_data {
 
 	pthread_t reconnect_thread;
 	pthread_mutex_t reconnect_mutex;
+	pthread_cond_t reconnect_cond;
 	pthread_mutex_t init_mutex;
 	bool shutting_down;
 	os_event_t *exit_event;
@@ -505,9 +506,15 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	if (should_join)
 		pthread_join(old_thread, NULL);
 
-	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
-
 	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->shutting_down) {
+		ca->reconnecting = false;
+		pthread_cond_signal(&ca->reconnect_cond);
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		return;
+	}
+
+	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
 	if (ret != 0) {
 		ca->reconnecting = false;
 		blog(LOG_WARNING,
@@ -517,6 +524,7 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	} else {
 		ca->reconnect_thread_valid = true;
 	}
+	pthread_cond_signal(&ca->reconnect_cond);
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
@@ -784,21 +792,27 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 {
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = true;
+
+	/* Wait for any in-progress reconnect handoff to finish.
+	 * While reconnecting is true but reconnect_thread_valid is false,
+	 * coreaudio_begin_reconnect is between its join and pthread_create.
+	 * It will re-check shutting_down and bail out without creating a
+	 * new thread. */
+	while (ca->reconnecting && !ca->reconnect_thread_valid)
+		pthread_cond_wait(&ca->reconnect_cond, &ca->reconnect_mutex);
+
 	bool should_join = ca->reconnect_thread_valid;
 	pthread_t reconnect_thread = ca->reconnect_thread;
+	if (should_join) {
+		ca->reconnect_thread_valid = false;
+		ca->reconnecting = false;
+	}
 	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	if (should_join) {
 		os_event_signal(ca->exit_event);
 		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
-		pthread_mutex_lock(&ca->reconnect_mutex);
-		if (ca->reconnect_thread_valid &&
-		    pthread_equal(ca->reconnect_thread, reconnect_thread)) {
-			ca->reconnect_thread_valid = false;
-			ca->reconnecting = false;
-		}
-		pthread_mutex_unlock(&ca->reconnect_mutex);
 	}
 
 	pthread_mutex_lock(&ca->init_mutex);
@@ -829,6 +843,7 @@ static void coreaudio_destroy(void *data)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
 		pthread_mutex_destroy(&ca->init_mutex);
+		pthread_cond_destroy(&ca->reconnect_cond);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
@@ -917,11 +932,23 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		return NULL;
 	}
 
+	err = pthread_cond_init(&ca->reconnect_cond, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR,
+		     "[coreaudio_create] failed to init reconnect cond: %d",
+		     err);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
 	err = pthread_mutex_init(&ca->init_mutex, NULL);
 	if (err != 0) {
 		blog(LOG_ERROR,
 		     "[coreaudio_create] failed to init init mutex: %d",
 		     err);
+		pthread_cond_destroy(&ca->reconnect_cond);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 		bfree(ca);
@@ -933,6 +960,7 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 	if (!ca->notification_queue) {
 		blog(LOG_ERROR, "[coreaudio_create] failed to create notification queue");
 		pthread_mutex_destroy(&ca->init_mutex);
+		pthread_cond_destroy(&ca->reconnect_cond);
 		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 		bfree(ca);
