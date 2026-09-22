@@ -56,6 +56,7 @@ struct coreaudio_data {
 	pthread_mutex_t reconnect_mutex;
 	pthread_cond_t reconnect_cond;
 	pthread_mutex_t init_mutex;
+	bool reconnect_handoff_active;
 	bool shutting_down;
 	os_event_t *exit_event;
 	bool reconnect_thread_valid;
@@ -472,7 +473,15 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
+	for (;;) {
+		unsigned long retry_time;
+
+		pthread_mutex_lock(&ca->init_mutex);
+		retry_time = ca->retry_time;
+		pthread_mutex_unlock(&ca->init_mutex);
+		if (os_event_timedwait(ca->exit_event, retry_time) != ETIMEDOUT)
+			break;
+
 		pthread_mutex_lock(&ca->init_mutex);
 		bool success = coreaudio_init(ca);
 		pthread_mutex_unlock(&ca->init_mutex);
@@ -492,13 +501,14 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 	int ret;
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
-	if (ca->reconnecting || ca->shutting_down) {
+	if (ca->reconnecting || ca->reconnect_handoff_active || ca->shutting_down) {
 		pthread_mutex_unlock(&ca->reconnect_mutex);
 		return;
 	}
 
 	bool should_join = ca->reconnect_thread_valid;
 	pthread_t old_thread = ca->reconnect_thread;
+	ca->reconnect_handoff_active = true;
 	ca->reconnect_thread_valid = false;
 	ca->reconnecting = true;
 	pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -508,6 +518,7 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	if (ca->shutting_down) {
+		ca->reconnect_handoff_active = false;
 		ca->reconnecting = false;
 		pthread_cond_signal(&ca->reconnect_cond);
 		pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -516,13 +527,16 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
 	if (ret != 0) {
+		ca->reconnect_handoff_active = false;
 		ca->reconnecting = false;
 		blog(LOG_WARNING,
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
 	} else {
+		ca->reconnect_handoff_active = false;
 		ca->reconnect_thread_valid = true;
+		ca->reconnecting = true;
 	}
 	pthread_cond_signal(&ca->reconnect_cond);
 	pthread_mutex_unlock(&ca->reconnect_mutex);
@@ -721,14 +735,14 @@ static void coreaudio_try_init(struct coreaudio_data *ca)
 {
 	pthread_mutex_lock(&ca->init_mutex);
 	bool success = coreaudio_init(ca);
+	if (!success)
+		ca->retry_time = 2000;
 	pthread_mutex_unlock(&ca->init_mutex);
 	if (!success) {
 		blog(LOG_INFO,
 		     "coreaudio: failed to find device "
 		     "uid: %s, waiting for connection",
 		     ca->device_uid);
-
-		ca->retry_time = 2000;
 
 		if (ca->no_devices)
 			blog(LOG_INFO, "coreaudio: no device found");
@@ -794,11 +808,10 @@ static void coreaudio_shutdown(struct coreaudio_data *ca)
 	ca->shutting_down = true;
 
 	/* Wait for any in-progress reconnect handoff to finish.
-	 * While reconnecting is true but reconnect_thread_valid is false,
-	 * coreaudio_begin_reconnect is between its join and pthread_create.
-	 * It will re-check shutting_down and bail out without creating a
-	 * new thread. */
-	while (ca->reconnecting && !ca->reconnect_thread_valid)
+	 * coreaudio_begin_reconnect clears reconnect_thread_valid before it
+	 * joins a previous thread or creates a replacement, and it re-checks
+	 * shutting_down before creating a new thread. */
+	while (ca->reconnect_handoff_active)
 		pthread_cond_wait(&ca->reconnect_cond, &ca->reconnect_mutex);
 
 	bool should_join = ca->reconnect_thread_valid;
