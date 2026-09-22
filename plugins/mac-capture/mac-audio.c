@@ -67,11 +67,6 @@ struct coreaudio_data {
 	obs_source_t *source;
 };
 
-enum shutdown_type {
-	FINAL_SHUTDOWN,
-	NOT_FINAL_SHUTDOWN
-};
-
 static bool get_default_output_device(struct coreaudio_data *ca)
 {
 	struct device_list list;
@@ -785,7 +780,7 @@ static const char *coreaudio_output_getname(void *unused)
 	return TEXT_AUDIO_OUTPUT;
 }
 
-static void coreaudio_shutdown(struct coreaudio_data *ca, const enum shutdown_type shutdown_option)
+static void coreaudio_shutdown(struct coreaudio_data *ca)
 {
 	pthread_mutex_lock(&ca->reconnect_mutex);
 	ca->shutting_down = true;
@@ -810,12 +805,6 @@ static void coreaudio_shutdown(struct coreaudio_data *ca, const enum shutdown_ty
 	coreaudio_uninit(ca);
 	pthread_mutex_unlock(&ca->init_mutex);
 
-	if (shutdown_option != FINAL_SHUTDOWN) {
-		pthread_mutex_lock(&ca->reconnect_mutex);
-		ca->shutting_down = false;
-		pthread_mutex_unlock(&ca->reconnect_mutex);
-	}
-
 	if (ca->unit)
 		AudioComponentInstanceDispose(ca->unit);
 }
@@ -830,7 +819,7 @@ static void coreaudio_destroy(void *data)
 		 * coreaudio_uninit. After dispatch_sync returns, all listeners
 		 * have been removed and no further callbacks can be dispatched. */
 		dispatch_sync(ca->notification_queue, ^{
-			coreaudio_shutdown(ca, FINAL_SHUTDOWN);
+			coreaudio_shutdown(ca);
 		});
 		dispatch_release(ca->notification_queue);
 		Block_release(ca->notification_block);
@@ -880,7 +869,7 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 		obs_source_audio_output_capture_device_changed(ca->source, new_id);
 
 	dispatch_sync(ca->notification_queue, ^{
-		coreaudio_shutdown(ca, NOT_FINAL_SHUTDOWN);
+		coreaudio_shutdown(ca);
 	});
 
 	bfree(ca->device_uid);
@@ -893,6 +882,10 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	}
 
 	coreaudio_try_init(ca);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static void coreaudio_defaults(obs_data_t *settings)
@@ -948,6 +941,12 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 
 	ca->notification_block =
 		Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
+			pthread_mutex_lock(&ca->reconnect_mutex);
+			bool is_shutting_down = ca->shutting_down;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+			if (is_shutting_down)
+				return;
+
 			pthread_mutex_lock(&ca->init_mutex);
 			coreaudio_stop(ca);
 			coreaudio_uninit(ca);
