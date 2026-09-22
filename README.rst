@@ -39,6 +39,39 @@ Quick Links
 
 - Bug Tracker: https://github.com/obsproject/obs-studio/issues
 
+Native Tests
+------------
+
+Native tests run through CTest, with Catch2 v3.11.0 matching OSN.
+The normal OBS build dependencies are required; CMake
+downloads Catch2 on the first configure unless it is already cached.
+
+Run the following commands from the repository root on Windows to configure,
+build, and run all native tests:
+
+.. code-block:: powershell
+
+   cmake --preset windows-ci-x64
+   cmake --build build_x64 --config RelWithDebInfo --target tests
+   ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error
+
+On macOS:
+
+.. code-block:: console
+
+   cmake --preset macos-ci
+   cmake --build build_macos --config RelWithDebInfo --target tests
+   ctest --test-dir build_macos -C RelWithDebInfo --output-on-failure --no-tests=error
+
+The ``windows-ci-x64`` and ``macos-ci`` presets enable ``BUILD_TESTING``.
+It defaults to ``OFF`` for other presets; pass ``-DBUILD_TESTING=ON`` when
+configuring to enable it explicitly. CTest does not build tests, so repeat
+the build step after code changes. Test executables and Catch2 are excluded
+from installed product packages.
+
+See `test/libobs/README.md <test/libobs/README.md>`_ for details about the
+suite and adding cases.
+
 Contributing
 ------------
 

@@ -18,6 +18,12 @@ include(helpers)
 option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
 option(ENABLE_SCRIPTING "Enable scripting support" ON)
 option(ENABLE_HEVC "Enable HEVC encoders" ON)
+option(BUILD_TESTING "Build native tests" OFF)
+include(CTest)
+if(BUILD_TESTING)
+  add_custom_target(tests)
+  set_target_properties(tests PROPERTIES FOLDER "Tests and Examples")
+endif()
 
 add_subdirectory(libobs)
 if(OS_WINDOWS)
@@ -31,6 +37,9 @@ endif()
 add_subdirectory(plugins)
 
 add_subdirectory(test/test-input)
+if(BUILD_TESTING)
+  add_subdirectory(test/libobs)
+endif()
 
 add_subdirectory(frontend)
 

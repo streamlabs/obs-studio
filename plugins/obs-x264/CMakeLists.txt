@@ -19,4 +19,6 @@ endif()
 
 set_target_properties_obs(obs-x264 PROPERTIES FOLDER plugins/obs-x264 PREFIX "")
 
-include(cmake/x264-test.cmake)
+if(BUILD_TESTING)
+  include(cmake/x264-test.cmake)
+endif()

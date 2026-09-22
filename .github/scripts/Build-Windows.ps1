@@ -87,6 +87,12 @@ function Build {
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
 
+    if ( $Target -eq 'x64' ) {
+        Log-Group "Building and running native tests..."
+        Invoke-External cmake --build "build_${Target}" --config $Configuration --target tests
+        Invoke-External ctest --test-dir "build_${Target}" -C $Configuration --output-on-failure --no-tests=error
+    }
+
     try {
         Log-Group "Chech for changes in dependencies..."
         Invoke-External cmake @CmakeCheckArgs

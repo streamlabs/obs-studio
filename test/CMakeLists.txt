@@ -9,7 +9,3 @@ if(BUILD_TESTS)
     add_subdirectory(osx)
   endif()
 endif()
-
-if(ENABLE_UNIT_TESTS)
-  add_subdirectory(cmocka)
-endif()
