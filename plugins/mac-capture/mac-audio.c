@@ -1,6 +1,7 @@
 #include <AudioUnit/AudioUnit.h>
 #include <CoreFoundation/CFString.h>
 #include <CoreAudio/CoreAudio.h>
+#include <dispatch/dispatch.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -52,9 +53,18 @@ struct coreaudio_data {
 	bool enable_downmix;
 
 	pthread_t reconnect_thread;
+	pthread_mutex_t reconnect_mutex;
+	pthread_cond_t reconnect_cond;
+	pthread_mutex_t init_mutex;
+	bool reconnect_handoff_active;
+	bool shutting_down;
 	os_event_t *exit_event;
-	volatile bool reconnecting;
+	bool reconnect_thread_valid;
+	bool reconnecting;
 	unsigned long retry_time;
+
+	dispatch_queue_t notification_queue;
+	AudioObjectPropertyListenerBlock notification_block;
 
 	obs_source_t *source;
 };
@@ -463,15 +473,28 @@ static void *reconnect_thread(void *param)
 {
 	struct coreaudio_data *ca = param;
 
-	ca->reconnecting = true;
+	for (;;) {
+		unsigned long retry_time;
 
-	while (os_event_timedwait(ca->exit_event, ca->retry_time) == ETIMEDOUT) {
-		if (coreaudio_init(ca))
+		pthread_mutex_lock(&ca->init_mutex);
+		retry_time = ca->retry_time;
+		pthread_mutex_unlock(&ca->init_mutex);
+		if (os_event_timedwait(ca->exit_event, retry_time) != ETIMEDOUT)
+			break;
+
+		pthread_mutex_lock(&ca->init_mutex);
+		bool success = coreaudio_init(ca);
+		if (success) {
+			pthread_mutex_lock(&ca->reconnect_mutex);
+			ca->reconnecting = false;
+			pthread_mutex_unlock(&ca->reconnect_mutex);
+		}
+		pthread_mutex_unlock(&ca->init_mutex);
+		if (success)
 			break;
 	}
 
 	blog(LOG_DEBUG, "coreaudio: exit the reconnect thread");
-	ca->reconnecting = false;
 	return NULL;
 }
 
@@ -479,48 +502,46 @@ static void coreaudio_begin_reconnect(struct coreaudio_data *ca)
 {
 	int ret;
 
-	if (ca->reconnecting)
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->reconnecting || ca->reconnect_handoff_active || ca->shutting_down) {
+		pthread_mutex_unlock(&ca->reconnect_mutex);
 		return;
+	}
+
+	bool should_join = ca->reconnect_thread_valid;
+	pthread_t old_thread = ca->reconnect_thread;
+	ca->reconnect_handoff_active = true;
+	ca->reconnect_thread_valid = false;
+	ca->reconnecting = true;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join)
+		pthread_join(old_thread, NULL);
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	if (ca->shutting_down) {
+		ca->reconnect_handoff_active = false;
+		ca->reconnecting = false;
+		pthread_cond_signal(&ca->reconnect_cond);
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		return;
+	}
 
 	ret = pthread_create(&ca->reconnect_thread, NULL, reconnect_thread, ca);
-	if (ret != 0)
+	if (ret != 0) {
+		ca->reconnect_handoff_active = false;
+		ca->reconnecting = false;
 		blog(LOG_WARNING,
 		     "[coreaudio_begin_reconnect] failed to "
 		     "create thread, error code: %d",
 		     ret);
-}
-
-static OSStatus notification_callback(AudioObjectID id, UInt32 num_addresses,
-				      const AudioObjectPropertyAddress addresses[], void *data)
-{
-	struct coreaudio_data *ca = data;
-
-	coreaudio_stop(ca);
-	coreaudio_uninit(ca);
-
-	if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
-		ca->retry_time = 300;
-	else
-		ca->retry_time = 2000;
-
-	blog(LOG_INFO,
-	     "coreaudio: device '%s' disconnected or changed.  "
-	     "attempting to reconnect",
-	     ca->device_name);
-
-	coreaudio_begin_reconnect(ca);
-
-	UNUSED_PARAMETER(id);
-	UNUSED_PARAMETER(num_addresses);
-
-	return noErr;
-}
-
-static OSStatus add_listener(struct coreaudio_data *ca, UInt32 property)
-{
-	AudioObjectPropertyAddress addr = {property, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
-
-	return AudioObjectAddPropertyListener(ca->device_id, &addr, notification_callback, ca);
+	} else {
+		ca->reconnect_handoff_active = false;
+		ca->reconnect_thread_valid = true;
+		ca->reconnecting = true;
+	}
+	pthread_cond_signal(&ca->reconnect_cond);
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 }
 
 static bool coreaudio_init_hooks(struct coreaudio_data *ca)
@@ -528,19 +549,24 @@ static bool coreaudio_init_hooks(struct coreaudio_data *ca)
 	OSStatus stat;
 	AURenderCallbackStruct callback_info = {.inputProc = input_callback, .inputProcRefCon = ca};
 
-	stat = add_listener(ca, kAudioDevicePropertyDeviceIsAlive);
+	AudioObjectPropertyAddress addr = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal,
+					   kAudioObjectPropertyElementMain};
+
+	stat = AudioObjectAddPropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+						   ca->notification_block);
 	if (!ca_success(stat, ca, "coreaudio_init_hooks", "set disconnect callback"))
 		return false;
 
-	stat = add_listener(ca, PROPERTY_FORMATS);
+	addr.mSelector = PROPERTY_FORMATS;
+	stat = AudioObjectAddPropertyListenerBlock(ca->device_id, &addr, ca->notification_queue,
+						   ca->notification_block);
 	if (!ca_success(stat, ca, "coreaudio_init_hooks", "set format change callback"))
 		return false;
 
 	if (ca->default_device) {
-		AudioObjectPropertyAddress addr = {PROPERTY_DEFAULT_DEVICE, kAudioObjectPropertyScopeGlobal,
-						   kAudioObjectPropertyElementMain};
-
-		stat = AudioObjectAddPropertyListener(kAudioObjectSystemObject, &addr, notification_callback, ca);
+		addr.mSelector = PROPERTY_DEFAULT_DEVICE;
+		stat = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &addr, ca->notification_queue,
+							   ca->notification_block);
 		if (!ca_success(stat, ca, "coreaudio_init_hooks", "set device change callback"))
 			return false;
 	}
@@ -557,21 +583,25 @@ static void coreaudio_remove_hooks(struct coreaudio_data *ca)
 {
 	AURenderCallbackStruct callback_info = {.inputProc = NULL, .inputProcRefCon = NULL};
 
+	set_property(ca->unit, kAudioOutputUnitProperty_SetInputCallback, SCOPE_GLOBAL, 0, &callback_info,
+		     sizeof(callback_info));
+
+	if (!ca->notification_block)
+		return;
+
 	AudioObjectPropertyAddress addr = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal,
 					   kAudioObjectPropertyElementMain};
 
-	AudioObjectRemovePropertyListener(ca->device_id, &addr, notification_callback, ca);
+	AudioObjectRemovePropertyListenerBlock(ca->device_id, &addr, ca->notification_queue, ca->notification_block);
 
 	addr.mSelector = PROPERTY_FORMATS;
-	AudioObjectRemovePropertyListener(ca->device_id, &addr, notification_callback, ca);
+	AudioObjectRemovePropertyListenerBlock(ca->device_id, &addr, ca->notification_queue, ca->notification_block);
 
 	if (ca->default_device) {
 		addr.mSelector = PROPERTY_DEFAULT_DEVICE;
-		AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addr, notification_callback, ca);
+		AudioObjectRemovePropertyListenerBlock(kAudioObjectSystemObject, &addr, ca->notification_queue,
+						       ca->notification_block);
 	}
-
-	set_property(ca->unit, kAudioOutputUnitProperty_SetInputCallback, SCOPE_GLOBAL, 0, &callback_info,
-		     sizeof(callback_info));
 }
 
 static bool coreaudio_get_device_name(struct coreaudio_data *ca)
@@ -702,13 +732,16 @@ fail:
 
 static void coreaudio_try_init(struct coreaudio_data *ca)
 {
-	if (!coreaudio_init(ca)) {
+	pthread_mutex_lock(&ca->init_mutex);
+	bool success = coreaudio_init(ca);
+	if (!success)
+		ca->retry_time = 2000;
+	pthread_mutex_unlock(&ca->init_mutex);
+	if (!success) {
 		blog(LOG_INFO,
 		     "coreaudio: failed to find device "
 		     "uid: %s, waiting for connection",
 		     ca->device_uid);
-
-		ca->retry_time = 2000;
 
 		if (ca->no_devices)
 			blog(LOG_INFO, "coreaudio: no device found");
@@ -770,13 +803,33 @@ static const char *coreaudio_output_getname(void *unused)
 
 static void coreaudio_shutdown(struct coreaudio_data *ca)
 {
-	if (ca->reconnecting) {
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = true;
+
+	/* Wait for any in-progress reconnect handoff to finish.
+	 * coreaudio_begin_reconnect clears reconnect_thread_valid before it
+	 * joins a previous thread or creates a replacement, and it re-checks
+	 * shutting_down before creating a new thread. */
+	while (ca->reconnect_handoff_active)
+		pthread_cond_wait(&ca->reconnect_cond, &ca->reconnect_mutex);
+
+	bool should_join = ca->reconnect_thread_valid;
+	pthread_t reconnect_thread = ca->reconnect_thread;
+	if (should_join) {
+		ca->reconnect_thread_valid = false;
+		ca->reconnecting = false;
+	}
+	pthread_mutex_unlock(&ca->reconnect_mutex);
+
+	if (should_join) {
 		os_event_signal(ca->exit_event);
-		pthread_join(ca->reconnect_thread, NULL);
+		pthread_join(reconnect_thread, NULL);
 		os_event_reset(ca->exit_event);
 	}
 
+	pthread_mutex_lock(&ca->init_mutex);
 	coreaudio_uninit(ca);
+	pthread_mutex_unlock(&ca->init_mutex);
 
 	if (ca->unit)
 		AudioComponentInstanceDispose(ca->unit);
@@ -787,11 +840,31 @@ static void coreaudio_destroy(void *data)
 	struct coreaudio_data *ca = data;
 
 	if (ca) {
-		coreaudio_shutdown(ca);
+		/* Run shutdown on the notification queue to serialize with any
+		* in-progress or queued callbacks, preventing concurrent
+		* coreaudio_uninit. After dispatch_sync returns, all listeners
+		* have been removed and no further callbacks can be dispatched. */
+		dispatch_sync(ca->notification_queue, ^{
+			coreaudio_shutdown(ca);
+		});
+
+		/* A notification may have been queued behind shutdown before
+		* its listener was removed. Drain those notifications while ca
+		* is still alive. shutting_down remains true, so they return
+		* without touching the audio unit or starting a reconnect. */
+		dispatch_sync(ca->notification_queue, ^{
+			      });
+
+		dispatch_release(ca->notification_queue);
+		Block_release(ca->notification_block);
+
 		/* If the device is also used for monitoring, a cleanup is needed. */
 		if (!ca->input)
 			obs_source_audio_output_capture_device_changed(ca->source, NULL);
 
+		pthread_mutex_destroy(&ca->init_mutex);
+		pthread_cond_destroy(&ca->reconnect_cond);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
 		os_event_destroy(ca->exit_event);
 
 		if (ca->channel_map) {
@@ -830,7 +903,9 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	if (!ca->input && strcmp(new_id, ca->device_uid) != 0)
 		obs_source_audio_output_capture_device_changed(ca->source, new_id);
 
-	coreaudio_shutdown(ca);
+	dispatch_sync(ca->notification_queue, ^{
+		coreaudio_shutdown(ca);
+	});
 
 	bfree(ca->device_uid);
 	ca->device_uid = bstrdup(new_id);
@@ -840,6 +915,10 @@ static void coreaudio_update(void *data, obs_data_t *settings)
 	if (!ca->enable_downmix) {
 		coreaudio_set_channels(ca, settings);
 	}
+
+	pthread_mutex_lock(&ca->reconnect_mutex);
+	ca->shutting_down = false;
+	pthread_mutex_unlock(&ca->reconnect_mutex);
 
 	coreaudio_try_init(ca);
 }
@@ -862,6 +941,72 @@ static void *coreaudio_create(obs_data_t *settings, obs_source_t *source, bool i
 		bfree(ca);
 		return NULL;
 	}
+
+	int err = pthread_mutex_init(&ca->reconnect_mutex, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to init reconnect mutex: %d", err);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
+	err = pthread_cond_init(&ca->reconnect_cond, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to init reconnect cond: %d", err);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
+	err = pthread_mutex_init(&ca->init_mutex, NULL);
+	if (err != 0) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to init init mutex: %d", err);
+		pthread_cond_destroy(&ca->reconnect_cond);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
+	ca->notification_queue =
+		dispatch_queue_create("com.obsproject.mac-capture.notification", DISPATCH_QUEUE_SERIAL);
+	if (!ca->notification_queue) {
+		blog(LOG_ERROR, "[coreaudio_create] failed to create notification queue");
+		pthread_mutex_destroy(&ca->init_mutex);
+		pthread_cond_destroy(&ca->reconnect_cond);
+		pthread_mutex_destroy(&ca->reconnect_mutex);
+		os_event_destroy(ca->exit_event);
+		bfree(ca);
+		return NULL;
+	}
+
+	ca->notification_block = Block_copy(^(UInt32 num_addresses, const AudioObjectPropertyAddress addresses[]) {
+		pthread_mutex_lock(&ca->reconnect_mutex);
+		bool is_shutting_down = ca->shutting_down;
+		pthread_mutex_unlock(&ca->reconnect_mutex);
+		if (is_shutting_down)
+			return;
+
+		pthread_mutex_lock(&ca->init_mutex);
+		coreaudio_stop(ca);
+		coreaudio_uninit(ca);
+
+		if (addresses[0].mSelector == PROPERTY_DEFAULT_DEVICE)
+			ca->retry_time = 300;
+		else
+			ca->retry_time = 2000;
+
+		blog(LOG_INFO,
+		     "coreaudio: device '%s' disconnected or changed.  "
+		     "attempting to reconnect",
+		     ca->device_name);
+		pthread_mutex_unlock(&ca->init_mutex);
+
+		coreaudio_begin_reconnect(ca);
+
+		UNUSED_PARAMETER(num_addresses);
+	});
 
 	ca->device_uid = bstrdup(obs_data_get_string(settings, "device_id"));
 	ca->source = source;
