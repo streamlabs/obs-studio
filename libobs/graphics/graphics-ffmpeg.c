@@ -814,7 +814,6 @@ bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_forma
 	AVFrame *frame = NULL;
 	struct SwsContext *sws_ctx = NULL;
 	AVCodecContext *enc_ctx = NULL;
-	struct dstr temp_file = {0};
 	FILE *fp = NULL;
 	bool created = false;
 	bool direct = false;
@@ -901,10 +900,9 @@ bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_forma
 		goto fail;
 	}
 
-	dstr_printf(&temp_file, "%s.tmp", file);
-	fp = os_fopen(temp_file.array, "wb");
+	fp = os_fopen(file, "wb");
 	if (!fp) {
-		blog(LOG_WARNING, "gs_save_png_file: failed to open '%s' for writing", temp_file.array);
+		blog(LOG_WARNING, "gs_save_png_file: failed to open '%s' for writing", file);
 		goto fail;
 	}
 	created = true;
@@ -944,19 +942,13 @@ bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_forma
 	}
 	fp = NULL;
 
-	if (os_safe_replace(file, temp_file.array, NULL) != 0) {
-		blog(LOG_WARNING, "gs_save_png_file: failed to move '%s' to '%s'", temp_file.array, file);
-		goto fail;
-	}
-
 	success = true;
 
 fail:
 	if (fp)
 		fclose(fp);
 	if (!success && created)
-		os_unlink(temp_file.array);
-	dstr_free(&temp_file);
+		os_unlink(file);
 
 	if (enc_ctx)
 		avcodec_free_context(&enc_ctx);
