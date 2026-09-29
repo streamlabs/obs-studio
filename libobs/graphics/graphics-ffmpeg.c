@@ -5,6 +5,7 @@
 #include <obs-ffmpeg-compat.h>
 #include <util/dstr.h>
 #include <util/platform.h>
+#include <limits.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -819,7 +820,8 @@ bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_forma
 	enum AVPixelFormat dst_format;
 	int ret;
 
-	if (!file || !*file || !data || !cx || !cy || linesize < cx * 4) {
+	if (!file || !*file || !data || !cx || !cy || cx > INT_MAX / 4 || cy > INT_MAX || linesize > INT_MAX ||
+	    linesize < cx * 4) {
 		blog(LOG_WARNING, "gs_save_png_file: invalid argument for '%s'", file ? file : "(null)");
 		goto fail;
 	}
