@@ -570,6 +570,8 @@ EXPORT uint8_t *gs_create_texture_file_data2(const char *file, enum gs_image_alp
 EXPORT uint8_t *gs_create_texture_file_data3(const char *file, enum gs_image_alpha_mode alpha_mode,
 					     enum gs_color_format *format, uint32_t *cx, uint32_t *cy,
 					     enum gs_color_space *space);
+EXPORT bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_format format, uint32_t cx,
+			     uint32_t cy, uint32_t linesize);
 
 #define GS_FLIP_U (1 << 0)
 #define GS_FLIP_V (1 << 1)

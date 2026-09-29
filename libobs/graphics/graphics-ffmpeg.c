@@ -5,6 +5,7 @@
 #include <obs-ffmpeg-compat.h>
 #include <util/dstr.h>
 #include <util/platform.h>
+#include <limits.h>
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -804,4 +805,162 @@ uint8_t *gs_create_texture_file_data3(const char *file, enum gs_image_alpha_mode
 #endif
 
 	return data;
+}
+
+bool gs_save_png_file(const char *file, const uint8_t *data, enum gs_color_format format, uint32_t cx, uint32_t cy,
+		      uint32_t linesize)
+{
+	bool success = false;
+	AVFrame *frame = NULL;
+	struct SwsContext *sws_ctx = NULL;
+	AVCodecContext *enc_ctx = NULL;
+	FILE *fp = NULL;
+	bool created = false;
+	bool direct = false;
+	enum AVPixelFormat dst_format;
+	int ret;
+
+	if (!file || !*file || !data || !cx || !cy || cx > INT_MAX / 4 || cy > INT_MAX || linesize > INT_MAX ||
+	    linesize < cx * 4) {
+		blog(LOG_WARNING, "gs_save_png_file: invalid argument for '%s'", file ? file : "(null)");
+		goto fail;
+	}
+
+	switch (gs_generalize_format(format)) {
+	case GS_RGBA:
+		dst_format = AV_PIX_FMT_RGBA;
+		direct = true;
+		break;
+	case GS_BGRA:
+		dst_format = AV_PIX_FMT_RGBA;
+		break;
+	case GS_BGRX:
+		dst_format = AV_PIX_FMT_RGB24;
+		break;
+	default:
+		blog(LOG_WARNING, "gs_save_png_file: unsupported format %d for '%s'", (int)format, file);
+		goto fail;
+	}
+
+	frame = av_frame_alloc();
+	if (!frame) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to allocate frame for '%s'", file);
+		goto fail;
+	}
+
+	frame->format = dst_format;
+	frame->width = (int)cx;
+	frame->height = (int)cy;
+
+	if (direct) {
+		frame->data[0] = (uint8_t *)data;
+		frame->linesize[0] = (int)linesize;
+	} else {
+		if (av_frame_get_buffer(frame, 0) < 0) {
+			blog(LOG_WARNING, "gs_save_png_file: failed to allocate frame buffer for '%s'", file);
+			goto fail;
+		}
+
+		const enum AVPixelFormat src_format = dst_format == AV_PIX_FMT_RGBA ? AV_PIX_FMT_BGRA : AV_PIX_FMT_BGR0;
+		sws_ctx = sws_getContext((int)cx, (int)cy, src_format, (int)cx, (int)cy, dst_format, SWS_POINT, NULL,
+					 NULL, NULL);
+		if (!sws_ctx) {
+			blog(LOG_WARNING, "gs_save_png_file: failed to create scale context for '%s'", file);
+			goto fail;
+		}
+
+		const uint8_t *const src_planes[4] = {data, NULL, NULL, NULL};
+		const int src_linesizes[4] = {(int)linesize, 0, 0, 0};
+		if (sws_scale(sws_ctx, src_planes, src_linesizes, 0, (int)cy, frame->data, frame->linesize) < 0) {
+			blog(LOG_WARNING, "gs_save_png_file: sws_scale failed for '%s'", file);
+			goto fail;
+		}
+	}
+
+	const AVCodec *const encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
+	if (!encoder) {
+		blog(LOG_WARNING, "gs_save_png_file: PNG encoder not found for '%s'", file);
+		goto fail;
+	}
+
+	enc_ctx = avcodec_alloc_context3(encoder);
+	if (!enc_ctx) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to allocate codec context for '%s'", file);
+		goto fail;
+	}
+
+	enc_ctx->width = (int)cx;
+	enc_ctx->height = (int)cy;
+	enc_ctx->pix_fmt = dst_format;
+	enc_ctx->time_base = (AVRational){1, 1};
+
+	ret = avcodec_open2(enc_ctx, encoder, NULL);
+	if (ret < 0) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to open PNG encoder for '%s': %s", file, av_err2str(ret));
+		goto fail;
+	}
+
+	fp = os_fopen(file, "wb");
+	if (!fp) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to open '%s' for writing", file);
+		goto fail;
+	}
+	created = true;
+
+	ret = avcodec_send_frame(enc_ctx, frame);
+	if (ret < 0) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to send frame to encoder for '%s': %s", file,
+		     av_err2str(ret));
+		goto fail;
+	}
+
+	avcodec_send_frame(enc_ctx, NULL);
+
+	for (;;) {
+		AVPacket pkt = {0};
+		ret = avcodec_receive_packet(enc_ctx, &pkt);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+			break;
+		if (ret < 0) {
+			blog(LOG_WARNING, "gs_save_png_file: failed to receive packet for '%s': %s", file,
+			     av_err2str(ret));
+			goto fail;
+		}
+
+		const bool written = fwrite(pkt.data, 1, pkt.size, fp) == (size_t)pkt.size;
+		av_packet_unref(&pkt);
+		if (!written) {
+			blog(LOG_WARNING, "gs_save_png_file: short write to '%s'", file);
+			goto fail;
+		}
+	}
+
+	if (fclose(fp) != 0) {
+		blog(LOG_WARNING, "gs_save_png_file: failed to close '%s'", file);
+		fp = NULL;
+		goto fail;
+	}
+	fp = NULL;
+
+	success = true;
+
+fail:
+	if (fp)
+		fclose(fp);
+	if (!success && created)
+		os_unlink(file);
+
+	if (enc_ctx)
+		avcodec_free_context(&enc_ctx);
+	if (sws_ctx)
+		sws_freeContext(sws_ctx);
+	if (frame) {
+		if (direct) {
+			frame->data[0] = NULL;
+			frame->linesize[0] = 0;
+		}
+		av_frame_free(&frame);
+	}
+
+	return success;
 }
