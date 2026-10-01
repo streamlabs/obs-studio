@@ -224,8 +224,8 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED)
   endif()
 
   if(NOT CEF_SANDBOX_STANDARD_LIBS)
-    # This fallback mirrors CEF 6533's cef_sandbox usage requirements for
-    # distributions that omit cmake/cef_variables.cmake.
+    # This fallback mirrors the supported Windows CEF distributions' sandbox
+    # usage requirements when cmake/cef_variables.cmake is absent.
     set(
       CEF_SANDBOX_STANDARD_LIBS
       Advapi32.lib
