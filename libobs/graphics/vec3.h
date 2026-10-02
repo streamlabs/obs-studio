@@ -156,7 +156,7 @@ static inline bool vec3_close(const struct vec3 *v1, const struct vec3 *v2, floa
 {
 	struct vec3 test;
 	vec3_sub(&test, v1, v2);
-	return test.x < epsilon && test.y < epsilon && test.z < epsilon;
+	return fabsf(test.x) < epsilon && fabsf(test.y) < epsilon && fabsf(test.z) < epsilon;
 }
 
 static inline void vec3_min(struct vec3 *dst, const struct vec3 *v1, const struct vec3 *v2)

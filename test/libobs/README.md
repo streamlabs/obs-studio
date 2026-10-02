@@ -32,3 +32,17 @@ product package.
 Register new test executables with CTest and add them to the `tests` build target
 using `add_dependencies(tests <test-target>)` so these commands continue to build
 and run the complete suite.
+
+## Low-level tests
+
+The deque, dynamic-string, calldata, integer-arithmetic, and CPU-math tests do not
+start OBS or require plugins, graphics devices, or capture devices. Owned buffers
+are released by local scope guards. Deque and string tests include deterministic
+mixed-operation sequences checked against standard-library containers; failures
+report the operation and step so the fixed-seed sequence can be reproduced.
+
+After building, run just this group with:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "libobs_unit_tests::(Deque|Dstr|Calldata|Integer|Math)"
+```

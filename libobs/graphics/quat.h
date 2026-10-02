@@ -57,7 +57,7 @@ static inline void quat_identity(struct quat *q)
 
 static inline void quat_set(struct quat *dst, float x, float y, float z, float w)
 {
-	dst->m = _mm_set_ps(x, y, z, w);
+	dst->m = _mm_set_ps(w, z, y, x);
 }
 
 static inline void quat_copy(struct quat *dst, const struct quat *q)
