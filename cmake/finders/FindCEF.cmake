@@ -68,6 +68,36 @@ if(NOT DEFINED CEF_ROOT_DIR OR CEF_ROOT_DIR STREQUAL "")
   )
 endif()
 
+# CMake's find_* cache entries do not follow CEF_ROOT_DIR when a build tree is
+# reconfigured for another distribution. The selected archive can also change
+# without changing its extraction directory.
+set(_CEF_DISCOVERY_KEY "${CEF_ROOT_DIR}|${OBS_CEF_SELECTED_HASH}")
+if(NOT DEFINED _CEF_CACHED_DISCOVERY_KEY OR NOT "${_CEF_CACHED_DISCOVERY_KEY}" STREQUAL "${_CEF_DISCOVERY_KEY}")
+  foreach(
+    _CEF_CACHED_RESULT
+    IN
+    ITEMS
+      CEF_INCLUDE_DIR
+      CEF_IMPLIB_RELEASE
+      CEF_LIBRARY_RELEASE
+      CEF_LIBRARY_DEBUG
+      CEF_LIBRARY_WRAPPER_RELEASE
+      CEF_LIBRARY_WRAPPER_DEBUG
+      CEF_SANDBOX_LIBRARY_RELEASE
+      CEF_LIBRARY
+  )
+    unset(${_CEF_CACHED_RESULT})
+    unset(${_CEF_CACHED_RESULT} CACHE)
+  endforeach()
+  set(
+    _CEF_CACHED_DISCOVERY_KEY
+    "${_CEF_DISCOVERY_KEY}"
+    CACHE INTERNAL
+    "CEF root and archive hash used for discovery"
+    FORCE
+  )
+endif()
+
 find_path(
   CEF_INCLUDE_DIR
   "cef_version.h"

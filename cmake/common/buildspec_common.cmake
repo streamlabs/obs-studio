@@ -135,6 +135,10 @@ function(_check_dependencies)
     string(JSON label GET ${data} label)
     string(JSON revision ERROR_VARIABLE error GET ${data} revision ${platform})
 
+    if(dependency STREQUAL cef)
+      set(OBS_CEF_SELECTED_HASH "${hash}" CACHE INTERNAL "Selected CEF dependency archive hash" FORCE)
+    endif()
+
     message(STATUS "Setting up ${label} (${arch})")
 
     set(file "${${dependency}_filename}")
@@ -170,8 +174,21 @@ function(_check_dependencies)
     elseif(dependency STREQUAL cef)
       if(NOT ENABLE_BROWSER)
         set(skip TRUE)
-      elseif(OBS_DEPENDENCY_${dependency}_${arch}_HASH STREQUAL ${hash} AND (CEF_ROOT_DIR AND EXISTS "${CEF_ROOT_DIR}"))
-        set(skip TRUE)
+      elseif(OBS_DEPENDENCY_${dependency}_${arch}_HASH STREQUAL ${hash})
+        # A matching archive marker can outlive this build tree's old CEF_ROOT_DIR.
+        # Keep explicit roots outside .deps, but select the preset's extracted
+        # directory for roots managed by this dependency setup.
+        if(CEF_ROOT_DIR)
+          cmake_path(IS_PREFIX dependencies_dir "${CEF_ROOT_DIR}" NORMALIZE _cef_managed_root)
+        else()
+          set(_cef_managed_root TRUE)
+        endif()
+        if(_cef_managed_root AND EXISTS "${dependencies_dir}/${destination}")
+          set(CEF_ROOT_DIR "${dependencies_dir}/${destination}" CACHE PATH "CEF root directory" FORCE)
+          set(skip TRUE)
+        elseif(NOT _cef_managed_root AND EXISTS "${CEF_ROOT_DIR}")
+          set(skip TRUE)
+        endif()
       endif()
     endif()
 
