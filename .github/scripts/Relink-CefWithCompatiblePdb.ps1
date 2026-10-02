@@ -426,7 +426,23 @@ if ($oldPageSize.Count -ne 1 -or $newPageSize.Count -ne 0) {
   )
 }
 $temporaryRspText = [regex]::Replace($sourceRspText, '(?i)/pdbpagesize:8192\b', '/pdbpagesize:4096')
-[System.IO.File]::WriteAllText($temporaryRsp, $temporaryRspText, [System.Text.UTF8Encoding]::new($false))
+$stagedRsp = Join-Path $output ("libcef.dll.pdbpagesize-4096.$([guid]::NewGuid().ToString('N')).tmp")
+try {
+  # Create a new file, then replace the output path itself so an existing link cannot redirect the write.
+  $rspBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($temporaryRspText)
+  $rspStream = [System.IO.File]::Open($stagedRsp, [System.IO.FileMode]::CreateNew,
+    [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+  try {
+    $rspStream.Write($rspBytes, 0, $rspBytes.Length)
+  } finally {
+    $rspStream.Dispose()
+  }
+  [System.IO.File]::Move($stagedRsp, $temporaryRsp, $ReplaceExistingOutputs.IsPresent)
+} finally {
+  if (Test-Path -LiteralPath $stagedRsp -PathType Leaf) {
+    Remove-Item -LiteralPath $stagedRsp -Force
+  }
+}
 
 $linkArguments = [System.Collections.Generic.List[string]]::new()
 $outCount = 0

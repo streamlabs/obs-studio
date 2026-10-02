@@ -16,6 +16,8 @@ include(defaults)
 include(helpers)
 
 option(ENABLE_UI "Enable building with UI (requires Qt)" OFF)
+option(ENABLE_PLUGINS "Enable building OBS plugins" ON)
+option(ENABLE_BROWSER "Enable browser source plugin (required Chromium Embedded Framework)" OFF)
 option(ENABLE_SCRIPTING "Enable scripting support" ON)
 option(ENABLE_HEVC "Enable HEVC encoders" ON)
 option(BUILD_TESTING "Build native tests" OFF)

@@ -214,6 +214,24 @@ function(set_target_properties_obs target)
         install(DIRECTORY "${CEF_INCLUDE_DIR}/" DESTINATION "${OBS_INCLUDE_DESTINATION}/include" COMPONENT Development)
         install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
 
+        # The build-tree libobs package is generated before obs-browser discovers
+        # CEF. Record the validated source paths beside its target export now.
+        get_target_property(_obs_libobs_binary_dir libobs BINARY_DIR)
+        get_target_property(_obs_cef_sandbox_includes CEF::Sandbox INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(_OBS_BUILD_CEF_SANDBOX_LINK_LIBRARIES CEF::Sandbox INTERFACE_LINK_LIBRARIES)
+        get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_DEFINITIONS CEF::Sandbox INTERFACE_COMPILE_DEFINITIONS)
+        get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_OPTIONS CEF::Sandbox INTERFACE_COMPILE_OPTIONS)
+        cmake_path(GET obs_browser_sandbox_header PARENT_PATH _obs_browser_sandbox_include_dir)
+        set(_OBS_BUILD_CEF_SANDBOX_RELEASE "${cef_sandbox_release}")
+        set(_OBS_BUILD_CEF_SANDBOX_HEADER "${CEF_INCLUDE_DIR}/cef_sandbox_win.h")
+        set(_OBS_BUILD_BROWSER_SANDBOX_ABI_HEADER "${obs_browser_sandbox_header}")
+        set(_OBS_BUILD_CEF_SANDBOX_INCLUDE_DIRS "${_obs_cef_sandbox_includes};${_obs_browser_sandbox_include_dir}")
+        configure_file(
+          "${CMAKE_SOURCE_DIR}/cmake/windows/libobsCefSandboxBuild.cmake.in"
+          "${_obs_libobs_binary_dir}/libobsCefSandboxBuild.cmake"
+          @ONLY
+        )
+
         if(NOT TARGET cef-sandbox-link-smoke)
           add_executable(cef-sandbox-link-smoke "${CMAKE_SOURCE_DIR}/cmake/windows/cef-sandbox-link-smoke.cpp")
           target_link_libraries(cef-sandbox-link-smoke PRIVATE CEF::Sandbox)
