@@ -1,12 +1,11 @@
 name: 'CI Multiplatform Build'
 
 on:
+  # Tag builds and symbol uploads use push.yaml and streamlabs-windows-release.yaml.
   push:
     paths-ignore:
       - '**.md'
     branches: [ "skippy" ]
-    tags:
-      - '*'
   pull_request:
     paths-ignore:
       - '**.md'

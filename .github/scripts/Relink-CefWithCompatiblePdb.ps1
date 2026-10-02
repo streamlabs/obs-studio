@@ -403,7 +403,11 @@ if ($linkCandidates.Count -ne 1) {
 
 $linkCandidate = $linkCandidates[0]
 $ninjaLinker = Resolve-PathFromBuildDirectory -Path $linkCandidate.Tokens[0] -BuildDirectory $cefOut
-$linker = Resolve-Executable -Name 'lld-link.exe' -RequestedPath $LinkerPath -Candidates @($ninjaLinker)
+$linker = if ($LinkerPath) {
+  Resolve-Executable -Name 'lld-link.exe' -RequestedPath $LinkerPath
+} else {
+  $ninjaLinker
+}
 
 $sourceRspArgument = $linkCandidate.ResponseArgument.Substring(1)
 $sourceRsp = Resolve-PathFromBuildDirectory -Path $sourceRspArgument -BuildDirectory $cefOut
