@@ -82,6 +82,67 @@ function Get-PdbIdentity {
   }
 }
 
+function Resolve-PhysicalPath {
+  param(
+    [Parameter(Mandatory)]
+    [string] $Path
+  )
+
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $root = [System.IO.Path]::GetPathRoot($fullPath)
+  $current = $root
+  $components = $fullPath.Substring($root.Length).TrimStart('\', '/') -split '[\\/]+'
+  for ($index = 0; $index -lt $components.Count; $index++) {
+    $candidate = Join-Path $current $components[$index]
+    try {
+      $item = Get-Item -LiteralPath $candidate -Force -ErrorAction Stop
+    } catch [System.Management.Automation.ItemNotFoundException] {
+      if ($index -ne $components.Count - 1) {
+        throw "Could not inspect path component: $candidate"
+      }
+      if ([System.IO.FileInfo]::new($candidate).LinkTarget) {
+        throw "The public PDB output is a dangling link: $candidate"
+      }
+      return [System.IO.Path]::GetFullPath($candidate)
+    }
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+      $target = $item.ResolveLinkTarget($true)
+      if ($null -eq $target -or -not $target.Exists) {
+        throw "Could not resolve reparse point or its target: $candidate"
+      }
+      $current = $target.FullName
+    } else {
+      $current = $item.FullName
+    }
+  }
+  return [System.IO.Path]::GetFullPath($current)
+}
+
+function Assert-SafePublicPdbPath {
+  param(
+    [Parameter(Mandatory)]
+    [string] $CefOut,
+
+    [Parameter(Mandatory)]
+    [string] $PrivatePdb,
+
+    [Parameter(Mandatory)]
+    [string] $PublicPdb
+  )
+
+  $cefOutPhysical = Resolve-PhysicalPath -Path $CefOut
+  $privatePdbPhysical = Resolve-PhysicalPath -Path $PrivatePdb
+  $publicPdbPhysical = Resolve-PhysicalPath -Path $PublicPdb
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  if ($publicPdbPhysical.Equals($privatePdbPhysical, $comparison)) {
+    throw 'The public PDB output must not overwrite the private PDB.'
+  }
+  if (-not $publicPdbPhysical.StartsWith("$($cefOutPhysical.TrimEnd('\', '/'))$([System.IO.Path]::DirectorySeparatorChar)",
+      $comparison)) {
+    throw "The public PDB output resolves outside the CEF output directory: $publicPdbPhysical"
+  }
+}
+
 $cefOut = (Resolve-Path -LiteralPath $CefOutDirectory).Path
 $cefRoot = (Resolve-Path -LiteralPath (Join-Path $cefOut '..')).Path
 $cefSource = (Resolve-Path -LiteralPath (Join-Path $cefOut '..\..')).Path
@@ -112,10 +173,12 @@ if (
 ) {
   throw "The public PDB output must remain inside the CEF output directory: $cefOut"
 }
+Assert-SafePublicPdbPath -CefOut $cefOut -PrivatePdb $privatePdb -PublicPdb $publicPdb
 if (Test-Path -LiteralPath $publicPdb) {
   if (-not $ReplaceExisting) {
     throw "The public PDB already exists. Pass -ReplaceExisting to regenerate it: $publicPdb"
   }
+  Assert-SafePublicPdbPath -CefOut $cefOut -PrivatePdb $privatePdb -PublicPdb $publicPdb
   Remove-Item -LiteralPath $publicPdb -Force
 }
 
@@ -133,6 +196,7 @@ $pdbUtil = Resolve-Executable -Name 'llvm-pdbutil.exe' -RequestedPath $LlvmPdbUt
   (Join-Path $env:ProgramFiles 'Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe')
 )
 
+Assert-SafePublicPdbPath -CefOut $cefOut -PrivatePdb $privatePdb -PublicPdb $publicPdb
 $pdbCopyOutput = @(& $pdbCopy $privatePdb $publicPdb -p 2>&1)
 if ($LASTEXITCODE -ne 0) {
   throw (

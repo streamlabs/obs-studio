@@ -86,6 +86,14 @@ if(NOT DEFINED _CEF_CACHED_DISCOVERY_KEY OR NOT "${_CEF_CACHED_DISCOVERY_KEY}" S
       CEF_SANDBOX_LIBRARY_RELEASE
       CEF_LIBRARY
   )
+    if(DEFINED CACHE{${_CEF_CACHED_RESULT}})
+      get_property(_CEF_CACHE_HELP CACHE "${_CEF_CACHED_RESULT}" PROPERTY HELPSTRING)
+      # CMake marks -D cache entries this way, including typed :FILEPATH
+      # overrides. Keep them; find_* results have their DOC help strings.
+      if(_CEF_CACHE_HELP STREQUAL "No help, variable specified on the command line.")
+        continue()
+      endif()
+    endif()
     unset(${_CEF_CACHED_RESULT})
     unset(${_CEF_CACHED_RESULT} CACHE)
   endforeach()
