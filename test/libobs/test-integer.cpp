@@ -98,6 +98,8 @@ TEST_CASE("Integer rescaling handles rounding and products wider than 64 bits", 
 		{max64, 2, 2, max64},
 		{max64, 1000000000, 1000000000, max64},
 		{max64, max64, max64, max64},
+		{0x100000000ULL, 0x100000000ULL, 0x100000001ULL, 0xffffffffULL},
+		{max64 - 1, 0x100000000ULL, 0x100000001ULL, max64 - 0x100000000ULL},
 		{max64 - 1, max64 - 1, max64, max64 - 2},
 	};
 	for (const auto &test : cases) {

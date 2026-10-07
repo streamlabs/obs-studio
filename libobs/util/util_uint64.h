@@ -27,6 +27,8 @@ static inline uint64_t util_mul_div64(uint64_t num, uint64_t mul, uint64_t div)
 	const unsigned __int64 low = _umul128(num, mul, &high);
 	unsigned __int64 rem;
 	return _udiv128(high, low, div, &rem);
+#elif defined(__SIZEOF_INT128__)
+	return (uint64_t)((__uint128_t)num * mul / div);
 #else
 	const uint64_t rem = num % div;
 	return (num / div) * mul + (rem * mul) / div;
