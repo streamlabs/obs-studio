@@ -1,12 +1,11 @@
 name: 'CI Multiplatform Build'
 
 on:
+  # Tag builds and symbol uploads use push.yaml and streamlabs-windows-release.yaml.
   push:
     paths-ignore:
       - '**.md'
     branches: [ "skippy" ]
-    tags:
-      - '*'
   pull_request:
     paths-ignore:
       - '**.md'
@@ -116,7 +115,7 @@ jobs:
           CefBuildConfig: Debug
     env:
       OS_TAG: "windows64"
-      CEF_VERSION: 5060
+      CEF_VERSION: 6613
       CEF_REVISION: v3
       WIN_DEPS_VERSION: windows-deps-2024-05-08sl2-x64
       WIN_DEPS_VERSION_X86: 2024-05-08
