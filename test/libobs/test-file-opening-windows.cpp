@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <sys/stat.h>
 
 namespace {
 
@@ -129,6 +130,20 @@ void createSymlink(const std::filesystem::path &link, const std::filesystem::pat
 	if (error == ERROR_PRIVILEGE_NOT_HELD)
 		SKIP("Symbolic link creation requires Windows Developer Mode or the create-symbolic-link privilege.");
 	FAIL("CreateSymbolicLinkW failed for " << link.u8string() << " with Windows error " << error);
+}
+
+TEST_CASE("File stat accepts ordinary paths and rejects paths beyond its conversion buffer", "[util][file][windows]")
+{
+	TestFiles files;
+	files.initialize();
+	struct stat info{};
+	REQUIRE(os_stat((files.root / L"target.bin").u8string().c_str(), &info) == 0);
+	CHECK(info.st_size == 4);
+	for (size_t length : {512, 700, 1023}) {
+		CAPTURE(length);
+		const std::string path(length, 'a');
+		CHECK(os_stat(path.c_str(), &info) == -1);
+	}
 }
 
 TEST_CASE("File output creates a regular file and permits concurrent writers", "[util][file][windows]")

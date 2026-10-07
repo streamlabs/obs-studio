@@ -86,7 +86,7 @@ static inline void cf_convert_from_escape_literal(char **p_dst, const char **p_s
 
 char *cf_literal_to_str(const char *literal, size_t count)
 {
-	const char *temp_src;
+	const char *temp_src, *end;
 	char *str, *temp_dst;
 
 	if (!count)
@@ -100,11 +100,12 @@ char *cf_literal_to_str(const char *literal, size_t count)
 		return NULL;
 
 	/* strip leading and trailing quote characters */
-	str = bzalloc(--count);
+	end = literal + count - 1;
+	str = bzalloc(count - 1);
 	temp_src = literal + 1;
 	temp_dst = str;
 
-	while (*temp_src && --count > 0) {
+	while (temp_src < end && *temp_src) {
 		if (*temp_src == '\\') {
 			temp_src++;
 			cf_convert_from_escape_literal(&temp_dst, &temp_src);
@@ -281,7 +282,7 @@ static void cf_lexer_getstrtoken(struct cf_lexer *lex, struct cf_token *out_toke
 		*lex->write_offset++ = *offset;
 		out_token->str.len++;
 
-		escaped = (allow_escaped_delimiters && *offset == '\\');
+		escaped = (allow_escaped_delimiters && !escaped && *offset == '\\');
 		offset++;
 	}
 

@@ -67,14 +67,18 @@ static inline struct half half_from_float(float f)
 		} else {
 			Result = 0x7C00U; // INF
 		}
-	} else if (!IValue) {
+	} else if (IValue <= 0x33000000U) {
+		// Values at or below half the smallest subnormal round to signed zero.
 		Result = 0;
 	} else {
 		if (IValue < 0x38800000U) {
 			// The number is too small to be represented as a normalized half.
 			// Convert it to a denormalized value.
 			uint32_t Shift = 113U - (IValue >> 23U);
-			IValue = (0x800000U | (IValue & 0x7FFFFFU)) >> Shift;
+			uint32_t Mantissa = 0x800000U | (IValue & 0x7FFFFFU);
+			// Preserve discarded bits for rounding values just above a tie.
+			uint32_t Sticky = (Mantissa & ((1U << Shift) - 1U)) != 0;
+			IValue = (Mantissa >> Shift) | Sticky;
 		} else {
 			// Rebias the exponent to represent the value as a normalized half.
 			IValue += 0xC8000000U;

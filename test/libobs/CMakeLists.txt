@@ -23,6 +23,12 @@ add_executable(
   test-calldata.cpp
   test-integer.cpp
   test-math.cpp
+  test-crc32.cpp
+  test-media-helpers.cpp
+  test-color.cpp
+  test-unicode.cpp
+  test-lexer.cpp
+  test-declarations.cpp
 )
 add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)

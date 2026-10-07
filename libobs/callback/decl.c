@@ -136,33 +136,35 @@ static int parse_param(struct cf_parser *cfp, struct decl_info *decl)
 	return PARSE_SUCCESS;
 }
 
-static void parse_params(struct cf_parser *cfp, struct decl_info *decl)
+static bool parse_params(struct cf_parser *cfp, struct decl_info *decl)
 {
 	struct cf_token peek;
 	int code;
 
 	if (!cf_peek_valid_token(cfp, &peek))
-		return;
+		return false;
 
 	while (peek.type == CFTOKEN_NAME) {
 		code = parse_param(cfp, decl);
 		if (code == PARSE_EOF)
-			return;
+			return false;
 
 		if (code != PARSE_CONTINUE && !cf_next_valid_token(cfp))
-			return;
+			return false;
 
 		if (cf_token_is(cfp, ")"))
 			break;
 		else if (cf_token_should_be(cfp, ",", ",", NULL) == PARSE_EOF)
-			return;
+			return false;
 
 		if (!cf_peek_valid_token(cfp, &peek))
-			return;
+			return false;
 	}
 
 	if (!cf_token_is(cfp, ")"))
-		cf_next_token_should_be(cfp, ")", NULL, NULL);
+		return cf_next_token_should_be(cfp, ")", NULL, NULL) == PARSE_SUCCESS;
+
+	return true;
 }
 
 static void print_errors(struct cf_parser *cfp, const char *decl_string)
@@ -191,26 +193,28 @@ bool parse_decl_string(struct decl_info *decl, const char *decl_string)
 	if (!cf_parser_parse(&cfp, decl_string, "declaration"))
 		goto fail;
 
+	while (cfp.cur_token->type == CFTOKEN_SPACETAB || cfp.cur_token->type == CFTOKEN_NEWLINE)
+		cfp.cur_token++;
+
 	code = cf_get_name_ref(&cfp, &ret_type, "return type", NULL);
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
 	if (!get_type(&ret_type, &ret_param.type, true))
 		cf_adderror_expecting(&cfp, "return type");
 
 	code = cf_next_name(&cfp, &decl->name, "function name", "(");
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
 	if (is_reserved_name(decl->name))
 		err_reserved_name(&cfp, decl->name);
 
 	code = cf_next_token_should_be(&cfp, "(", "(", NULL);
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
-	parse_params(&cfp, decl);
-	success = true;
+	success = parse_params(&cfp, decl);
 
 fail:
 	if (error_data_has_errors(&cfp.error_list))

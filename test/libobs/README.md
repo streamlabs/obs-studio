@@ -35,14 +35,32 @@ and run the complete suite.
 
 ## Low-level tests
 
-The deque, dynamic-string, calldata, integer-arithmetic, and CPU-math tests do not
-start OBS or require plugins, graphics devices, or capture devices. Owned buffers
-are released by local scope guards. Deque and string tests include deterministic
-mixed-operation sequences checked against standard-library containers; failures
-report the operation and step so the fixed-seed sequence can be reproduced.
+The low-level tests cover containers, calldata, integer arithmetic, CPU math,
+CRC32, audio and frame-rate helpers, packed colors, sRGB, half floats, Unicode,
+lexers, and callback declaration parsing. They do not start OBS or require
+plugins, graphics devices, or capture devices. Owned buffers are released by
+local scope guards. Deque and string tests include deterministic mixed-operation
+sequences checked against standard-library containers; failures report the
+operation and step so the fixed-seed sequence can be reproduced.
 
-After building, run just this group with:
+After building, run the container, calldata, integer, and transform tests with:
 
 ```powershell
 ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "libobs_unit_tests::(Deque|Dstr|Calldata|Integer|Math)"
 ```
+
+Run the checksum, media-helper, color, Unicode, and parsing tests with:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "libobs_unit_tests::(CRC32|Audio helpers|Frame rate|Color|Half|Unicode|Lexer|Declaration)"
+```
+
+Unicode fixtures account for UTF-16 versus UTF-32 wide characters and the
+different malformed-input policies of the Windows and portable converters.
+Buffer-boundary tests place guard values outside the advertised destination
+capacity. CRC and color conversions include fixed reference values, and lexer
+tests assert token content and order as well as success or failure.
+
+Callback fixtures also check signal delivery and procedure input/output through
+the real handlers without starting OBS. The lifecycle smoke tests exercise the
+built-in source signal declarations and audio sync callback adjustments.

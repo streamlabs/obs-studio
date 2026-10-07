@@ -65,4 +65,39 @@ TEST_CASE("OBS scene exposes its source and releases before shutdown", "[scene][
 	CHECK_FALSE(obs_initialized());
 }
 
+TEST_CASE("OBS audio sync signals preserve input and callback adjusted offsets", "[core][callback][lifecycle]")
+{
+	REQUIRE_FALSE(obs_initialized());
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	struct {
+		int calls = 0;
+		obs_source_t *source = nullptr;
+		long long offset = 0;
+	} state;
+	std::unique_ptr<obs_scene_t, decltype(&obs_scene_release)> scene(obs_scene_create("audio sync test"),
+									 obs_scene_release);
+	REQUIRE(scene);
+	obs_source_t *source = obs_scene_get_source(scene.get());
+	REQUIRE(source);
+	signal_handler_t *signals = obs_source_get_signal_handler(source);
+	const auto callback = +[](void *data, calldata_t *args) {
+		auto &callbackState = *static_cast<decltype(state) *>(data);
+		++callbackState.calls;
+		callbackState.source = static_cast<obs_source_t *>(calldata_ptr(args, "source"));
+		callbackState.offset = calldata_int(args, "offset");
+		calldata_set_int(args, "offset", callbackState.offset + 50000000);
+	};
+	signal_handler_connect(signals, "audio_sync", callback, &state);
+	obs_source_set_sync_offset(source, 250000000);
+	CHECK(state.calls == 1);
+	CHECK(state.source == source);
+	CHECK(state.offset == 250000000);
+	CHECK(obs_source_get_sync_offset(source) == 300000000);
+	signal_handler_disconnect(signals, "audio_sync", callback, &state);
+	obs_source_set_sync_offset(source, -100000000);
+	CHECK(state.calls == 1);
+	CHECK(obs_source_get_sync_offset(source) == -100000000);
+}
+
 } // namespace
