@@ -136,35 +136,37 @@ static int parse_param(struct cf_parser *cfp, struct decl_info *decl)
 	return PARSE_SUCCESS;
 }
 
-static bool parse_params(struct cf_parser *cfp, struct decl_info *decl)
+static void parse_params(struct cf_parser *cfp, struct decl_info *decl)
 {
 	struct cf_token peek;
 	int code;
 
 	if (!cf_peek_valid_token(cfp, &peek))
-		return false;
+		return;
 
 	while (peek.type == CFTOKEN_NAME) {
 		code = parse_param(cfp, decl);
 		if (code == PARSE_EOF)
-			return false;
+			return;
 
 		if (code != PARSE_CONTINUE && !cf_next_valid_token(cfp))
-			return false;
+			return;
 
 		if (cf_token_is(cfp, ")"))
 			break;
 		else if (cf_token_should_be(cfp, ",", ",", NULL) == PARSE_EOF)
-			return false;
+			return;
 
 		if (!cf_peek_valid_token(cfp, &peek))
-			return false;
+			return;
+		if (peek.type != CFTOKEN_NAME) {
+			cf_adderror_expecting(cfp, "parameter");
+			return;
+		}
 	}
 
 	if (!cf_token_is(cfp, ")"))
-		return cf_next_token_should_be(cfp, ")", NULL, NULL) == PARSE_SUCCESS;
-
-	return true;
+		cf_next_token_should_be(cfp, ")", NULL, NULL);
 }
 
 static void print_errors(struct cf_parser *cfp, const char *decl_string)
@@ -214,7 +216,10 @@ bool parse_decl_string(struct decl_info *decl, const char *decl_string)
 	if (code != PARSE_SUCCESS)
 		goto fail;
 
-	success = parse_params(&cfp, decl);
+	parse_params(&cfp, decl);
+	if (!error_data_has_errors(&cfp.error_list) && cf_next_token(&cfp))
+		cf_adderror_expecting(&cfp, "end of declaration");
+	success = true;
 
 fail:
 	if (error_data_has_errors(&cfp.error_list))

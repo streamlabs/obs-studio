@@ -76,7 +76,8 @@ TEST_CASE("Audio helpers convert sample counts and timestamps with integer trunc
 	CHECK(ns_to_audio_frames(48000, 20834) == 1);
 	CHECK(ns_to_audio_frames(48000, 999999999) == 47999);
 	CHECK(ns_to_audio_frames(44100, 1000000000) == 44100);
-	// Both directions require a multiplication intermediate wider than 64 bits.
+	// The direct products exceed 64 bits. These exact divisions can also be
+	// computed by reducing first; test-integer covers overflowing remainders.
 	CHECK(audio_frames_to_ns(48000, 24000000000ULL) == 500000000000000ULL);
 	CHECK(ns_to_audio_frames(48000, 500000000000000ULL) == 24000000000ULL);
 }

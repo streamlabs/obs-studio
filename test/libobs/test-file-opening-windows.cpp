@@ -6,6 +6,7 @@
 #include <winioctl.h>
 
 #include <array>
+#include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -35,6 +36,7 @@ public:
 		RemoveDirectoryW((root / L"junction-dir").c_str());
 		DeleteFileW((root / L"normal.bin").c_str());
 		DeleteFileW((root / L"target.bin").c_str());
+		DeleteFileW((root / L"\u4e2d\U0001f3a5.bin").c_str());
 		DeleteFileW((root / L"target" / L"child.bin").c_str());
 		RemoveDirectoryW((root / L"target").c_str());
 		DeleteFileW(root.c_str()); // Also clean up if directory creation failed.
@@ -54,6 +56,7 @@ public:
 		REQUIRE(CreateDirectoryW(root.c_str(), nullptr));
 		REQUIRE(CreateDirectoryW((root / L"target").c_str(), nullptr));
 		writeSentinel(root / L"target.bin");
+		writeSentinel(root / L"\u4e2d\U0001f3a5.bin");
 		writeSentinel(root / L"target" / L"child.bin");
 	}
 
@@ -139,10 +142,45 @@ TEST_CASE("File stat accepts ordinary paths and rejects paths beyond its convers
 	struct stat info{};
 	REQUIRE(os_stat((files.root / L"target.bin").u8string().c_str(), &info) == 0);
 	CHECK(info.st_size == 4);
+	REQUIRE(os_stat((files.root / L"\u4e2d\U0001f3a5.bin").u8string().c_str(), &info) == 0);
+	CHECK(info.st_size == 4);
+	errno = 0;
+	CHECK(os_stat(std::string(511, 'a').c_str(), &info) == -1);
+	CHECK(errno == ENOENT);
 	for (size_t length : {512, 700, 1023}) {
 		CAPTURE(length);
 		const std::string path(length, 'a');
+		errno = 0;
 		CHECK(os_stat(path.c_str(), &info) == -1);
+		CHECK(errno == 0); // Rejected during conversion, before reaching _wstat64.
+	}
+}
+
+TEST_CASE("Unicode BOM detection respects bounded input at a guard page", "[util][unicode][windows]")
+{
+	SYSTEM_INFO info{};
+	GetSystemInfo(&info);
+	const auto release = [](char *p) {
+		if (p)
+			VirtualFree(p, 0, MEM_RELEASE);
+	};
+	std::unique_ptr<char, decltype(release)> pages(static_cast<char *>(VirtualAlloc(nullptr, 2 * info.dwPageSize,
+											MEM_RESERVE | MEM_COMMIT,
+											PAGE_READWRITE)),
+						       release);
+	REQUIRE(pages);
+	char *end = pages.get() + info.dwPageSize;
+	DWORD previous;
+	REQUIRE(VirtualProtect(end, info.dwPageSize, PAGE_NOACCESS, &previous));
+	for (size_t length : {1, 2}) {
+		CAPTURE(length);
+		char *input = end - length;
+		memcpy(input, "\xef\xbb", length);
+		std::array<wchar_t, 3> output{};
+		CHECK(os_utf8_to_wcs(input, length, nullptr, 0) == 1);
+		CHECK(os_utf8_to_wcs(input, length, output.data(), output.size()) == 1);
+		CHECK(output[0] == L'\ufffd');
+		CHECK(output[1] == 0);
 	}
 }
 

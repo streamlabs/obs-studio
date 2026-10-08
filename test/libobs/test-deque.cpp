@@ -121,6 +121,62 @@ TEST_CASE("Deque placement crosses the wrap boundary and zero fills gaps", "[uti
 	expectBytes(queue, {'e', 'f', 'W', 'X', 'Y', 'Z', 0, 0, 0, '!'});
 }
 
+TEST_CASE("Deque grows a full wrapped buffer whose start equals its end", "[util][deque]")
+{
+	DequeStorage storage;
+	auto &queue = storage.value;
+	deque_reserve(&queue, 8);
+	deque_push_back(&queue, "abcdefgh", 8);
+	deque_pop_front(&queue, nullptr, 3);
+	deque_push_back(&queue, "ijk", 3);
+	REQUIRE(queue.size == queue.capacity);
+	REQUIRE(queue.start_pos == 3);
+	REQUIRE(queue.end_pos == queue.start_pos);
+	SECTION("Reserve")
+	{
+		deque_reserve(&queue, 13);
+		expectText(queue, "defghijk");
+	}
+	SECTION("Append")
+	{
+		deque_push_back(&queue, "lm", 2);
+		expectText(queue, "defghijklm");
+	}
+	SECTION("Prepend")
+	{
+		deque_push_front(&queue, "bc", 2);
+		expectText(queue, "bcdefghijk");
+	}
+}
+
+TEST_CASE("Deque zero length operations preserve data and output buffers", "[util][deque]")
+{
+	DequeStorage storage;
+	auto &queue = storage.value;
+	// Keep valid allocated storage even for empty operations; memcpy requires valid pointers.
+	deque_reserve(&queue, 8);
+	SECTION("Empty") {}
+	SECTION("Wrapped")
+	{
+		makeWrapped(queue);
+	}
+	std::vector<uint8_t> before(queue.size);
+	if (!before.empty())
+		deque_peek_front(&queue, before.data(), before.size());
+	char byte = '#';
+	deque_push_front(&queue, &byte, 0);
+	deque_push_back(&queue, &byte, 0);
+	deque_push_front_zero(&queue, 0);
+	deque_push_back_zero(&queue, 0);
+	deque_place(&queue, 0, &byte, 0);
+	deque_peek_front(&queue, &byte, 0);
+	deque_peek_back(&queue, &byte, 0);
+	deque_pop_front(&queue, &byte, 0);
+	deque_pop_back(&queue, &byte, 0);
+	CHECK(byte == '#');
+	expectBytes(queue, before);
+}
+
 TEST_CASE("Deque zero insertion works at both ends and across wraparound", "[util][deque]")
 {
 	DequeStorage storage;
@@ -196,7 +252,7 @@ TEST_CASE("Deque mixed operations agree with a standard deque", "[util][deque]")
 			reference.insert(reference.end(), count, 0);
 			break;
 		case 8:
-			deque_reserve(&queue, reference.size() + count);
+			deque_reserve(&queue, queue.capacity + count);
 			break;
 		}
 		expectBytes(queue, {reference.begin(), reference.end()});

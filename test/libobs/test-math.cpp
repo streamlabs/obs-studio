@@ -200,6 +200,15 @@ TEST_CASE("Math quaternion matrix round trips preserve quarter and half turns", 
 			quat_from_axisang(&original, &rotation);
 			matrix4 matrix, roundTrip;
 			matrix4_from_quat(&matrix, &original);
+			// Independent Rodrigues rotation matrix, including the rotation direction.
+			const float c = std::cos(angle), s = std::sin(angle), t = 1 - c;
+			const float x = axis.x, y = axis.y, z = axis.z;
+			matrix4 expected;
+			matrix4_identity(&expected);
+			vec4_set(&expected.x, t * x * x + c, t * x * y + s * z, t * x * z - s * y, 0);
+			vec4_set(&expected.y, t * x * y - s * z, t * y * y + c, t * y * z + s * x, 0);
+			vec4_set(&expected.z, t * x * z + s * y, t * y * z - s * x, t * z * z + c, 0);
+			expectMatrix(matrix, expected);
 			quat_from_matrix4(&restored, &matrix);
 			matrix4_from_quat(&roundTrip, &restored);
 			expectMatrix(roundTrip, matrix);
@@ -208,6 +217,23 @@ TEST_CASE("Math quaternion matrix round trips preserve quarter and half turns", 
 				component = -component;
 			matrix4_from_quat(&roundTrip, &original);
 			expectMatrix(roundTrip, matrix);
+		}
+	}
+}
+
+TEST_CASE("Math vector4 and quaternion proximity is symmetric in every component", "[graphics][math]")
+{
+	for (size_t component = 0; component < 4; ++component) {
+		for (float difference : {-2.0f, -0.125f, 0.0f, 0.125f, 2.0f}) {
+			CAPTURE(component, difference);
+			vec4 a{}, b{};
+			quat qa{}, qb{};
+			b.ptr[component] = qb.ptr[component] = difference;
+			const bool close = std::abs(difference) < 0.25f;
+			CHECK(bool(vec4_close(&a, &b, 0.25f)) == close);
+			CHECK(bool(vec4_close(&b, &a, 0.25f)) == close);
+			CHECK(quat_close(&qa, &qb, 0.25f) == close);
+			CHECK(quat_close(&qb, &qa, 0.25f) == close);
 		}
 	}
 }

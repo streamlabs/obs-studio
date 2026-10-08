@@ -113,14 +113,45 @@ TEST_CASE("Lexer string references compare bounded slices and order empty string
 	CHECK(strref_cmp(&slice, "ALPHABET") < 0);
 	CHECK(strref_cmp(&slice, "ALP") > 0);
 	CHECK(strref_cmpi(&slice, "alpha") == 0);
+	CHECK(strref_cmpi(&slice, "alph") > 0);
+	CHECK(strref_cmpi(&slice, "alphabet") < 0);
+	CHECK(strref_cmpi(&slice, "beta") < 0);
 	CHECK(strref_cmp_strref(&slice, &shorter) > 0);
 	CHECK(strref_cmp_strref(&shorter, &slice) < 0);
 	CHECK(strref_cmpi_strref(&slice, &lower) == 0);
+	CHECK(strref_cmpi_strref(&slice, &shorter) > 0);
+	CHECK(strref_cmpi_strref(&shorter, &slice) < 0);
 	CHECK(strref_cmp_strref(&empty, &empty) == 0);
 	CHECK(strref_cmp_strref(&empty, &slice) < 0);
 	CHECK(strref_cmp_strref(&slice, &empty) > 0);
 	CHECK(strref_cmpi_strref(&empty, &slice) < 0);
 	CHECK(strref_cmpi_strref(&slice, &empty) > 0);
+}
+
+TEST_CASE("Lexer and string case comparisons accept all high byte values", "[util][lexer][dstr]")
+{
+	for (unsigned byte = 0x80; byte <= 0xff; ++byte) {
+		CAPTURE(byte);
+		const char lower[] = {static_cast<char>(byte), 'a', '\0'};
+		const char upper[] = {static_cast<char>(byte), 'A', '\0'};
+		const strref a{lower, 2}, b{upper, 2};
+		CHECK(astrcmpi(lower, upper) == 0);
+		CHECK(astrcmpi_n(lower, upper, 2) == 0);
+		CHECK(strref_cmpi(&a, upper) == 0);
+		CHECK(strref_cmpi_strref(&a, &b) == 0);
+	}
+}
+
+TEST_CASE("Lexer numeric validation keeps its restricted grammar and null termination", "[util][lexer]")
+{
+	for (const char *text : {".5", "1E3", "--1", " 1", "1 "}) {
+		CAPTURE(text);
+		CHECK_FALSE(valid_int_str(text, 0));
+		CHECK_FALSE(valid_float_str(text, 0));
+	}
+	const char bounded[] = {'1', '\0', 'x'};
+	CHECK(valid_int_str(bounded, sizeof(bounded)));
+	CHECK(valid_float_str(bounded, sizeof(bounded)));
 }
 
 TEST_CASE("Lexer integer validation respects signed substring lengths", "[util][lexer]")
@@ -263,6 +294,13 @@ TEST_CASE("Lexer string literal decoding excludes quotes and expands escapes", "
 		size_t length;
 		std::string expected;
 	} cases[] = {{"\"plain\"", 0, "plain"},
+		     {"\"\"", 0, ""},
+		     {"'\\101'", 0, "A"},
+		     {"'\\7'", 0, "\a"},
+		     {"'\\012'", 0, "\n"},
+		     {"\"\\1012\"", 0, "A2"},
+		     {"'\\x4142'", 0, "B"},
+		     {"'\\x7'", 0, "\a"},
 		     {"\"line\\nnext\\tend\"", 0, "line\nnext\tend"},
 		     {R"lit("quote\"slash\\")lit", 0, "quote\"slash\\"},
 		     {"'\\x41'", 0, "A"},
@@ -289,11 +327,21 @@ TEST_CASE("Lexer string literal decoding accepts a bounded token without a null 
 
 TEST_CASE("Lexer string literal decoding rejects missing or mismatched quotes", "[util][lexer]")
 {
-	for (const char *literal : {"", "\"", "plain", "\"mismatch'"}) {
+	for (const char *literal : {"", "\"", "plain", "\"mismatch'", "'\\x'", "'\\'"}) {
 		CAPTURE(literal);
 		std::unique_ptr<char, decltype(&bfree)> decoded(cf_literal_to_str(literal, 0), bfree);
 		CHECK_FALSE(decoded);
 	}
+}
+
+TEST_CASE("Lexer bounded literals distinguish escaped quotes from closing quotes", "[util][lexer]")
+{
+	const char literal[] = {'"', 'a', '\\', '"', '"', 'x'};
+	std::unique_ptr<char, decltype(&bfree)> valid(cf_literal_to_str(literal, 5), bfree);
+	REQUIRE(valid);
+	CHECK(std::string(valid.get()) == "a\"");
+	std::unique_ptr<char, decltype(&bfree)> incomplete(cf_literal_to_str(literal, 4), bfree);
+	CHECK_FALSE(incomplete);
 }
 
 } // namespace

@@ -4,6 +4,8 @@
 #include <callback/proc.h>
 #include <callback/signal.h>
 
+#include "../../plugins/vlc-video/vlc-video-proc.h"
+
 #include <memory>
 #include <string>
 
@@ -97,12 +99,27 @@ TEST_CASE("Declaration parser tolerates comments and multiline whitespace", "[ca
 
 TEST_CASE("Declaration parser rejects malformed declarations and releases partial state", "[callback][declaration]")
 {
-	for (const char *text :
-	     {"", " \t\n", "/* comment */", "123 bad()", "void ()", "void broken(", "unknown bad()",
-	      "void bad(void value)", "void bad(int value, float value)", "void bad(in in int value)",
-	      "void bad(out out int value)", "void int()", "void bad(int return)", "void bad(int value float other)",
-	      "void bad(int value float other, bool flag)", "void bad(int value", "void bad(int value,",
-	      "void get_metadata(in string tag_id out string tag_data)"}) {
+	for (const char *text : {"",
+				 " \t\n",
+				 "/* comment */",
+				 "123 bad()",
+				 "void ()",
+				 "void broken(",
+				 "unknown bad()",
+				 "void bad(void value)",
+				 "void bad(int value, float value)",
+				 "void bad(in in int value)",
+				 "void bad(out out int value)",
+				 "void int()",
+				 "void bad(int return)",
+				 "void bad(int value float other)",
+				 "void bad(int value float other, bool flag)",
+				 "void bad(int value",
+				 "void bad(int value,",
+				 "void bad(int value,)",
+				 "void bad() junk",
+				 "void bad() void second()",
+				 "void get_metadata(in string tag_id out string tag_data)"}) {
 		DYNAMIC_SECTION(text)
 		{
 			Declaration declaration;
@@ -125,7 +142,7 @@ TEST_CASE("Declaration parser rejects numeric function names", "[callback][decla
 
 TEST_CASE("Declaration procedure registration preserves metadata input and output", "[callback][declaration]")
 {
-	const char *signature = "void get_metadata(in string tag_id, out string tag_data)";
+	const char *signature = VLC_GET_METADATA_DECL;
 	Declaration declaration;
 	REQUIRE(parse_decl_string(&declaration.value, signature));
 	REQUIRE(declaration.value.params.num == 2);

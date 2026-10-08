@@ -5,6 +5,7 @@
 #include <util/util_uint64.h>
 
 #include <limits>
+#include <random>
 
 namespace {
 
@@ -105,7 +106,25 @@ TEST_CASE("Integer rescaling handles rounding and products wider than 64 bits", 
 	for (const auto &test : cases) {
 		CAPTURE(test.numerator, test.multiplier, test.divisor);
 		CHECK(util_mul_div64(test.numerator, test.multiplier, test.divisor) == test.expected);
+		CHECK(util_mul_div64_fallback(test.numerator, test.multiplier, test.divisor) == test.expected);
 	}
+}
+
+TEST_CASE("Integer fallback rescaling agrees with native wide arithmetic", "[util][integer]")
+{
+#if (defined(_MSC_VER) && defined(_M_X64) && _MSC_VER >= 1920) || defined(__SIZEOF_INT128__)
+	std::mt19937_64 random(0x178778);
+	for (size_t i = 0; i < 10000; ++i) {
+		const uint64_t a = random(), b = random();
+		// div >= min(a, b) guarantees that the quotient fits in 64 bits.
+		const uint64_t lower = a < b ? a : b;
+		const uint64_t divisor = lower | random() | 1;
+		CAPTURE(a, b, divisor);
+		CHECK(util_mul_div64_fallback(a, b, divisor) == util_mul_div64(a, b, divisor));
+	}
+#else
+	SKIP("This compiler has no native wide arithmetic; fixed reference vectors still test the fallback");
+#endif
 }
 
 } // namespace

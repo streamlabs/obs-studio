@@ -161,7 +161,9 @@ TEST_CASE("Dstr mixed edits agree with a standard string", "[util][dstr]")
 	for (size_t step = 0; step < 512; ++step) {
 		const unsigned operation = random() % 4;
 		const size_t position = random() % (reference.size() + 1);
-		const std::string text(1 + random() % 8, static_cast<char>('a' + random() % 26));
+		std::string text(1 + random() % 8, '\0');
+		for (char &ch : text)
+			ch = static_cast<char>('a' + random() % 26);
 		CAPTURE(step, operation, position);
 		switch (operation) {
 		case 0:
@@ -185,6 +187,38 @@ TEST_CASE("Dstr mixed edits agree with a standard string", "[util][dstr]")
 		}
 		expectString(value, reference);
 	}
+}
+
+TEST_CASE("Dstr replacement ignores an empty search string", "[util][dstr]")
+{
+	StringStorage storage;
+	dstr_copy(&storage.value, "unchanged");
+	for (const char *replacement : {"", "longer replacement", static_cast<const char *>(nullptr)}) {
+		dstr_replace(&storage.value, "", replacement);
+		expectString(storage.value, "unchanged");
+	}
+}
+
+TEST_CASE("Dstr comparisons distinguish prefixes case and bounded suffixes", "[util][dstr]")
+{
+	StringStorage storage;
+	CHECK(dstr_cmp(&storage.value, nullptr) == 0);
+	CHECK(dstr_cmpi(&storage.value, "") == 0);
+	CHECK(dstr_ncmp(&storage.value, "a", 1) < 0);
+	CHECK(dstr_ncmpi(&storage.value, "a", 1) < 0);
+	dstr_copy(&storage.value, "Alpha");
+	CHECK(dstr_cmp(&storage.value, "Alpha") == 0);
+	CHECK(dstr_cmp(&storage.value, "Alph") > 0);
+	CHECK(dstr_cmp(&storage.value, "Alphabet") < 0);
+	CHECK(dstr_cmp(&storage.value, "alpha") < 0);
+	CHECK(dstr_cmpi(&storage.value, "aLPHA") == 0);
+	CHECK(dstr_cmpi(&storage.value, "aLPH") > 0);
+	CHECK(dstr_cmpi(&storage.value, "aLPHABET") < 0);
+	CHECK(dstr_ncmp(&storage.value, "Alphabet", 5) == 0);
+	CHECK(dstr_ncmp(&storage.value, "Alphabet", 6) < 0);
+	CHECK(dstr_ncmpi(&storage.value, "aLPHABET", 5) == 0);
+	CHECK(dstr_ncmpi(&storage.value, "aLPHABET", 6) < 0);
+	CHECK(dstr_ncmpi(&storage.value, "zzz", 0) == 0);
 }
 
 } // namespace

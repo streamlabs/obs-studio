@@ -2,6 +2,7 @@
 
 #include <util/bmem.h>
 #include <util/platform.h>
+#include <util/utf8.h>
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,9 @@ TEST_CASE("Unicode conversions round trip ASCII BMP and supplementary characters
 	} cases[] = {{"", L""},
 		     {"OBS Studio", L"OBS Studio"},
 		     {"Caf\xc3\xa9 \xe4\xb8\xad", L"Caf\u00e9 \u4e2d"},
-		     {"A\xf0\x9f\x8e\xa5Z", L"A\U0001f3a5Z"}};
+		     {"A\xf0\x9f\x8e\xa5Z", L"A\U0001f3a5Z"},
+		     {"e\xcc\x81", L"e\u0301"},
+		     {"\xed\x9f\xbf\xee\x80\x80\xf0\x90\x80\x80\xf4\x8f\xbf\xbf", L"\ud7ff\ue000\U00010000\U0010ffff"}};
 	for (const auto &test : cases) {
 		CAPTURE(test.utf8);
 		// The wide literal uses UTF-16 on Windows and UTF-32 on macOS/Linux.
@@ -87,8 +90,10 @@ TEST_CASE("Unicode UTF8 to wide rejects buffers without room for the terminator"
 
 TEST_CASE("Unicode wide to UTF8 respects short destination buffers", "[util][unicode]")
 {
-	for (const wchar_t *input : {L"ABC", L"\u20ac"}) {
-		for (size_t capacity = 0; capacity < 4; ++capacity) {
+	for (const wchar_t *input : {L"ABC", L"\u20ac", L"\U0001f3a5"}) {
+		const size_t required = os_wcs_to_utf8(input, 0, nullptr, 0);
+		REQUIRE(required > 0);
+		for (size_t capacity = 0; capacity <= required; ++capacity) {
 			CAPTURE(capacity, static_cast<unsigned>(input[0]));
 			std::array<char, 8> storage;
 			storage.fill('#');
@@ -162,5 +167,90 @@ TEST_CASE("Unicode malformed input follows platform conversion policy", "[util][
 	CHECK(utf8[0] == 0);
 #endif
 }
+
+TEST_CASE("Unicode rejects invalid scalar encodings or uses Windows replacement characters", "[util][unicode]")
+{
+	for (const char *input : {"\xc0\xaf", "\xe0\x80\xaf", "\xf0\x80\x80\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80",
+				  "\xf8\x88\x80\x80\x80", "\xfc\x84\x80\x80\x80\x80", "\xe2\x82", "\x80"}) {
+		CAPTURE(input);
+		std::array<wchar_t, 10> output{};
+#ifdef _WIN32
+		// Windows may group multiple invalid bytes into one replacement character.
+		const size_t required = os_utf8_to_wcs(input, 0, nullptr, 0);
+		REQUIRE(required > 0);
+		REQUIRE(required <= strlen(input));
+		const std::wstring expected(required, L'\ufffd');
+		CHECK(os_utf8_to_wcs(input, 0, output.data(), output.size()) == required);
+		CHECK(std::wstring(output.data()) == expected);
+#else
+		CHECK(os_utf8_to_wcs(input, 0, nullptr, 0) == 0);
+		CHECK(os_utf8_to_wcs(input, 0, output.data(), output.size()) == 0);
+		CHECK(output[0] == 0);
+#endif
+	}
+	for (const std::wstring &input :
+	     {std::wstring(1, static_cast<wchar_t>(0xd800)), std::wstring(1, static_cast<wchar_t>(0xdc00)),
+	      std::wstring{static_cast<wchar_t>(0xdc00), static_cast<wchar_t>(0xd800)}}) {
+		std::array<char, 10> output{};
+#ifdef _WIN32
+		const std::string expected = input.size() == 1 ? "\xef\xbf\xbd" : "\xef\xbf\xbd\xef\xbf\xbd";
+		CHECK(os_wcs_to_utf8(input.c_str(), input.size(), nullptr, 0) == expected.size());
+		CHECK(os_wcs_to_utf8(input.c_str(), input.size(), output.data(), output.size()) == expected.size());
+		CHECK(std::string(output.data()) == expected);
+#else
+		CHECK(os_wcs_to_utf8(input.c_str(), input.size(), nullptr, 0) == 0);
+		CHECK(os_wcs_to_utf8(input.c_str(), input.size(), output.data(), output.size()) == 0);
+		CHECK(output[0] == 0);
+#endif
+	}
+#ifndef _WIN32
+	for (wchar_t invalid :
+	     {static_cast<wchar_t>(0x110000), static_cast<wchar_t>(0x200000), static_cast<wchar_t>(-1)}) {
+		CAPTURE(static_cast<uint32_t>(invalid));
+		std::array<char, 10> output{};
+		CHECK(os_wcs_to_utf8(&invalid, 1, nullptr, 0) == 0);
+		CHECK(os_wcs_to_utf8(&invalid, 1, output.data(), output.size()) == 0);
+		CHECK(output[0] == 0);
+	}
+#endif
+}
+
+TEST_CASE("Unicode conversions preserve the established platform BOM policy", "[util][unicode]")
+{
+	const char *input = "\xef\xbb\xbf"
+			    "A\xef\xbb\xbf";
+#ifdef _WIN32
+	const std::wstring expected = L"A\ufeff";
+#else
+	const std::wstring expected = L"\ufeffA\ufeff";
+#endif
+	std::array<wchar_t, 8> wide{};
+	CHECK(os_utf8_to_wcs(input, 0, nullptr, 0) == expected.size());
+	CHECK(os_utf8_to_wcs(input, 0, wide.data(), wide.size()) == expected.size());
+	CHECK(std::wstring(wide.data()) == expected);
+	std::array<char, 10> utf8{};
+	CHECK(os_wcs_to_utf8(L"\ufeffA\ufeff", 0, utf8.data(), utf8.size()) == strlen(input));
+	CHECK(std::string(utf8.data()) == input);
+}
+
+#ifndef _WIN32
+TEST_CASE("Unicode portable flags validate and count identically with and without output", "[util][unicode]")
+{
+	const char input[] = "\xef\xbb\xbf"
+			     "A\xe0\x80\xaf"
+			     "B\xed\xa0\x80"
+			     "C\xef\xbb\xbf";
+	const wchar_t wideInput[] = {0xfeff, L'A', 0xd800, L'B', 0x110000, L'C', 0xfeff};
+	const int flags = UTF8_IGNORE_ERROR | UTF8_SKIP_BOM;
+	std::array<wchar_t, 5> wideOutput{L'#', L'#', L'#', L'#', L'#'};
+	std::array<char, 5> utf8Output{'#', '#', '#', '#', '#'};
+	CHECK(utf8_to_wchar(input, sizeof(input) - 1, nullptr, 0, flags) == 3);
+	CHECK(utf8_to_wchar(input, sizeof(input) - 1, wideOutput.data() + 1, 3, flags) == 3);
+	CHECK(wideOutput == std::array<wchar_t, 5>{L'#', L'A', L'B', L'C', L'#'});
+	CHECK(wchar_to_utf8(wideInput, 7, nullptr, 0, flags) == 3);
+	CHECK(wchar_to_utf8(wideInput, 7, utf8Output.data() + 1, 3, flags) == 3);
+	CHECK(utf8Output == std::array<char, 5>{'#', 'A', 'B', 'C', '#'});
+}
+#endif
 
 } // namespace

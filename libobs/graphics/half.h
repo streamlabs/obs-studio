@@ -60,8 +60,8 @@ static inline struct half half_from_float(float f)
 	uint32_t Sign = (IValue & 0x80000000U) >> 16U;
 	IValue = IValue & 0x7FFFFFFFU; // Hack off the sign
 
-	if (IValue > 0x477FE000U) {
-		// The number is too large to be represented as a half.  Saturate to infinity.
+	if (IValue >= 0x477FF000U) {
+		// Values at or above 65520 round to infinity; smaller values can round to 65504.
 		if (((IValue & 0x7F800000) == 0x7F800000) && ((IValue & 0x7FFFFF) != 0)) {
 			Result = 0x7FFF; // NAN
 		} else {

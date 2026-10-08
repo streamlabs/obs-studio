@@ -78,6 +78,19 @@ TEST_CASE("Color sRGB conversion leaves alpha in linear coverage units", "[graph
 	CHECK_THAT(value.w, WithinAbs(128.0 / 255, 1e-7));
 }
 
+TEST_CASE("Color float packing clamps channels and maps NaN to zero", "[graphics][color]")
+{
+	for (float value :
+	     {-1.0f, -0.01f, -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
+		CAPTURE(value);
+		CHECK(gs_float_to_u8(value) == 0);
+	}
+	for (float value : {1.01f, 2.0f, std::numeric_limits<float>::infinity()}) {
+		CAPTURE(value);
+		CHECK(gs_float_to_u8(value) == 255);
+	}
+}
+
 using Premultiply = void (*)(uint8_t *, size_t);
 using CopyPremultiply = void (*)(uint8_t *, const uint8_t *, size_t);
 
@@ -176,6 +189,40 @@ TEST_CASE("Half conversion preserves infinity signs and represents NaN as NaN", 
 	const uint16_t nan = half_from_float(std::numeric_limits<float>::quiet_NaN()).u;
 	CHECK((nan & 0x7c00) == 0x7c00);
 	CHECK((nan & 0x03ff) != 0);
+}
+
+TEST_CASE("Half conversion rounds at exponent carry and overflow boundaries", "[graphics][half]")
+{
+	// Midpoint between the largest half below 2 and 2: the mantissa carries into the exponent.
+	const float midpoint = 2.0f - std::ldexp(1.0f, -11);
+	CHECK(half_from_float(std::nextafter(midpoint, 0.0f)).u == 0x3fff);
+	CHECK(half_from_float(midpoint).u == 0x4000);
+	CHECK(half_from_float(std::nextafter(midpoint, 3.0f)).u == 0x4000);
+	for (float value : {65504.0f, 65505.0f, std::nextafter(65520.0f, 0.0f)}) {
+		CAPTURE(value);
+		CHECK(half_from_float(value).u == 0x7bff);
+		CHECK(half_from_float(-value).u == 0xfbff);
+	}
+	CHECK(half_from_float(65520.0f).u == 0x7c00);
+	CHECK(half_from_float(-65520.0f).u == 0xfc00);
+}
+
+TEST_CASE("Half conversion handles raw float subnormals and signed NaNs", "[graphics][half]")
+{
+	// Construct bits directly: ldexp can flush float subnormals to zero before conversion.
+	for (uint32_t bits : {0x00000001U, 0x007fffffU, 0x80000001U, 0x807fffffU, 0x7fc00000U, 0xffc00000U}) {
+		CAPTURE(bits);
+		float value;
+		memcpy(&value, &bits, sizeof(value));
+		const uint16_t result = half_from_float(value).u;
+		CHECK((result & 0x8000) == (bits >> 16 & 0x8000));
+		if ((bits & 0x7f800000) == 0x7f800000) {
+			CHECK((result & 0x7c00) == 0x7c00);
+			CHECK((result & 0x03ff) != 0);
+		} else {
+			CHECK((result & 0x7fff) == 0);
+		}
+	}
 }
 
 } // namespace

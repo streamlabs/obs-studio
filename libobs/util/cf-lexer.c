@@ -19,12 +19,15 @@
 #include "platform.h"
 #include "cf-lexer.h"
 
-static inline void cf_convert_from_escape_literal(char **p_dst, const char **p_src)
+static inline bool cf_convert_from_escape_literal(char **p_dst, const char **p_src, const char *end)
 {
 	char *dst = *p_dst;
 	const char *src = *p_src;
+	if (src == end)
+		return false;
+	const char escape = *(src++);
 
-	switch (*(src++)) {
+	switch (escape) {
 	case '\'':
 		*(dst++) = '\'';
 		break;
@@ -36,9 +39,6 @@ static inline void cf_convert_from_escape_literal(char **p_dst, const char **p_s
 		break;
 	case '\\':
 		*(dst++) = '\\';
-		break;
-	case '0':
-		*(dst++) = '\0';
 		break;
 	case 'a':
 		*(dst++) = '\a';
@@ -64,16 +64,26 @@ static inline void cf_convert_from_escape_literal(char **p_dst, const char **p_s
 
 	/* hex */
 	case 'X':
-	case 'x':
-		*(dst++) = (char)strtoul(src, NULL, 16);
-		src += 2;
+	case 'x': {
+		if (src == end || !isxdigit((unsigned char)*src))
+			return false;
+		unsigned char value = 0;
+		while (src < end && isxdigit((unsigned char)*src)) {
+			unsigned char digit = (unsigned char)*(src++);
+			digit = digit <= '9' ? digit - '0' : (digit & ~0x20) - 'A' + 10;
+			value = (unsigned char)(value * 16 + digit);
+		}
+		*(dst++) = (char)value;
 		break;
+	}
 
 	/* oct */
 	default:
-		if (isdigit(*src)) {
-			*(dst++) = (char)strtoul(src, NULL, 8);
-			src += 3;
+		if (escape >= '0' && escape <= '7') {
+			unsigned char value = escape - '0';
+			for (int i = 1; i < 3 && src < end && *src >= '0' && *src <= '7'; ++i)
+				value = (unsigned char)(value * 8 + *(src++) - '0');
+			*(dst++) = (char)value;
 		}
 
 		/* case 'u':
@@ -82,6 +92,7 @@ static inline void cf_convert_from_escape_literal(char **p_dst, const char **p_s
 
 	*p_dst = dst;
 	*p_src = src;
+	return true;
 }
 
 char *cf_literal_to_str(const char *literal, size_t count)
@@ -108,7 +119,10 @@ char *cf_literal_to_str(const char *literal, size_t count)
 	while (temp_src < end && *temp_src) {
 		if (*temp_src == '\\') {
 			temp_src++;
-			cf_convert_from_escape_literal(&temp_dst, &temp_src);
+			if (!cf_convert_from_escape_literal(&temp_dst, &temp_src, end)) {
+				bfree(str);
+				return NULL;
+			}
 		} else {
 			*(temp_dst++) = *(temp_src++);
 		}

@@ -61,6 +61,15 @@ Buffer-boundary tests place guard values outside the advertised destination
 capacity. CRC and color conversions include fixed reference values, and lexer
 tests assert token content and order as well as success or failure.
 
+Container assertions remain enabled in the test executable even in release
+configurations. Integer tests exercise the portable fallback on every platform,
+including comparisons against native wide arithmetic where available. Windows
+Unicode tests also place short input slices immediately before an inaccessible
+guard page to detect reads beyond the supplied length.
+
 Callback fixtures also check signal delivery and procedure input/output through
 the real handlers without starting OBS. The lifecycle smoke tests exercise the
 built-in source signal declarations and audio sync callback adjustments.
+The VLC metadata declaration is shared with the plugin, so the registration test
+uses its actual signature without loading VLC. Source creation must not emit
+declaration diagnostics, including warnings from the parser.

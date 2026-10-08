@@ -159,4 +159,24 @@ TEST_CASE("Calldata fixed buffer accepts a payload that exactly fits", "[callbac
 	CHECK(fixed.value.size == dynamic.value.size);
 }
 
+TEST_CASE("Calldata growing a fixed parameter to exact capacity moves its neighbor safely", "[callback][calldata]")
+{
+	CallData dynamic;
+	calldata_set_string(&dynamic.value, "text", "longer value");
+	calldata_set_int(&dynamic.value, "neighbor", 42);
+	const size_t capacity = dynamic.value.size;
+	std::vector<uint8_t> buffer(capacity + 2, 0xa5);
+	CallData fixed;
+	calldata_init_fixed(&fixed.value, buffer.data() + 1, capacity);
+	calldata_set_string(&fixed.value, "text", "x");
+	calldata_set_int(&fixed.value, "neighbor", 42);
+	REQUIRE(fixed.value.size < capacity);
+	calldata_set_string(&fixed.value, "text", "longer value");
+	CHECK(fixed.value.size == capacity);
+	expectString(fixed.value, "text", "longer value");
+	CHECK(calldata_int(&fixed.value, "neighbor") == 42);
+	CHECK(buffer.front() == 0xa5);
+	CHECK(buffer.back() == 0xa5);
+}
+
 } // namespace
