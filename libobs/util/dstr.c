@@ -43,8 +43,8 @@ int astrcmpi(const char *str1, const char *str2)
 		str2 = astrblank;
 
 	do {
-		char ch1 = (char)toupper(*str1);
-		char ch2 = (char)toupper(*str2);
+		char ch1 = (char)toupper((unsigned char)*str1);
+		char ch2 = (char)toupper((unsigned char)*str2);
 
 		if (ch1 < ch2)
 			return -1;
@@ -129,8 +129,8 @@ int astrcmpi_n(const char *str1, const char *str2, size_t n)
 		str2 = astrblank;
 
 	do {
-		char ch1 = (char)toupper(*str1);
-		char ch2 = (char)toupper(*str2);
+		char ch1 = (char)toupper((unsigned char)*str1);
+		char ch2 = (char)toupper((unsigned char)*str2);
 
 		if (ch1 < ch2)
 			return -1;
@@ -603,7 +603,7 @@ void dstr_replace(struct dstr *str, const char *find, const char *replace)
 	size_t find_len, replace_len;
 	char *temp;
 
-	if (dstr_is_empty(str))
+	if (dstr_is_empty(str) || !*find)
 		return;
 
 	if (!replace)

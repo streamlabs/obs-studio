@@ -57,7 +57,7 @@ static inline void quat_identity(struct quat *q)
 
 static inline void quat_set(struct quat *dst, float x, float y, float z, float w)
 {
-	dst->m = _mm_set_ps(x, y, z, w);
+	dst->m = _mm_set_ps(w, z, y, x);
 }
 
 static inline void quat_copy(struct quat *dst, const struct quat *q)
@@ -147,7 +147,7 @@ static inline bool quat_close(const struct quat *q1, const struct quat *q2, floa
 {
 	struct quat test;
 	quat_sub(&test, q1, q2);
-	return test.x < epsilon && test.y < epsilon && test.z < epsilon && test.w < epsilon;
+	return fabsf(test.x) < epsilon && fabsf(test.y) < epsilon && fabsf(test.z) < epsilon && fabsf(test.w) < epsilon;
 }
 
 EXPORT void quat_from_axisang(struct quat *dst, const struct axisang *aa);

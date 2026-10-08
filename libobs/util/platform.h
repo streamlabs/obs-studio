@@ -62,6 +62,7 @@ EXPORT int64_t os_get_file_size(const char *path);
 EXPORT int64_t os_get_free_space(const char *path);
 
 EXPORT size_t os_mbs_to_wcs(const char *str, size_t str_len, wchar_t *dst, size_t dst_size);
+/* dst_size counts wchar_t elements, including space for the terminator. */
 EXPORT size_t os_utf8_to_wcs(const char *str, size_t len, wchar_t *dst, size_t dst_size);
 EXPORT size_t os_wcs_to_mbs(const wchar_t *str, size_t len, char *dst, size_t dst_size);
 EXPORT size_t os_wcs_to_utf8(const wchar_t *str, size_t len, char *dst, size_t dst_size);

@@ -159,6 +159,10 @@ static void parse_params(struct cf_parser *cfp, struct decl_info *decl)
 
 		if (!cf_peek_valid_token(cfp, &peek))
 			return;
+		if (peek.type != CFTOKEN_NAME) {
+			cf_adderror_expecting(cfp, "parameter");
+			return;
+		}
 	}
 
 	if (!cf_token_is(cfp, ")"))
@@ -191,25 +195,30 @@ bool parse_decl_string(struct decl_info *decl, const char *decl_string)
 	if (!cf_parser_parse(&cfp, decl_string, "declaration"))
 		goto fail;
 
+	while (cfp.cur_token->type == CFTOKEN_SPACETAB || cfp.cur_token->type == CFTOKEN_NEWLINE)
+		cfp.cur_token++;
+
 	code = cf_get_name_ref(&cfp, &ret_type, "return type", NULL);
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
 	if (!get_type(&ret_type, &ret_param.type, true))
 		cf_adderror_expecting(&cfp, "return type");
 
 	code = cf_next_name(&cfp, &decl->name, "function name", "(");
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
 	if (is_reserved_name(decl->name))
 		err_reserved_name(&cfp, decl->name);
 
 	code = cf_next_token_should_be(&cfp, "(", "(", NULL);
-	if (code == PARSE_EOF)
+	if (code != PARSE_SUCCESS)
 		goto fail;
 
 	parse_params(&cfp, decl);
+	if (!error_data_has_errors(&cfp.error_list) && cf_next_token(&cfp))
+		cf_adderror_expecting(&cfp, "end of declaration");
 	success = true;
 
 fail:

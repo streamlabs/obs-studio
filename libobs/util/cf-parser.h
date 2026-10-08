@@ -156,12 +156,12 @@ static inline int cf_token_should_be(struct cf_parser *p, const char *str, const
 	if (strref_cmp(&p->cur_token->str, str) == 0)
 		return PARSE_SUCCESS;
 
+	cf_adderror_expecting(p, str);
 	if (goto1) {
 		if (!cf_go_to_token(p, goto1, goto2))
 			return PARSE_EOF;
 	}
 
-	cf_adderror_expecting(p, str);
 	return PARSE_CONTINUE;
 }
 
@@ -174,12 +174,12 @@ static inline int cf_next_token_should_be(struct cf_parser *p, const char *str, 
 		return PARSE_SUCCESS;
 	}
 
+	cf_adderror_expecting(p, str);
 	if (goto1) {
 		if (!cf_go_to_token(p, goto1, goto2))
 			return PARSE_EOF;
 	}
 
-	cf_adderror_expecting(p, str);
 	return PARSE_CONTINUE;
 }
 
