@@ -14,12 +14,36 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 include(Catch)
 
-add_executable(libobs_unit_tests test-basic-lifecycle.cpp test-util.cpp)
+add_executable(
+  libobs_unit_tests
+  test-basic-lifecycle.cpp
+  test-util.cpp
+  test-deque.cpp
+  test-dstr.cpp
+  test-calldata.cpp
+  test-integer.cpp
+  test-math.cpp
+  test-crc32.cpp
+  test-media-helpers.cpp
+  test-color.cpp
+  test-unicode.cpp
+  test-lexer.cpp
+  test-declarations.cpp
+)
 add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
+else()
+  # Compile the private converter to test its flags as well as the exported platform wrappers.
+  target_sources(libobs_unit_tests PRIVATE ../../libobs/util/utf8.c)
 endif()
 target_link_libraries(libobs_unit_tests PRIVATE OBS::libobs Catch2::Catch2WithMain)
+# Exercise header-only container assertions even with the CI RelWithDebInfo configuration.
+if(MSVC)
+  target_compile_options(libobs_unit_tests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(libobs_unit_tests PRIVATE -UNDEBUG)
+endif()
 # Use plain CMake properties: set_target_properties_obs() would also install this test executable.
 set_target_properties(libobs_unit_tests PROPERTIES FOLDER "Tests and Examples")
 

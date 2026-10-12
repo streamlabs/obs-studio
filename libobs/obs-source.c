@@ -92,7 +92,7 @@ static const char *source_signals[] = {
 	"void volume(ptr source, in out float volume)",
 	"void update_properties(ptr source)",
 	"void update_flags(ptr source, int flags)",
-	"void audio_sync(ptr source, int out int offset)",
+	"void audio_sync(ptr source, in out int offset)",
 	"void audio_balance(ptr source, in out float balance)",
 	"void audio_mixers(ptr source, in out int mixers)",
 	"void audio_monitoring(ptr source, int type)",

@@ -55,8 +55,8 @@ int strref_cmpi(const struct strref *str1, const char *str2)
 	do {
 		char ch1, ch2;
 
-		ch1 = (i < str1->len) ? (char)toupper(str1->array[i]) : 0;
-		ch2 = (char)toupper(*str2);
+		ch1 = (i < str1->len) ? (char)toupper((unsigned char)str1->array[i]) : 0;
+		ch2 = (char)toupper((unsigned char)*str2);
 
 		if (ch1 < ch2)
 			return -1;
@@ -74,7 +74,7 @@ int strref_cmp_strref(const struct strref *str1, const struct strref *str2)
 	if (strref_is_empty(str1))
 		return strref_is_empty(str2) ? 0 : -1;
 	if (strref_is_empty(str2))
-		return -1;
+		return 1;
 
 	do {
 		char ch1, ch2;
@@ -100,13 +100,13 @@ int strref_cmpi_strref(const struct strref *str1, const struct strref *str2)
 	if (strref_is_empty(str1))
 		return strref_is_empty(str2) ? 0 : -1;
 	if (strref_is_empty(str2))
-		return -1;
+		return 1;
 
 	do {
 		char ch1, ch2;
 
-		ch1 = (i < str1->len) ? (char)toupper(str1->array[i]) : 0;
-		ch2 = (i < str2->len) ? (char)toupper(str2->array[i]) : 0;
+		ch1 = (i < str1->len) ? (char)toupper((unsigned char)str1->array[i]) : 0;
+		ch2 = (i < str2->len) ? (char)toupper((unsigned char)str2->array[i]) : 0;
 
 		if (ch1 < ch2)
 			return -1;
@@ -131,15 +131,17 @@ bool valid_int_str(const char *str, size_t n)
 
 	if (!n)
 		n = strlen(str);
-	if (*str == '-' || *str == '+')
+	if (*str == '-' || *str == '+') {
 		++str;
+		--n;
+	}
 
-	do {
+	for (; n && *str; ++str, --n) {
 		if (*str > '9' || *str < '0')
 			return false;
 
 		found_num = true;
-	} while (*++str && --n);
+	}
 
 	return found_num;
 }
@@ -149,6 +151,7 @@ bool valid_float_str(const char *str, size_t n)
 	bool found_num = false;
 	bool found_exp = false;
 	bool found_dec = false;
+	bool allow_exp_sign = false;
 
 	if (!str)
 		return false;
@@ -157,10 +160,12 @@ bool valid_float_str(const char *str, size_t n)
 
 	if (!n)
 		n = strlen(str);
-	if (*str == '-' || *str == '+')
+	if (*str == '-' || *str == '+') {
 		++str;
+		--n;
+	}
 
-	do {
+	for (; n && *str; ++str, --n) {
 		if (*str == '.') {
 			if (found_dec || found_exp || !found_num)
 				return false;
@@ -173,9 +178,11 @@ bool valid_float_str(const char *str, size_t n)
 
 			found_exp = true;
 			found_num = false;
+			allow_exp_sign = true;
+			continue;
 
 		} else if (*str == '-' || *str == '+') {
-			if (!found_exp || !found_num)
+			if (!allow_exp_sign)
 				return false;
 
 		} else if (*str > '9' || *str < '0') {
@@ -183,7 +190,8 @@ bool valid_float_str(const char *str, size_t n)
 		} else {
 			found_num = true;
 		}
-	} while (*++str && --n);
+		allow_exp_sign = false;
+	}
 
 	return found_num;
 }

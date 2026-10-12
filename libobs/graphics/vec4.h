@@ -139,7 +139,7 @@ static inline int vec4_close(const struct vec4 *v1, const struct vec4 *v2, float
 {
 	struct vec4 test;
 	vec4_sub(&test, v1, v2);
-	return test.x < epsilon && test.y < epsilon && test.z < epsilon && test.w < epsilon;
+	return fabsf(test.x) < epsilon && fabsf(test.y) < epsilon && fabsf(test.z) < epsilon && fabsf(test.w) < epsilon;
 }
 
 static inline void vec4_min(struct vec4 *dst, const struct vec4 *v1, const struct vec4 *v2)
