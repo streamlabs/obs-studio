@@ -285,6 +285,25 @@ static void read_codec_caps(config_t *config, enum codec_type codec, const char 
 	caps->uhq = config_get_bool(config, section, "uhq");
 }
 
+static void log_nvenc_probe_output(const struct dstr *output, int level)
+{
+	/* Log one line at a time to avoid the log handler's message-size limit. */
+	size_t remaining = output->len < 16384 ? output->len : 16384;
+	const char *line = output->array;
+	while (remaining) {
+		const char *newline = memchr(line, '\n', remaining);
+		size_t len = newline ? (size_t)(newline - line) : remaining;
+		size_t text_len = len && line[len - 1] == '\r' ? len - 1 : len;
+		if (text_len)
+			blog(level, "[NVENC] Probe: %.*s", (int)text_len, line);
+		size_t consumed = len + (newline ? 1 : 0);
+		line += consumed;
+		remaining -= consumed;
+	}
+	if (output->len > 16384)
+		blog(level, "[NVENC] Probe output truncated after 16384 bytes");
+}
+
 static bool nvenc_check(void)
 {
 #ifdef _WIN32
@@ -296,13 +315,13 @@ static bool nvenc_check(void)
 	struct dstr caps_str = {0};
 	config_t *config = NULL;
 	bool success = false;
+	uint64_t started = os_gettime_ns();
 
 	args = os_process_args_create(test_exe);
 
 	os_process_pipe_t *pp = os_process_pipe_create2(args, "r");
 	if (!pp) {
-		blog(LOG_WARNING, "[NVENC] Failed to launch the NVENC "
-				  "test process I guess");
+		blog(LOG_WARNING, "[NVENC] Failed to launch test process: %s", test_exe);
 		goto fail;
 	}
 
@@ -315,11 +334,12 @@ static bool nvenc_check(void)
 		dstr_ncat(&caps_str, data, len);
 	}
 
-	os_process_pipe_destroy(pp);
+	int exit_code = os_process_pipe_destroy(pp);
+	blog(exit_code ? LOG_WARNING : LOG_INFO, "[NVENC] Probe '%s' exited with code %d (0x%08x) after %.0f ms",
+	     test_exe, exit_code, (unsigned int)exit_code, (os_gettime_ns() - started) / 1000000.0);
 
 	if (dstr_is_empty(&caps_str)) {
-		blog(LOG_WARNING, "[NVENC] Seems the NVENC test subprocess crashed. "
-				  "Better there than here I guess. ");
+		blog(LOG_WARNING, "[NVENC] Test process returned no output");
 		goto fail;
 	}
 
@@ -353,6 +373,7 @@ static bool nvenc_check(void)
 	     codec_supported[CODEC_AV1] ? "true" : "false");
 
 fail:
+	log_nvenc_probe_output(&caps_str, success ? LOG_DEBUG : LOG_WARNING);
 	if (config)
 		config_close(config);
 
