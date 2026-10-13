@@ -387,7 +387,13 @@ os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const 
 
 int os_process_pipe_destroy(os_process_pipe_t *pp)
 {
+	return os_process_pipe_destroy_ex(pp, NULL);
+}
+
+int os_process_pipe_destroy_ex(os_process_pipe_t *pp, struct os_process_exit_info *info)
+{
 	int ret = 0;
+	struct os_process_exit_info result = {OS_PROCESS_EXIT_NONE, 0};
 
 	if (pp) {
 		DWORD code;
@@ -397,9 +403,16 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 		CloseHandle(pp->handle);
 		CloseHandle(pp->handle_err);
 
-		WaitForSingleObject(pp->process, INFINITE);
-		if (GetExitCodeProcess(pp->process, &code))
+		if (WaitForSingleObject(pp->process, INFINITE) == WAIT_OBJECT_0 &&
+		    GetExitCodeProcess(pp->process, &code)) {
 			ret = (int)code;
+			result.type = OS_PROCESS_EXIT_NORMAL;
+			result.code = code;
+		} else {
+			ret = -1;
+			result.type = OS_PROCESS_EXIT_ERROR;
+			result.code = GetLastError();
+		}
 
 		CloseHandle(pp->process);
 		os_process_pipe_cleanup_shutdown_event(pp);
@@ -407,6 +420,8 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 		bfree(pp);
 	}
 
+	if (info)
+		*info = result;
 	return ret;
 }
 

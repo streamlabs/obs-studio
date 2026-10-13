@@ -14,7 +14,7 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 include(Catch)
 
-add_executable(libobs_unit_tests test-basic-lifecycle.cpp test-util.cpp)
+add_executable(libobs_unit_tests test-basic-lifecycle.cpp test-util.cpp test-process-pipe.cpp)
 add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)

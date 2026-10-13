@@ -334,9 +334,21 @@ static bool nvenc_check(void)
 		dstr_ncat(&caps_str, data, len);
 	}
 
-	int exit_code = os_process_pipe_destroy(pp);
-	blog(exit_code ? LOG_WARNING : LOG_INFO, "[NVENC] Probe '%s' exited with code %d (0x%08x) after %.0f ms",
-	     test_exe, exit_code, (unsigned int)exit_code, (os_gettime_ns() - started) / 1000000.0);
+	struct os_process_exit_info exit_info;
+	os_process_pipe_destroy_ex(pp, &exit_info);
+	double elapsed_ms = (os_gettime_ns() - started) / 1000000.0;
+	if (exit_info.type == OS_PROCESS_EXIT_NORMAL) {
+		blog(exit_info.code ? LOG_WARNING : LOG_INFO,
+		     "[NVENC] Probe '%s' exited with code %u (0x%08x) after %.0f ms", test_exe,
+		     (unsigned int)exit_info.code, (unsigned int)exit_info.code, elapsed_ms);
+	} else if (exit_info.type == OS_PROCESS_EXIT_SIGNAL) {
+		blog(LOG_WARNING, "[NVENC] Probe '%s' terminated by signal %u after %.0f ms", test_exe,
+		     (unsigned int)exit_info.code, elapsed_ms);
+	} else {
+		blog(LOG_WARNING,
+		     "[NVENC] Failed to retrieve termination status for probe '%s': error %u after %.0f ms", test_exe,
+		     (unsigned int)exit_info.code, elapsed_ms);
+	}
 
 	if (dstr_is_empty(&caps_str)) {
 		blog(LOG_WARNING, "[NVENC] Test process returned no output");
