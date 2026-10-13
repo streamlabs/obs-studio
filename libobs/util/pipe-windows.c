@@ -53,8 +53,7 @@ static bool create_shutdown_event(os_process_pipe_t *pp, DWORD pid)
 
 	pp->shutdown_event = CreateEventA(NULL, TRUE, FALSE, event_name);
 	if (!pp->shutdown_event) {
-		blog(LOG_ERROR, "Failed to create shutdown event '%s': %lu",
-		     event_name, GetLastError());
+		blog(LOG_ERROR, "Failed to create shutdown event '%s': %lu", event_name, GetLastError());
 		return false;
 	}
 	return true;
@@ -125,13 +124,11 @@ static bool create_data_pipe(os_process_pipe_t *pp, DWORD pid)
 	char pipe_name[64];
 	build_pipe_name(pipe_name, sizeof(pipe_name), pid);
 
-	pp->handle = CreateNamedPipeA(
-		pipe_name, PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-		PIPE_TYPE_BYTE | PIPE_WAIT, 1, 64 * 1024, 64 * 1024, 0, NULL);
+	pp->handle = CreateNamedPipeA(pipe_name, PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
+				      PIPE_TYPE_BYTE | PIPE_WAIT, 1, 64 * 1024, 64 * 1024, 0, NULL);
 
 	if (pp->handle == INVALID_HANDLE_VALUE) {
-		blog(LOG_ERROR, "CreateNamedPipe '%s' failed: %lu", pipe_name,
-		     GetLastError());
+		blog(LOG_ERROR, "CreateNamedPipe '%s' failed: %lu", pipe_name, GetLastError());
 		return false;
 	}
 
@@ -171,15 +168,12 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle, HAN
 	/* Spin until we get a buffer big enough for a path up to max path size for NTFS. */
 	for (int i = 1; i < 127; ++i) {
 		nBufferSize = MAX_PATH * i;
-		szPathBuffer =
-			brealloc(szPathBuffer, sizeof(TCHAR) * nBufferSize);
-		nPathSize = GetModuleFileName(hObsModule, szPathBuffer,
-					      nBufferSize);
+		szPathBuffer = brealloc(szPathBuffer, sizeof(TCHAR) * nBufferSize);
+		nPathSize = GetModuleFileName(hObsModule, szPathBuffer, nBufferSize);
 		dwError = GetLastError();
 
 		/* Windows XP might return ERROR_SUCCESS on too short of a buffer. */
-		if (nPathSize == nBufferSize ||
-		    dwError == ERROR_INSUFFICIENT_BUFFER) {
+		if (nPathSize == nBufferSize || dwError == ERROR_INSUFFICIENT_BUFFER) {
 			continue;
 		}
 
@@ -199,8 +193,7 @@ static inline bool create_process(const char *cmd_line, HANDLE stdin_handle, HAN
 
 	os_utf8_to_wcs_ptr(cmd_line, 0, &cmd_line_w);
 	if (cmd_line_w) {
-		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true,
-					   flags, NULL, szPathBuffer, &si, &pi);
+		success = !!CreateProcessW(NULL, cmd_line_w, NULL, NULL, true, flags, NULL, szPathBuffer, &si, &pi);
 
 		if (success) {
 			*process = pi.hProcess;
@@ -256,8 +249,7 @@ os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type
 		return NULL;
 	}
 
-	success = !!SetHandleInformation(read_pipe ? input : output,
-					 HANDLE_FLAG_INHERIT, false);
+	success = !!SetHandleInformation(read_pipe ? input : output, HANDLE_FLAG_INHERIT, false);
 	if (!success && !is_named_pipe) {
 		goto error;
 	}
@@ -387,7 +379,13 @@ os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const 
 
 int os_process_pipe_destroy(os_process_pipe_t *pp)
 {
+	return os_process_pipe_destroy_ex(pp, NULL);
+}
+
+int os_process_pipe_destroy_ex(os_process_pipe_t *pp, struct os_process_exit_info *info)
+{
 	int ret = 0;
+	struct os_process_exit_info result = {OS_PROCESS_EXIT_NONE, 0};
 
 	if (pp) {
 		DWORD code;
@@ -397,9 +395,16 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 		CloseHandle(pp->handle);
 		CloseHandle(pp->handle_err);
 
-		WaitForSingleObject(pp->process, INFINITE);
-		if (GetExitCodeProcess(pp->process, &code))
+		if (WaitForSingleObject(pp->process, INFINITE) == WAIT_OBJECT_0 &&
+		    GetExitCodeProcess(pp->process, &code)) {
 			ret = (int)code;
+			result.type = OS_PROCESS_EXIT_NORMAL;
+			result.code = code;
+		} else {
+			ret = -1;
+			result.type = OS_PROCESS_EXIT_ERROR;
+			result.code = GetLastError();
+		}
 
 		CloseHandle(pp->process);
 		os_process_pipe_cleanup_shutdown_event(pp);
@@ -407,6 +412,8 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 		bfree(pp);
 	}
 
+	if (info)
+		*info = result;
 	return ret;
 }
 

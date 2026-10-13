@@ -29,6 +29,12 @@ Tests are enabled in the Windows x64 and macOS CI presets. Other configurations
 can opt in with `BUILD_TESTING=ON`. Tests and Catch2 are not installed into the
 product package.
 
+Process-pipe tests (`[util][pipe]`) start short-lived shell children and check
+normal exit codes and the legacy signed return values used by FFmpeg. On POSIX,
+they also check signal termination and `ECHILD` after explicitly reaping a child.
+Core dumps are disabled in signal-test children. Run just these cases with
+`ctest --test-dir <build-dir> -C RelWithDebInfo -R "Process pipe" --output-on-failure`.
+
 Register new test executables with CTest and add them to the `tests` build target
 using `add_dependencies(tests <test-target>)` so these commands continue to build
 and run the complete suite.

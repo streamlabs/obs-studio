@@ -28,9 +28,30 @@ typedef struct os_process_pipe os_process_pipe_t;
 struct os_process_args;
 typedef struct os_process_args os_process_args_t;
 
+enum os_process_exit_type {
+	OS_PROCESS_EXIT_NONE,
+	OS_PROCESS_EXIT_NORMAL,
+	OS_PROCESS_EXIT_SIGNAL,
+	OS_PROCESS_EXIT_ERROR,
+};
+
+struct os_process_exit_info {
+	enum os_process_exit_type type;
+	/* Native exit code, POSIX signal number, or errno/Win32 error, according to type. */
+	uint32_t code;
+};
+
 EXPORT os_process_pipe_t *os_process_pipe_create(const char *cmd_line, const char *type);
 EXPORT os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const char *type);
+/* Close the pipe, wait for the child, and free pp. A NULL pipe returns zero.
+ * Normal exits retain the legacy return convention: (int)(char)exit_code on
+ * POSIX and (int)exit_code on Windows. Signal termination and wait errors
+ * return -1. Use destroy_ex to distinguish these from a child's negative code. */
 EXPORT int os_process_pipe_destroy(os_process_pipe_t *pp);
+/* As above, additionally reporting the termination type and unmodified code.
+ * info may be NULL. A NULL pipe reports OS_PROCESS_EXIT_NONE with code zero.
+ * pp is invalid after either destroy function returns, including on errors. */
+EXPORT int os_process_pipe_destroy_ex(os_process_pipe_t *pp, struct os_process_exit_info *info);
 
 EXPORT size_t os_process_pipe_read(os_process_pipe_t *pp, uint8_t *data, size_t len);
 EXPORT size_t os_process_pipe_read_err(os_process_pipe_t *pp, uint8_t *data, size_t len);

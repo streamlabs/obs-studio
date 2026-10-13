@@ -18,6 +18,7 @@ add_executable(
   libobs_unit_tests
   test-basic-lifecycle.cpp
   test-util.cpp
+  test-process-pipe.cpp
   test-deque.cpp
   test-dstr.cpp
   test-calldata.cpp

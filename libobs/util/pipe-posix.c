@@ -146,7 +146,13 @@ os_process_pipe_t *os_process_pipe_create2(const os_process_args_t *args, const 
 
 int os_process_pipe_destroy(os_process_pipe_t *pp)
 {
+	return os_process_pipe_destroy_ex(pp, NULL);
+}
+
+int os_process_pipe_destroy_ex(os_process_pipe_t *pp, struct os_process_exit_info *info)
+{
 	int ret = 0;
+	struct os_process_exit_info result = {OS_PROCESS_EXIT_NONE, 0};
 
 	if (pp) {
 		int status;
@@ -161,11 +167,28 @@ int os_process_pipe_destroy(os_process_pipe_t *pp)
 			ret = waitpid(pp->pid, &status, 0);
 		} while (ret == -1 && errno == EINTR);
 
-		if (WIFEXITED(status))
+		if (ret == -1) {
+			result.type = OS_PROCESS_EXIT_ERROR;
+			result.code = (uint32_t)errno;
+		} else if (WIFEXITED(status)) {
+			result.type = OS_PROCESS_EXIT_NORMAL;
+			result.code = (uint32_t)WEXITSTATUS(status);
+			/* FFmpeg callers expect negative child errors to remain negative. */
 			ret = (int)(char)WEXITSTATUS(status);
+		} else if (WIFSIGNALED(status)) {
+			result.type = OS_PROCESS_EXIT_SIGNAL;
+			result.code = (uint32_t)WTERMSIG(status);
+			ret = -1;
+		} else {
+			result.type = OS_PROCESS_EXIT_ERROR;
+			result.code = EINVAL;
+			ret = -1;
+		}
 		bfree(pp);
 	}
 
+	if (info)
+		*info = result;
 	return ret;
 }
 
