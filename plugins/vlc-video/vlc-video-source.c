@@ -1,4 +1,5 @@
 #include "vlc-video-plugin.h"
+#include "vlc-video-proc.h"
 #include <media-io/video-frame.h>
 #include <util/threading.h>
 #include <util/platform.h>
@@ -960,7 +961,7 @@ static void *vlcs_create(obs_data_t *settings, obs_source_t *source)
 	libvlc_event_attach_(event_manager, libvlc_MediaPlayerOpening, vlcs_started, c);
 
 	proc_handler_t *ph = obs_source_get_proc_handler(source);
-	proc_handler_add(ph, "void get_metadata(in string tag_id out string tag_data)", vlcs_get_metadata, c);
+	proc_handler_add(ph, VLC_GET_METADATA_DECL, vlcs_get_metadata, c);
 
 	obs_source_update(source, NULL);
 

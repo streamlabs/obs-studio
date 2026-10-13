@@ -115,6 +115,7 @@ EXPORT void dstr_safe_printf(struct dstr *dst, const char *format, const char *v
 static inline const char *dstr_find_i(const struct dstr *str, const char *find);
 static inline const char *dstr_find(const struct dstr *str, const char *find);
 
+/* An empty find string leaves str unchanged. */
 EXPORT void dstr_replace(struct dstr *str, const char *find, const char *replace);
 
 static inline int dstr_cmp(const struct dstr *str1, const char *str2);

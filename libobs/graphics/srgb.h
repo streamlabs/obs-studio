@@ -49,6 +49,11 @@ static inline void gs_u8x4_to_float4(float *f, const uint8_t *u)
 
 static inline uint8_t gs_float_to_u8(float f)
 {
+	/* Clamp before the integer conversion, including NaN and infinities. */
+	if (!(f > 0.0f))
+		return 0;
+	if (f >= 1.0f)
+		return 255;
 	return (uint8_t)(f * 255.0f + 0.5f);
 }
 
