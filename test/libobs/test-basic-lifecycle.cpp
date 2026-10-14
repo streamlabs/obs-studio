@@ -92,6 +92,77 @@ TEST_CASE("OBS scene exposes its source and releases before shutdown", "[scene][
 	CHECK_FALSE(obs_initialized());
 }
 
+TEST_CASE("Properties button callbacks select object context or explicit private data",
+	  "[properties][button][lifecycle]")
+{
+	REQUIRE_FALSE(obs_initialized());
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+
+	struct CallbackState {
+		int calls = 0;
+		obs_properties_t *properties = nullptr;
+		obs_property_t *property = nullptr;
+		void *data = nullptr;
+		bool refresh = false;
+	} state;
+	std::unique_ptr<obs_scene_t, decltype(&obs_scene_release)> scene(obs_scene_create("button callback test"),
+									 obs_scene_release);
+	REQUIRE(scene);
+	obs_source_t *source = obs_scene_get_source(scene.get());
+	REQUIRE(source);
+	REQUIRE(obs_scene_from_source(source) == scene.get());
+	std::unique_ptr<obs_properties_t, decltype(&obs_properties_destroy)> properties(obs_properties_create(),
+											obs_properties_destroy);
+	REQUIRE(properties);
+	obs_properties_set_param(properties.get(), &state, nullptr);
+	const auto callback = +[](obs_properties_t *props, obs_property_t *property, void *data) {
+		auto *callbackState = static_cast<CallbackState *>(obs_properties_get_param(props));
+		if (!callbackState)
+			return false;
+		++callbackState->calls;
+		callbackState->properties = props;
+		callbackState->property = property;
+		callbackState->data = data;
+		return callbackState->refresh;
+	};
+
+	int privateData = 0;
+	void *expectedData = nullptr;
+	void *expectedWithoutObject = nullptr;
+	obs_property_t *button = nullptr;
+	SECTION("Legacy buttons receive source context")
+	{
+		button = obs_properties_add_button(properties.get(), "button", "Button", callback);
+		expectedData = scene.get();
+	}
+	SECTION("Explicit private data overrides source context")
+	{
+		button = obs_properties_add_button2(properties.get(), "button", "Button", callback, &privateData);
+		expectedData = &privateData;
+		expectedWithoutObject = &privateData;
+	}
+	SECTION("Explicit null private data ignores source context")
+	{
+		button = obs_properties_add_button2(properties.get(), "button", "Button", callback, nullptr);
+	}
+	REQUIRE(button);
+	CHECK_FALSE(obs_property_button_clicked(button, source));
+	CHECK(state.calls == 1);
+	CHECK(state.properties == properties.get());
+	CHECK(state.property == button);
+	CHECK(state.data == expectedData);
+
+	state.refresh = true;
+	CHECK(obs_property_button_clicked(button, source));
+	CHECK(state.calls == 2);
+	CHECK(state.data == expectedData);
+
+	CHECK(obs_property_button_clicked(button, nullptr));
+	CHECK(state.calls == 3);
+	CHECK(state.data == expectedWithoutObject);
+}
+
 TEST_CASE("OBS audio sync signals preserve input and callback adjusted offsets", "[core][callback][lifecycle]")
 {
 	REQUIRE_FALSE(obs_initialized());

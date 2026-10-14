@@ -37,7 +37,7 @@ and run the complete suite.
 
 The low-level tests cover containers, calldata, integer arithmetic, CPU math,
 CRC32, audio and frame-rate helpers, packed colors, sRGB, half floats, Unicode,
-lexers, and callback declaration parsing. They do not start OBS or require
+lexers, callback declaration parsing, and properties. They do not start OBS or require
 plugins, graphics devices, or capture devices. Owned buffers are released by
 local scope guards. Deque and string tests include deterministic mixed-operation
 sequences checked against standard-library containers; failures report the
@@ -70,6 +70,27 @@ guard page to detect reads beyond the supplied length.
 Callback fixtures also check signal delivery and procedure input/output through
 the real handlers without starting OBS. The lifecycle smoke tests exercise the
 built-in source signal declarations and audio sync callback adjustments.
+Button callback context forwarding is checked with a real scene source in the
+lifecycle suite; both button APIs are exercised with and without a clicked object.
 The VLC metadata declaration is shared with the plugin, so the registration test
 uses its actual signature without loading VLC. Source creation must not emit
 declaration diagnostics, including warnings from the parser.
+
+Properties fixtures cover owned metadata, numeric constraints, typed list edits,
+group cleanup and duplicate rejection, button URL replacement, and button callback
+data, return values, nested-group dispatch, and missing callbacks. Description
+fixtures check independent copies, replacement, clearing, and reuse of the
+current string or a substring. Frame-rate property fixtures cover copied option
+text, exact rational ranges, insertion order, independent clearing, and reuse.
+Settings application tests exercise peer and group
+removal, self-removal, same-name replacement, newly added controls, changed
+handlers, callback order, and nested application. Allocation counters verify that
+owned objects and callback snapshots are released. Repeated replacement cases and
+concurrent creation of independent trees exercise instance identity; concurrent
+mutation of one tree is unsupported.
+
+Run the properties cases with:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "libobs_unit_tests::Properties"
+```

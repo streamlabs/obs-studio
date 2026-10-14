@@ -157,8 +157,15 @@ EXPORT obs_properties_t *obs_properties_get_parent(obs_properties_t *props);
 EXPORT void obs_properties_remove_by_name(obs_properties_t *props, const char *property);
 
 /**
- * Applies settings to the properties by calling all the necessary
- * modification callbacks
+ * Applies settings to properties that had modification callbacks at the start
+ * of this call, using the current callback on each surviving property.
+ * Properties removed or replaced before their turn are skipped. Newly added
+ * properties are deferred until a subsequent call, including a nested call.
+ * Callbacks may remove themselves or entire groups; removal requires returning
+ * true, as documented by obs_properties_remove_by_name().
+ *
+ * props and settings must remain alive for the duration of the call. Concurrent
+ * mutation of the same property tree is not supported.
  */
 EXPORT void obs_properties_apply_settings(obs_properties_t *props, obs_data_t *settings);
 
@@ -212,9 +219,7 @@ EXPORT obs_property_t *obs_properties_add_list(obs_properties_t *props, const ch
 
 EXPORT obs_property_t *obs_properties_add_color(obs_properties_t *props, const char *name, const char *description);
 // this type of option should be set by caller to a value like "game:1" or "desktop:2" or "window:HWND"
-EXPORT obs_property_t *obs_properties_add_capture(obs_properties_t *props,
-						  const char *name,
-						  const char *description);
+EXPORT obs_property_t *obs_properties_add_capture(obs_properties_t *props, const char *name, const char *description);
 
 EXPORT obs_property_t *obs_properties_add_color_alpha(obs_properties_t *props, const char *name,
 						      const char *description);
@@ -222,6 +227,10 @@ EXPORT obs_property_t *obs_properties_add_color_alpha(obs_properties_t *props, c
 EXPORT obs_property_t *obs_properties_add_button(obs_properties_t *props, const char *name, const char *text,
 						 obs_property_clicked_t callback);
 
+/** Adds a button whose clicked callback receives priv, including NULL.
+ * obs_property_button_clicked() ignores its obj argument for this button.
+ * The caller retains ownership of priv, which must remain valid during callbacks.
+ */
 EXPORT obs_property_t *obs_properties_add_button2(obs_properties_t *props, const char *name, const char *text,
 						  obs_property_clicked_t callback, void *priv);
 
@@ -245,6 +254,12 @@ EXPORT obs_property_t *obs_properties_add_editable_list(obs_properties_t *props,
 EXPORT obs_property_t *obs_properties_add_frame_rate(obs_properties_t *props, const char *name,
 						     const char *description);
 
+/** Add a group whose name and descendants must be unique across the property tree.
+ *
+ * Returns NULL on a name collision or if attachment would create a cycle.
+ * Ownership of group transfers to props only on success; on rejection the
+ * caller retains ownership of group.
+ */
 EXPORT obs_property_t *obs_properties_add_group(obs_properties_t *props, const char *name, const char *description,
 						enum obs_group_type type, obs_properties_t *group);
 
@@ -268,11 +283,25 @@ EXPORT bool obs_property_button_clicked(obs_property_t *p, void *obj);
 EXPORT void obs_property_set_visible(obs_property_t *p, bool visible);
 EXPORT void obs_property_set_enabled(obs_property_t *p, bool enabled);
 
+/** Replace the description with an owned copy; NULL or empty text clears it.
+ * The input may be the current description pointer or a substring of it.
+ * Does nothing if p is NULL.
+ */
 EXPORT void obs_property_set_description(obs_property_t *p, const char *description);
+/** Replace the long description with an owned copy; NULL or empty text clears it.
+ * The input may be the current long description pointer or a substring of it.
+ * Does nothing if p is NULL.
+ */
 EXPORT void obs_property_set_long_description(obs_property_t *p, const char *long_description);
 
 EXPORT const char *obs_property_name(obs_property_t *p);
+/** Return the borrowed description, or NULL if unset or p is NULL.
+ * Do not free it. Replacement or property destruction invalidates the pointer.
+ */
 EXPORT const char *obs_property_description(obs_property_t *p);
+/** Return the borrowed long description, or NULL if unset or p is NULL.
+ * Do not free it. Replacement or property destruction invalidates the pointer.
+ */
 EXPORT const char *obs_property_long_description(obs_property_t *p);
 EXPORT enum obs_property_type obs_property_get_type(obs_property_t *p);
 EXPORT bool obs_property_enabled(obs_property_t *p);
@@ -309,6 +338,9 @@ EXPORT void obs_property_text_set_info_type(obs_property_t *p, enum obs_text_inf
 EXPORT void obs_property_text_set_info_word_wrap(obs_property_t *p, bool word_wrap);
 
 EXPORT void obs_property_button_set_type(obs_property_t *p, enum obs_button_type type);
+/** Replace a button URL with an owned copy; NULL clears it.
+ * The previous pointer returned by obs_property_button_url() is invalidated.
+ */
 EXPORT void obs_property_button_set_url(obs_property_t *p, char *url);
 
 EXPORT void obs_property_list_clear(obs_property_t *p);

@@ -75,6 +75,7 @@ struct editable_list_data {
 
 struct button_data {
 	obs_property_clicked_t callback;
+	uint32_t version;
 	enum obs_button_type type;
 	char *url;
 };
@@ -177,7 +178,21 @@ static inline void button_data_free(struct button_data *data)
 
 struct obs_properties;
 
+static pthread_mutex_t property_id_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t property_id_counter;
+
+static uint64_t next_property_id(void)
+{
+	pthread_mutex_lock(&property_id_mutex);
+	uint64_t id = ++property_id_counter;
+	if (!id)
+		bcrash("Property instance IDs exhausted");
+	pthread_mutex_unlock(&property_id_mutex);
+	return id;
+}
+
 struct obs_property {
+	uint64_t instance_id;
 	char *name;
 	char *desc;
 	char *long_desc;
@@ -361,9 +376,15 @@ void obs_properties_remove_by_name(obs_properties_t *props, const char *name)
 	}
 }
 
-typedef DARRAY(struct obs_property *) obs_property_da_t;
+struct property_callback_entry {
+	char *name;
+	uint64_t instance_id;
+};
 
-void obs_properties_apply_settings_internal(obs_properties_t *props, obs_property_da_t *properties_with_callback)
+typedef DARRAY(struct property_callback_entry) property_callback_da_t;
+
+static void obs_properties_apply_settings_internal(obs_properties_t *props,
+						   property_callback_da_t *properties_with_callback)
 {
 	struct obs_property *p = props->properties;
 
@@ -371,8 +392,10 @@ void obs_properties_apply_settings_internal(obs_properties_t *props, obs_propert
 		if (p->type == OBS_PROPERTY_GROUP) {
 			obs_properties_apply_settings_internal(obs_property_group_content(p), properties_with_callback);
 		}
-		if (p->modified || p->modified2)
-			da_push_back((*properties_with_callback), &p);
+		if (p->modified || p->modified2) {
+			struct property_callback_entry entry = {bstrdup(p->name), p->instance_id};
+			da_push_back((*properties_with_callback), &entry);
+		}
 
 		p = p->hh.next;
 	}
@@ -383,18 +406,24 @@ void obs_properties_apply_settings(obs_properties_t *props, obs_data_t *settings
 	if (!props)
 		return;
 
-	obs_property_da_t properties_with_callback;
+	property_callback_da_t properties_with_callback;
 	da_init(properties_with_callback);
 
 	obs_properties_apply_settings_internal(props, &properties_with_callback);
 
 	while (properties_with_callback.num > 0) {
-		struct obs_property *p = *(struct obs_property **)da_end(properties_with_callback);
-		if (p->modified)
-			p->modified(props, p, settings);
-		else if (p->modified2)
-			p->modified2(p->priv, props, p, settings);
+		struct property_callback_entry entry =
+			*(struct property_callback_entry *)da_end(properties_with_callback);
 		da_pop_back(properties_with_callback);
+
+		struct obs_property *p = obs_properties_get(props, entry.name);
+		if (p && p->instance_id == entry.instance_id) {
+			if (p->modified)
+				p->modified(props, p, settings);
+			else if (p->modified2)
+				p->modified2(p->priv, props, p, settings);
+		}
+		bfree(entry.name);
 	}
 
 	da_free(properties_with_callback);
@@ -447,6 +476,7 @@ static inline struct obs_property *new_prop(struct obs_properties *props, const 
 	struct obs_property *p;
 
 	p = bzalloc(sizeof(struct obs_property) + data_size);
+	p->instance_id = next_property_id();
 	p->parent = props;
 	p->enabled = true;
 	p->visible = true;
@@ -632,8 +662,7 @@ obs_property_t *obs_properties_add_color(obs_properties_t *props, const char *na
 	return new_prop(props, name, desc, OBS_PROPERTY_COLOR);
 }
 
-obs_property_t *obs_properties_add_capture(obs_properties_t *props,
-					   const char *name, const char *desc)
+obs_property_t *obs_properties_add_capture(obs_properties_t *props, const char *name, const char *desc)
 {
 	if (!props || has_prop(props, name))
 		return NULL;
@@ -656,6 +685,7 @@ obs_property_t *obs_properties_add_button(obs_properties_t *props, const char *n
 	struct obs_property *p = new_prop(props, name, text, OBS_PROPERTY_BUTTON);
 	struct button_data *data = get_property_data(p);
 	data->callback = callback;
+	data->version = 1;
 	return p;
 }
 
@@ -668,6 +698,7 @@ obs_property_t *obs_properties_add_button2(obs_properties_t *props, const char *
 	struct obs_property *p = new_prop(props, name, text, OBS_PROPERTY_BUTTON);
 	struct button_data *data = get_property_data(p);
 	data->callback = callback;
+	data->version = 2;
 	p->priv = priv;
 	return p;
 }
@@ -739,6 +770,9 @@ static bool check_property_group_duplicates(obs_properties_t *parent, obs_proper
 	HASH_ITER (hh, group->properties, p, tmp) {
 		if (has_prop(parent, p->name))
 			return true;
+		if (p->type == OBS_PROPERTY_GROUP &&
+		    check_property_group_duplicates(parent, obs_property_group_content(p)))
+			return true;
 	}
 
 	return false;
@@ -759,7 +793,7 @@ obs_property_t *obs_properties_add_group(obs_properties_t *props, const char *na
 		return NULL;
 
 	/* Prevent duplicate properties */
-	if (check_property_group_duplicates(props, group))
+	if (contains_prop(group, name) || check_property_group_duplicates(props, group))
 		return NULL;
 
 	obs_property_t *p = new_prop(props, name, desc, OBS_PROPERTY_GROUP);
@@ -839,9 +873,16 @@ bool obs_property_button_clicked(obs_property_t *p, void *obj)
 		struct button_data *data = get_type_data(p, OBS_PROPERTY_BUTTON);
 		if (data && data->callback) {
 			obs_properties_t *top = get_topmost_parent(p->parent);
-			if (p->priv)
+			switch (data->version) {
+			case 1:
+				if (p->priv)
+					return data->callback(top, p, p->priv);
+				return data->callback(top, p, (context ? context->data : NULL));
+			case 2:
 				return data->callback(top, p, p->priv);
-			return data->callback(top, p, (context ? context->data : NULL));
+			default:
+				return false;
+			}
 		}
 	}
 
@@ -863,16 +904,18 @@ void obs_property_set_enabled(obs_property_t *p, bool enabled)
 void obs_property_set_description(obs_property_t *p, const char *description)
 {
 	if (p) {
+		char *new_desc = description && *description ? bstrdup(description) : NULL;
 		bfree(p->desc);
-		p->desc = description && *description ? bstrdup(description) : NULL;
+		p->desc = new_desc;
 	}
 }
 
 void obs_property_set_long_description(obs_property_t *p, const char *long_desc)
 {
 	if (p) {
+		char *new_desc = long_desc && *long_desc ? bstrdup(long_desc) : NULL;
 		bfree(p->long_desc);
-		p->long_desc = long_desc && *long_desc ? bstrdup(long_desc) : NULL;
+		p->long_desc = new_desc;
 	}
 }
 
@@ -1104,7 +1147,9 @@ void obs_property_button_set_url(obs_property_t *p, char *url)
 	if (!data)
 		return;
 
-	data->url = bstrdup(url);
+	char *new_url = bstrdup(url);
+	bfree(data->url);
+	data->url = new_url;
 }
 
 void obs_property_list_clear(obs_property_t *p)

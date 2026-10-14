@@ -29,6 +29,7 @@ add_executable(
   test-unicode.cpp
   test-lexer.cpp
   test-declarations.cpp
+  test-properties.cpp
 )
 add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)

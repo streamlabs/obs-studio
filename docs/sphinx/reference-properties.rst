@@ -277,7 +277,8 @@ Property Object Functions
                           :c:func:`obs_properties_add_button2`, the value of ``data`` is determined by
                           the caller of :c:func:`obs_property_button_clicked`, and as such unspecified
                           by libobs.
-   :param    priv:        Pointer passed back as the `data` argument of the callback
+   :param    priv:        Pointer passed back as the `data` argument of the callback, including *NULL*.
+                          Remains caller-owned and must remain valid during callbacks.
    :return:               The property
 
    Important Related Functions:
@@ -406,6 +407,11 @@ Property Enumeration Functions
 
    :return: The actual localized display name of the property
 
+   The returned string is borrowed and must not be freed.  Its pointer is
+   invalidated when the description is replaced or the property is destroyed.
+   Copy the text if it must survive either operation.  Returns *NULL* if the
+   description is unset or *p* is *NULL*.
+
    *(Author's note: This one should have been the "name")*
 
 ---------------------
@@ -414,6 +420,11 @@ Property Enumeration Functions
 
    :return: A detailed description of what the setting is used for.
             Usually used with things like tooltips.
+
+   The returned string is borrowed and must not be freed.  Its pointer is
+   invalidated when the long description is replaced or the property is
+   destroyed.  Copy the text if it must survive either operation.  Returns
+   *NULL* if the long description is unset or *p* is *NULL*.
 
 ---------------------
 
@@ -672,12 +683,21 @@ Property Modification Functions
 
    Sets the displayed localized name of the property, shown to the user.
 
+   Copies the supplied text into storage owned by the property.  *NULL* or
+   empty text clears the description.  The current description pointer, or
+   a substring of it, may be used as input.  Does nothing if *p* is *NULL*.
+
 ---------------------
 
 .. function:: void obs_property_set_long_description(obs_property_t *p, const char *long_description)
 
    Sets the localized long description of the property, usually shown to
    a user via tooltip.
+
+   Copies the supplied text into storage owned by the property.  *NULL* or
+   empty text clears the long description.  The current long description
+   pointer, or a substring of it, may be used as input.  Does nothing if *p*
+   is *NULL*.
 
 ---------------------
 

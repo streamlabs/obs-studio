@@ -45,7 +45,7 @@ static inline uint64_t util_mul_div64_fallback(uint64_t num, uint64_t mul, uint6
 
 static inline uint64_t util_mul_div64(uint64_t num, uint64_t mul, uint64_t div)
 {
-#if defined(_MSC_VER) && defined(_M_X64) && (_MSC_VER >= 1920)
+#if defined(_MSC_VER) && defined(_M_X64) && (_MSC_VER >= 1920) && !defined(__clang__)
 	unsigned __int64 high;
 	const unsigned __int64 low = _umul128(num, mul, &high);
 	unsigned __int64 rem;
