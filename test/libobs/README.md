@@ -79,3 +79,26 @@ built-in source signal declarations and audio sync callback adjustments.
 The VLC metadata declaration is shared with the plugin, so the registration test
 uses its actual signature without loading VLC. Source creation must not emit
 declaration diagnostics, including warnings from the parser.
+
+Audio configuration tests (`[core][audio][config]`) check coherent publication,
+unavailable state after clearing, and concurrent readers. A synthetic audio input
+also exercises 44.1/48 kHz resets, packed-to-planar conversion, forced mono, failed
+output initialization and recovery, and a submission paused in an audio filter
+while its old output is closed. These portable tests require no graphics or capture devices.
+The filter wait is bounded, and the producer is joined before its sources are
+released. Run these cases with:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "Audio configuration"
+```
+
+On Windows, a fifth case (`[graphics][windows]`) initializes the build's Direct3D 11
+renderer and holds the actual video mixes mutex through a view enumeration
+callback. A producer must finish its submission before that mutex is released.
+It requires a supported graphics adapter and fails if graphics initialization
+fails; it does not silently skip setup failures. The lock holder has a bounded
+wait, and both threads are joined before assertions or graphics cleanup.
+
+These tests verify shared configuration/reset behavior and the producer's
+independence from the video mutex; they do not reproduce CoreAudio callback
+timing, Wave Link, or long-running macOS stream crackling.

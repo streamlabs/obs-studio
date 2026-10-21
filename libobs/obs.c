@@ -1146,6 +1146,8 @@ static audio_t *obs_clear_audio_output(void)
 	audio_t *old_audio;
 
 	pthread_mutex_lock(&obs->video.mixes_mutex);
+	/* Readers already holding a value snapshot can finish without old_audio. */
+	audio_output_config_set(&obs->audio_config, NULL);
 	old_audio = obs->audio.audio;
 	obs->audio.audio = NULL;
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
@@ -1155,8 +1157,19 @@ static audio_t *obs_clear_audio_output(void)
 
 static void obs_set_audio_output(audio_t *audio_output)
 {
+	const struct audio_output_info *info = audio_output_get_info(audio_output);
+	const struct audio_output_config config = {
+		.info = {.samples_per_sec = info->samples_per_sec, .format = info->format, .speakers = info->speakers},
+		.planes = audio_output_get_planes(audio_output),
+		.blocksize = audio_output_get_block_size(audio_output),
+		.channels = audio_output_get_channels(audio_output),
+	};
+
+	/* Preserve existing output-pointer synchronization. The nested config lock
+	 * only copies values; producers never acquire mixes_mutex to read them. */
 	pthread_mutex_lock(&obs->video.mixes_mutex);
 	obs->audio.audio = audio_output;
+	audio_output_config_set(&obs->audio_config, &config);
 	pthread_mutex_unlock(&obs->video.mixes_mutex);
 }
 
@@ -1588,6 +1601,9 @@ static bool obs_init(const char *locale, const char *module_config_path, profile
 		return false;
 	obs->monitoring_deduplication.mutex_initialized = true;
 
+	if (!audio_output_config_init(&obs->audio_config))
+		return false;
+
 	return true;
 }
 
@@ -1772,6 +1788,7 @@ void obs_shutdown(void)
 	obs_free_video(true);
 	os_task_queue_destroy(obs->destruction_task_thread);
 	obs_free_monitoring_deduplication();
+	audio_output_config_destroy(&obs->audio_config);
 	obs_free_hotkeys();
 	obs_free_graphics();
 	proc_handler_destroy(obs->procs);

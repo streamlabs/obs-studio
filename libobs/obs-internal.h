@@ -38,6 +38,7 @@
 #include "media-io/audio-io.h"
 
 #include "obs.h"
+#include "obs-audio-config.h"
 
 #include <obsversion.h>
 #include <caption/caption.h>
@@ -622,6 +623,8 @@ struct obs_core {
 	 * clean and organized */
 	struct obs_core_video video;
 	struct obs_core_audio audio;
+	/* Kept outside audio: obs_free_audio clears that structure during resets. */
+	struct audio_output_config_state audio_config;
 	struct obs_monitoring_deduplication monitoring_deduplication;
 	struct obs_core_data data;
 	struct obs_core_hotkeys hotkeys;

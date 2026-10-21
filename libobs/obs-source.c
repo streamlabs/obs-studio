@@ -1650,39 +1650,14 @@ static inline uint64_t uint64_diff(uint64_t ts1, uint64_t ts2)
 	return (ts1 < ts2) ? (ts2 - ts1) : (ts1 - ts2);
 }
 
-struct audio_output_config {
-	struct resample_info info;
-	size_t planes;
-	size_t blocksize;
-	size_t channels;
-};
-
 static bool get_audio_output_config(struct audio_output_config *config)
 {
-	const struct audio_output_info *obs_info;
-
-	memset(config, 0, sizeof(*config));
-
-	if (!obs)
-		return false;
-
-	pthread_mutex_lock(&obs->video.mixes_mutex);
-
-	if (!obs->audio.audio) {
-		pthread_mutex_unlock(&obs->video.mixes_mutex);
+	if (!obs) {
+		memset(config, 0, sizeof(*config));
 		return false;
 	}
 
-	obs_info = audio_output_get_info(obs->audio.audio);
-	config->planes = audio_output_get_planes(obs->audio.audio);
-	config->blocksize = audio_output_get_block_size(obs->audio.audio);
-	config->channels = audio_output_get_channels(obs->audio.audio);
-	config->info.format = obs_info->format;
-	config->info.samples_per_sec = obs_info->samples_per_sec;
-	config->info.speakers = obs_info->speakers;
-
-	pthread_mutex_unlock(&obs->video.mixes_mutex);
-	return true;
+	return audio_output_config_get(&obs->audio_config, config);
 }
 
 static inline size_t get_buf_placement(uint32_t sample_rate, uint64_t offset)
