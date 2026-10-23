@@ -17,6 +17,7 @@ include(Catch)
 add_executable(
   libobs_unit_tests
   test-basic-lifecycle.cpp
+  test-audio-config.cpp
   test-util.cpp
   test-process-pipe.cpp
   test-deque.cpp
@@ -34,6 +35,13 @@ add_executable(
 add_dependencies(tests libobs_unit_tests)
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
+  add_dependencies(libobs_unit_tests OBS::libobs-d3d11)
+  target_compile_definitions(
+    libobs_unit_tests
+    PRIVATE
+      OBS_TEST_D3D11_MODULE="$<TARGET_FILE:OBS::libobs-d3d11>"
+      OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/"
+  )
 else()
   # Compile the private converter to test its flags as well as the exported platform wrappers.
   target_sources(libobs_unit_tests PRIVATE ../../libobs/util/utf8.c)
