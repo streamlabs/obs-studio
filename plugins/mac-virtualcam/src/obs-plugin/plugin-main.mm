@@ -46,6 +46,7 @@ struct virtualcam_data {
     CMIODeviceID deviceID;
     CMIOStreamID streamID;
     CMFormatDescriptionRef formatDescription;
+    bool sampleBufferErrorLogged;
     id extensionDelegate;
 
     // Legacy DAL (deprecated since macOS 12.3)
@@ -506,6 +507,7 @@ static bool virtualcam_output_start(void *data)
         }
         CFRelease(extensions);
 
+        vcam->sampleBufferErrorLogged = false;
         if (result == noErr)
             result = CMIODeviceStartStream(vcam->deviceID, vcam->streamID);
 
@@ -606,12 +608,34 @@ static void virtualcam_output_raw_video(void *data, struct video_data *frame)
     CVPixelBufferUnlockBaseAddress(frameRef, 0);
 
     if (cmio_extension_supported()) {
-        CMSampleBufferRef sampleBuffer;
+        // The pixel buffer must carry the same color attachments as the format description's extensions,
+        // otherwise CMSampleBufferCreateForImageBuffer rejects it with kCMSampleBufferError_InvalidMediaFormat.
+        const CFStringRef colorKeys[] = {kCMFormatDescriptionExtension_ColorPrimaries,
+                                         kCMFormatDescriptionExtension_TransferFunction,
+                                         kCMFormatDescriptionExtension_YCbCrMatrix};
+        for (CFStringRef key : colorKeys) {
+            CFPropertyListRef value = CMFormatDescriptionGetExtension(vcam->formatDescription, key);
+            if (value)
+                CVBufferSetAttachment(frameRef, key, value, kCVAttachmentMode_ShouldPropagate);
+        }
+
+        CMSampleBufferRef sampleBuffer = NULL;
         CMSampleTimingInfo timingInfo {.presentationTimeStamp = CMTimeMake(frame->timestamp, NSEC_PER_SEC)};
 
-        CMSampleBufferCreateForImageBuffer(kCFAllocatorDefault, frameRef, true, NULL, NULL, vcam->formatDescription,
-                                           &timingInfo, &sampleBuffer);
-        CMSimpleQueueEnqueue(vcam->queue, sampleBuffer);
+        OSStatus result = CMSampleBufferCreateForImageBuffer(kCFAllocatorDefault, frameRef, true, NULL, NULL,
+                                                             vcam->formatDescription, &timingInfo, &sampleBuffer);
+        if (result != noErr || !sampleBuffer) {
+            if (!vcam->sampleBufferErrorLogged) {
+                blog(LOG_ERROR, "unable to create sample buffer (error %d)", (int) result);
+                vcam->sampleBufferErrorLogged = true;
+            }
+            CVPixelBufferRelease(frameRef);
+            return;
+        }
+
+        // On success the queue takes ownership; the consuming extension releases the sample buffer
+        if (CMSimpleQueueEnqueue(vcam->queue, sampleBuffer) != noErr)
+            CFRelease(sampleBuffer);
     } else {
         // Share pixel buffer with clients
         [vcam->machServer sendPixelBuffer:frameRef timestamp:frame->timestamp fpsNumerator:vcam->videoInfo.fps_num
