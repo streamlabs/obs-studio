@@ -23,8 +23,15 @@ endif()
 
 target_sources(
   win-dshow
-  PRIVATE dshow-plugin.cpp encode-dstr.hpp ffmpeg-decode.c ffmpeg-decode.h win-dshow-encoder.cpp win-dshow.cpp
-          capture-status.hpp device-reconnect.hpp
+  PRIVATE
+    dshow-plugin.cpp
+    encode-dstr.hpp
+    ffmpeg-decode.c
+    ffmpeg-decode.h
+    win-dshow-encoder.cpp
+    win-dshow.cpp
+    capture-status.hpp
+    device-reconnect.hpp
 )
 
 configure_file(cmake/windows/obs-module.rc.in win-dshow.rc)
