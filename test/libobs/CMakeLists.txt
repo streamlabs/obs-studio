@@ -17,6 +17,7 @@ include(Catch)
 add_executable(
   libobs_unit_tests
   test-basic-lifecycle.cpp
+  test-capture-status.cpp
   test-audio-config.cpp
   test-util.cpp
   test-process-pipe.cpp

@@ -13,18 +13,14 @@
 #endif
 #include "ffmpeg-decode.h"
 #include "encode-dstr.hpp"
+#include "capture-status.hpp"
+#include "device-reconnect.hpp"
 
 #include <algorithm>
 #include <limits>
 #include <set>
 #include <string>
 #include <vector>
-
-/*
- * TODO:
- *   - handle disconnections and reconnections
- *   - if device not present, wait for device to be plugged in
- */
 
 #undef min
 #undef max
@@ -210,12 +206,27 @@ struct DShowInput {
 	WinHandle activated_event;
 	WinHandle thread;
 	CriticalSection mutex;
-	vector<Action> actions;
+	struct QueuedAction {
+		Action action = Action::None;
+		uint64_t generation = 0;
+	};
+	vector<QueuedAction> actions;
+	DShowCapture::CaptureStatus captureStatus;
+	DShowCapture::DeviceReconnectMonitor deviceChanges;
+	// Only touched by the device thread during Activate.
+	uint32_t activationError = 0;
+	string activationFailure;
+	string activationDevice;
 
 	inline void QueueAction(Action action)
 	{
 		CriticalScope scope(mutex);
-		actions.push_back(action);
+		uint64_t generation = captureStatus.generation;
+		if (action == Action::Activate || action == Action::ActivateBlock)
+			generation = captureStatus.Request(true);
+		else if (action == Action::Deactivate || action == Action::Shutdown)
+			generation = captureStatus.Request(false);
+		actions.push_back({action, generation});
 		ReleaseSemaphore(semaphore, 1, nullptr);
 	}
 
@@ -269,7 +280,7 @@ struct DShowInput {
 		{
 			CriticalScope scope(mutex);
 			actions.resize(1);
-			actions[0] = Action::Shutdown;
+			actions[0] = {Action::Shutdown, captureStatus.Request(false)};
 		}
 
 		ReleaseSemaphore(semaphore, 1, nullptr);
@@ -297,6 +308,8 @@ struct DShowInput {
 	inline void SetupBuffering(obs_data_t *settings);
 
 	void DShowLoop();
+	void CheckDevicePresence();
+	void DeviceRemoved();
 };
 
 static DWORD CALLBACK DShowThread(LPVOID ptr)
@@ -323,23 +336,48 @@ static inline void ProcessMessages()
 /* Always keep directshow in a single thread for a given device */
 void DShowInput::DShowLoop()
 {
+	const HANDLE handles[] = {semaphore, deviceChanges.Event()};
+	uint64_t nextDeviceCheck = 0;
 	while (true) {
-		DWORD ret = MsgWaitForMultipleObjects(1, &semaphore, false, INFINITE, QS_ALLINPUT);
-		if (ret == (WAIT_OBJECT_0 + 1)) {
+		const uint64_t now = GetTickCount64();
+		{
+			CriticalScope scope(mutex);
+			if (!captureStatus.CanCheckDevice())
+				nextDeviceCheck = 0;
+			else if (!nextDeviceCheck &&
+				 (captureStatus.CanReconnect() || !deviceChanges.HasNotifications()))
+				nextDeviceCheck = now + 2000;
+		}
+		const DWORD timeout = !nextDeviceCheck        ? INFINITE
+				      : nextDeviceCheck > now ? DWORD(nextDeviceCheck - now)
+							      : 0;
+		DWORD ret = MsgWaitForMultipleObjects(2, handles, false, timeout, QS_ALLINPUT);
+		if (ret == WAIT_TIMEOUT) {
+			nextDeviceCheck = 0;
+			CheckDevicePresence();
+			continue;
+		} else if (ret == WAIT_OBJECT_0 + 1) {
+			if (deviceChanges.TakeRemoval())
+				DeviceRemoved();
+			// Arrival can precede driver readiness; coalesce events and retry missing devices below.
+			nextDeviceCheck = GetTickCount64() + 300;
+			continue;
+		} else if (ret == (WAIT_OBJECT_0 + 2)) {
 			ProcessMessages();
 			continue;
 		} else if (ret != WAIT_OBJECT_0) {
 			break;
 		}
 
-		Action action = Action::None;
+		QueuedAction queued;
 		{
 			CriticalScope scope(mutex);
 			if (actions.size()) {
-				action = actions.front();
+				queued = actions.front();
 				actions.erase(actions.begin());
 			}
 		}
+		const Action action = queued.action;
 		if (action != Action::None)
 			blog(LOG_INFO, "DShowLoop process action %d for %08X",
 			     action, this);
@@ -351,7 +389,13 @@ void DShowInput::DShowLoop()
 
 			obs_data_t *settings;
 			settings = obs_source_get_settings(source);
-			if (!Activate(settings)) {
+			bool success = Activate(settings);
+			{
+				CriticalScope scope(mutex);
+				captureStatus.Complete(queued.generation, success, activationDevice, activationFailure,
+						       activationError);
+			}
+			if (!success) {
 				obs_source_output_video2(source, nullptr);
 			}
 			if (block)
@@ -389,6 +433,58 @@ void DShowInput::DShowLoop()
 		case Action::None:;
 		}
 	}
+}
+
+void DShowInput::DeviceRemoved()
+{
+	{
+		CriticalScope scope(mutex);
+		if (!actions.empty() || !captureStatus.DeviceRemoved(captureStatus.generation))
+			return;
+	}
+	// Keep logical activation enabled so a returning camera can be restarted.
+	Deactivate();
+}
+
+void DShowInput::CheckDevicePresence()
+{
+	uint64_t generation;
+	{
+		CriticalScope scope(mutex);
+		if (!actions.empty() || !captureStatus.CanCheckDevice())
+			return;
+		generation = captureStatus.generation;
+	}
+	const auto present = deviceChanges.IsPresent();
+	if (!present.has_value())
+		return;
+	if (!*present) {
+		bool disconnected;
+		{
+			CriticalScope scope(mutex);
+			disconnected = captureStatus.reason != "device_not_found" &&
+				       captureStatus.DeviceRemoved(generation);
+		}
+		if (disconnected)
+			Deactivate();
+		return;
+	}
+	{
+		CriticalScope scope(mutex);
+		if (!actions.empty() || captureStatus.generation != generation || !captureStatus.CanReconnect())
+			return;
+		generation = captureStatus.Reconnect(generation);
+	}
+	blog(LOG_INFO, "%s: camera returned, retrying capture", obs_source_get_name(source));
+	obs_data_t *settings = obs_source_get_settings(source);
+	const bool success = Activate(settings);
+	obs_data_release(settings);
+	{
+		CriticalScope scope(mutex);
+		captureStatus.Complete(generation, success, activationDevice, activationFailure, activationError);
+	}
+	if (!success)
+		obs_source_output_video2(source, nullptr);
 }
 
 #define FPS_HIGHEST 0LL
@@ -901,6 +997,7 @@ bool DShowInput::UpdateVideoConfig(obs_data_t *settings)
 	Device::EnumVideoDevices(data.devices, true);
 	VideoDevice dev;
 	if (!data.GetDevice(dev, video_device_id.c_str())) {
+		activationFailure = DShowCapture::EnumerationFailureReason(deviceChanges.IsPresent());
 		blog(LOG_WARNING, "%s: data.GetDevice failed", obs_source_get_name(source));
 		return false;
 	}
@@ -1119,6 +1216,16 @@ inline enum video_range_type DShowInput::GetColorRange(obs_data_t *settings) con
 
 inline bool DShowInput::Activate(obs_data_t *settings)
 {
+	activationError = 0;
+	activationFailure = *obs_data_get_string(settings, VIDEO_DEVICE_ID) ? "start_failed" : "";
+	activationDevice.clear();
+	DeviceId selectedDevice;
+	if (DecodeDeviceId(selectedDevice, obs_data_get_string(settings, VIDEO_DEVICE_ID))) {
+		DStr name;
+		dstr_from_wcs(name, selectedDevice.name.c_str());
+		activationDevice = name->array;
+	}
+	deviceChanges.SetDevicePath(selectedDevice.path);
 	blog(LOG_INFO, "Activate device '%s'", obs_source_get_name(source));
 	device.GetAccess();
 
@@ -1146,7 +1253,8 @@ inline bool DShowInput::Activate(obs_data_t *settings)
 		return false;
 	}
 
-	if (device.Start() != Result::Success) {
+	if (device.Start(&activationError) != Result::Success) {
+		activationFailure = DShowCapture::FailureReason(activationError);
 		device.ReleaseAccess();
 		return false;
 	}
@@ -1211,6 +1319,24 @@ static void proc_activate(void *data, calldata_t *cd)
 	input->SetActive(activate);
 }
 
+static void proc_get_capture_status(void *data, calldata_t *cd)
+{
+	auto *input = static_cast<DShowInput *>(data);
+	DShowCapture::CaptureStatus status;
+	{
+		CriticalScope scope(input->mutex);
+		status = input->captureStatus;
+	}
+	obs_data_t *result = obs_data_create();
+	obs_data_set_string(result, "state", status.state.c_str());
+	obs_data_set_string(result, "reason", status.reason.c_str());
+	obs_data_set_string(result, "deviceName", status.deviceName.c_str());
+	obs_data_set_int(result, "errorCode", status.errorCode);
+	obs_data_set_int(result, "generation", status.generation);
+	calldata_set_string(cd, "status", obs_data_get_json(result));
+	obs_data_release(result);
+}
+
 static void *CreateDShowInput(obs_data_t *settings, obs_source_t *source)
 {
 	DShowInput *dshow = nullptr;
@@ -1219,6 +1345,7 @@ static void *CreateDShowInput(obs_data_t *settings, obs_source_t *source)
 		dshow = new DShowInput(source, settings);
 		proc_handler_t *ph = obs_source_get_proc_handler(source);
 		proc_handler_add(ph, "void activate(bool active)", proc_activate, dshow);
+		proc_handler_add(ph, "void get_capture_status(out string status)", proc_get_capture_status, dshow);
 	} catch (const char *error) {
 		blog(LOG_ERROR, "Could not create device '%s': %s", obs_source_get_name(source), error);
 	}
