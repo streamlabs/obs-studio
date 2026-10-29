@@ -203,6 +203,23 @@ TEST_CASE("File output creates a regular file and permits concurrent writers", "
 	CHECK(fclose(first.release()) == 0);
 }
 
+TEST_CASE("Path safety check reports why a path was rejected", "[util][file][windows]")
+{
+	TestFiles files;
+	files.initialize();
+	CHECK(os_is_path_safe(files.root.u8string().c_str()));
+	CHECK(os_is_path_safe((files.root / L"target\\").u8string().c_str()));
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe((files.root / L"missing").u8string().c_str()));
+	CHECK(errno == ENOENT);
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe((files.root / L"target.bin").u8string().c_str()));
+	CHECK(errno == ENOTDIR);
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe(""));
+	CHECK(errno == EINVAL);
+}
+
 TEST_CASE("File output rejects directory junctions without modifying their target", "[util][file][windows]")
 {
 	TestFiles files;
@@ -211,10 +228,14 @@ TEST_CASE("File output rejects directory junctions without modifying their targe
 	const bool created = createJunction(junction, files.root / L"target");
 	INFO("Create junction: Windows error " << GetLastError());
 	REQUIRE(created);
+	errno = 0;
 	File output = openOutput(junction / L"child.bin");
 	CHECK_FALSE(output);
+	CHECK(errno == ELOOP);
 	output.reset();
+	errno = 0;
 	CHECK_FALSE(os_is_path_safe(junction.u8string().c_str()));
+	CHECK(errno == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
 }
 
@@ -227,13 +248,17 @@ TEST_CASE("File output rejects symbolic links without modifying their targets", 
 	createSymlink(linkedFile, files.root / L"target.bin", 0);
 	createSymlink(linkedDirectory, files.root / L"target", SYMBOLIC_LINK_FLAG_DIRECTORY);
 
+	errno = 0;
 	File fileOutput = openOutput(linkedFile);
 	CHECK_FALSE(fileOutput);
+	CHECK(errno == ELOOP);
 	fileOutput.reset();
 	File childOutput = openOutput(linkedDirectory / L"child.bin");
 	CHECK_FALSE(childOutput);
 	childOutput.reset();
+	errno = 0;
 	CHECK_FALSE(os_is_path_safe(linkedDirectory.u8string().c_str()));
+	CHECK(errno == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target.bin");
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
 }

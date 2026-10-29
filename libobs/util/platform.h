@@ -32,9 +32,12 @@ extern "C" {
 
 EXPORT FILE *os_wfopen(const wchar_t *path, const char *mode);
 EXPORT FILE *os_fopen(const char *path, const char *mode);
-/* Opens a file for binary writing without following Windows name-surrogate reparse points. */
+/* Opens a file for binary writing without following Windows name-surrogate reparse points
+ * (errno is ELOOP if one is found). */
 EXPORT FILE *os_fopen_write_nofollow(const char *path);
-/* Best-effort preflight; write-time enforcement is os_fopen_write_nofollow. */
+/* Best-effort preflight that path is an existing directory with no name-surrogate reparse point
+ * in any component; write-time enforcement is os_fopen_write_nofollow. On Windows, failure sets
+ * errno: ELOOP (reparse point), ENOENT, ENOTDIR, EINVAL (bad path), or EACCES (other errors). */
 EXPORT bool os_is_path_safe(const char *path);
 EXPORT int64_t os_fgetsize(FILE *file);
 

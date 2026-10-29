@@ -1468,15 +1468,23 @@ static bool is_safe_path_handle(HANDLE handle, bool require_directory, bool *is_
 {
 	FILE_ATTRIBUTE_TAG_INFO info;
 
-	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)))
+	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info))) {
+		set_errno_from_win32(GetLastError());
 		return false;
+	}
 	const bool reparse = (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 	if (is_reparse)
 		*is_reparse = reparse;
 	/* Cloud placeholders are reparse points but not name surrogates. */
-	if (reparse && IsReparseTagNameSurrogate(info.ReparseTag))
+	if (reparse && IsReparseTagNameSurrogate(info.ReparseTag)) {
+		errno = ELOOP;
 		return false;
-	return !require_directory || (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	}
+	if (require_directory && (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+		errno = ENOTDIR;
+		return false;
+	}
+	return true;
 }
 
 static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **handles_out, size_t *count_out)
@@ -1520,9 +1528,10 @@ static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **han
 		}
 
 		if (!is_safe_path_handle(handle, !final || include_final, NULL)) {
+			const int error = errno;
 			CloseHandle(handle);
 			close_handles(handles, count);
-			errno = EACCES;
+			errno = error;
 			return false;
 		}
 
@@ -1596,10 +1605,8 @@ FILE *os_fopen_write_nofollow(const char *path)
 		goto cleanup;
 	}
 
-	if (!is_safe_path_handle(handle, false, &reparse)) {
-		errno = EACCES;
+	if (!is_safe_path_handle(handle, false, &reparse))
 		goto cleanup;
-	}
 
 	if (reparse) {
 		if (!GetFileInformationByHandle(handle, &reparse_info)) {
@@ -1657,14 +1664,18 @@ bool os_is_path_safe(const char *path)
 	size_t count = 0;
 	bool safe = false;
 
-	if (!path || !*path)
+	if (!path || !*path) {
+		errno = EINVAL;
 		return false;
+	}
 
 	os_utf8_to_wcs_ptr(path, 0, &wide_path);
 	absolute = get_absolute_path(wide_path);
 	bfree(wide_path);
-	if (!absolute)
+	if (!absolute) {
+		errno = EINVAL;
 		return false;
+	}
 
 	while (wcslen(absolute) > get_path_root_length(absolute) && absolute[wcslen(absolute) - 1] == L'\\')
 		absolute[wcslen(absolute) - 1] = 0;

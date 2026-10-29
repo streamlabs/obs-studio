@@ -1005,8 +1005,9 @@ static inline int open_output_file(struct ffmpeg_mux *ffm)
 			// We're in charge of managing the actual file now
 			ffm->io.output_file = os_fopen_write_nofollow(ffm->params.file);
 			if (!ffm->io.output_file) {
+				/* MSVC's strerror has no text for ELOOP */
 				fprintf(stderr, "Couldn't open '%s', %s\n", ffm->params.printable_file.array,
-					strerror(errno));
+					errno == ELOOP ? "symbolic link or junction in path" : strerror(errno));
 				return FFM_ERROR;
 			}
 
