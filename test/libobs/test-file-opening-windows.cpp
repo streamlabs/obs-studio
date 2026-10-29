@@ -218,6 +218,13 @@ TEST_CASE("Path safety check reports why a path was rejected", "[util][file][win
 	errno = 0;
 	CHECK_FALSE(os_is_path_safe(""));
 	CHECK(errno == EINVAL);
+
+	// The return value carries the reason to callers whose CRT can't see libobs' errno.
+	CHECK(os_check_path_safe(files.root.u8string().c_str()) == 0);
+	CHECK(os_check_path_safe((files.root / L"missing").u8string().c_str()) == ENOENT);
+	CHECK(os_check_path_safe((files.root / L"target.bin").u8string().c_str()) == ENOTDIR);
+	CHECK(os_check_path_safe("") == EINVAL);
+	CHECK(os_check_path_safe(nullptr) == EINVAL);
 }
 
 TEST_CASE("File output rejects directory junctions without modifying their target", "[util][file][windows]")
@@ -236,6 +243,7 @@ TEST_CASE("File output rejects directory junctions without modifying their targe
 	errno = 0;
 	CHECK_FALSE(os_is_path_safe(junction.u8string().c_str()));
 	CHECK(errno == ELOOP);
+	CHECK(os_check_path_safe(junction.u8string().c_str()) == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
 }
 

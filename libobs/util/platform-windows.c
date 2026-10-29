@@ -1656,32 +1656,29 @@ cleanup:
 	return file;
 }
 
-bool os_is_path_safe(const char *path)
+int os_check_path_safe(const char *path)
 {
 	wchar_t *wide_path = NULL;
 	wchar_t *absolute = NULL;
 	HANDLE *handles = NULL;
 	size_t count = 0;
-	bool safe = false;
+	int error = 0;
 
-	if (!path || !*path) {
-		errno = EINVAL;
-		return false;
-	}
+	if (!path || !*path)
+		return EINVAL;
 
 	os_utf8_to_wcs_ptr(path, 0, &wide_path);
 	absolute = get_absolute_path(wide_path);
 	bfree(wide_path);
-	if (!absolute) {
-		errno = EINVAL;
-		return false;
-	}
+	if (!absolute)
+		return EINVAL;
 
 	while (wcslen(absolute) > get_path_root_length(absolute) && absolute[wcslen(absolute) - 1] == L'\\')
 		absolute[wcslen(absolute) - 1] = 0;
 
-	safe = lock_safe_components(absolute, true, &handles, &count);
+	if (!lock_safe_components(absolute, true, &handles, &count))
+		error = errno;
 	close_handles(handles, count);
 	bfree(absolute);
-	return safe;
+	return error;
 }
