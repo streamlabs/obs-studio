@@ -1471,8 +1471,25 @@ static bool is_safe_path_handle(HANDLE handle, bool require_directory, bool *is_
 	FILE_ATTRIBUTE_TAG_INFO info;
 
 	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info))) {
-		set_errno_from_win32(GetLastError());
-		return false;
+		/* FAT32 and exFAT don't implement FileAttributeTagInfo, but they can't hold reparse
+		 * points either, so the basic attributes are enough there. */
+		FILE_BASIC_INFO basic;
+		DWORD error = GetLastError();
+		if (error != ERROR_INVALID_PARAMETER) {
+			set_errno_from_win32(error);
+			return false;
+		}
+		if (!GetFileInformationByHandleEx(handle, FileBasicInfo, &basic, sizeof(basic))) {
+			set_errno_from_win32(GetLastError());
+			return false;
+		}
+		/* Without a tag a reparse point can't be told apart from a link, so reject it. */
+		if (basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+			errno = ELOOP;
+			return false;
+		}
+		info.FileAttributes = basic.FileAttributes;
+		info.ReparseTag = 0;
 	}
 	const bool reparse = (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 	if (is_reparse)

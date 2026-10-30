@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <util/platform.h>
 
@@ -134,6 +135,106 @@ void createSymlink(const std::filesystem::path &link, const std::filesystem::pat
 		SKIP("Symbolic link creation requires Windows Developer Mode or the create-symbolic-link privilege.");
 	FAIL("CreateSymbolicLinkW failed for " << link.u8string() << " with Windows error " << error);
 }
+
+bool isElevated()
+{
+	HANDLE token;
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+		return false;
+	TOKEN_ELEVATION elevation{};
+	DWORD size;
+	const bool success = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size);
+	CloseHandle(token);
+	return success && elevation.TokenIsElevated;
+}
+
+DWORD runDiskpart(const std::filesystem::path &script)
+{
+	std::wstring command = L"diskpart.exe /s \"" + script.native() + L"\"";
+	STARTUPINFOW startup{sizeof(startup)};
+	PROCESS_INFORMATION process{};
+	if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr,
+			    &startup, &process))
+		return GetLastError();
+	WaitForSingleObject(process.hProcess, INFINITE);
+	DWORD exitCode = 1;
+	GetExitCodeProcess(process.hProcess, &exitCode);
+	CloseHandle(process.hThread);
+	CloseHandle(process.hProcess);
+	return exitCode;
+}
+
+// A small virtual disk formatted with filesystem and given its own drive letter, standing in for a
+// FAT32 or exFAT recording drive. A drive letter rather than a folder mount, because the folder
+// would be a mount point and rejected as a link. Creating it needs administrator rights.
+class ScratchVolume {
+public:
+	std::filesystem::path root;
+
+	explicit ScratchVolume(const std::wstring &filesystem)
+	{
+		if (!isElevated())
+			SKIP("Formatting a scratch volume requires administrator rights.");
+
+		const DWORD drives = GetLogicalDrives();
+		wchar_t letter = 0;
+		for (int i = 25; i >= 3 && !letter; i--) {
+			if (!(drives & (1u << i)))
+				letter = wchar_t(L'A' + i);
+		}
+		if (!letter)
+			SKIP("Every drive letter from D: to Z: is in use.");
+
+		wchar_t tempPath[MAX_PATH];
+		const DWORD length = GetTempPathW(MAX_PATH, tempPath);
+		REQUIRE(length > 0);
+		REQUIRE(length < MAX_PATH);
+		const std::wstring name = L"obs-" + filesystem + L"-" + std::to_wstring(GetCurrentProcessId());
+		disk = std::filesystem::path(tempPath) / (name + L".vhdx");
+		script = std::filesystem::path(tempPath) / (name + L".txt");
+
+		writeScript(L"create vdisk file=\"" + disk.native() + L"\" maximum=128 type=expandable\n" +
+			    selectDisk() + L"attach vdisk\nconvert mbr\ncreate partition primary\nformat fs=" + filesystem +
+			    L" quick label=OBSTEST\nassign letter=" + letter + L"\n");
+		const DWORD result = runDiskpart(script);
+		if (result != 0) {
+			// A failed constructor never reaches the destructor, so detach a half-made disk here.
+			remove();
+			FAIL("diskpart exited with " << result);
+		}
+		root = std::wstring(1, letter) + L":\\";
+	}
+
+	~ScratchVolume() { remove(); }
+
+	ScratchVolume(const ScratchVolume &) = delete;
+	ScratchVolume &operator=(const ScratchVolume &) = delete;
+
+private:
+	std::filesystem::path disk;
+	std::filesystem::path script;
+
+	std::wstring selectDisk() const { return L"select vdisk file=\"" + disk.native() + L"\"\n"; }
+
+	void remove()
+	{
+		if (disk.empty())
+			return;
+		writeScript(selectDisk() + L"detach vdisk\n");
+		runDiskpart(script);
+		DeleteFileW(script.c_str());
+		DeleteFileW(disk.c_str());
+		disk.clear();
+	}
+
+	void writeScript(const std::wstring &contents) const
+	{
+		File file(_wfopen(script.c_str(), L"w"), fclose);
+		REQUIRE(file);
+		const std::string narrow = std::filesystem::path(contents).string();
+		REQUIRE(fwrite(narrow.data(), 1, narrow.size(), file.get()) == narrow.size());
+	}
+};
 
 TEST_CASE("File stat accepts ordinary paths and rejects paths beyond its conversion buffer", "[util][file][windows]")
 {
@@ -318,6 +419,28 @@ TEST_CASE("File output rejects symbolic links without modifying their targets", 
 	CHECK(errno == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target.bin");
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
+}
+
+// FAT32 and exFAT can't hold reparse points and fail the FileAttributeTagInfo query used to find
+// them. Recording folders on those drives must still pass, and still report the real reason when not.
+TEST_CASE("Path safety check accepts FAT32 and exFAT folders", "[util][file][windows][admin]")
+{
+	const std::wstring filesystem = GENERATE(as<std::wstring>{}, L"fat32", L"exfat");
+	CAPTURE(std::filesystem::path(filesystem).u8string());
+	ScratchVolume volume(filesystem);
+	const auto folder = volume.root / L"recordings";
+	REQUIRE(CreateDirectoryW(folder.c_str(), nullptr));
+
+	CHECK(os_check_path_safe(volume.root.u8string().c_str()) == 0);
+	CHECK(os_check_path_safe(folder.u8string().c_str()) == 0);
+	CHECK(os_check_path_safe((folder / L"missing").u8string().c_str()) == ENOENT);
+
+	// The muxer opens the output file through the same check, for the file and its parents.
+	File output = openOutput(folder / L"recording.mkv");
+	REQUIRE(output);
+	REQUIRE(fwrite("data", 1, 4, output.get()) == 4);
+	REQUIRE(fclose(output.release()) == 0);
+	CHECK(os_check_path_safe((folder / L"recording.mkv").u8string().c_str()) == ENOTDIR);
 }
 
 } // namespace
