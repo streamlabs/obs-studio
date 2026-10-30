@@ -1378,6 +1378,8 @@ static void set_errno_from_win32(DWORD error)
 	switch (error) {
 	case ERROR_FILE_NOT_FOUND:
 	case ERROR_PATH_NOT_FOUND:
+	case ERROR_BAD_NETPATH:
+	case ERROR_BAD_NET_NAME:
 		errno = ENOENT;
 		break;
 	case ERROR_FILE_EXISTS:
@@ -1656,6 +1658,25 @@ cleanup:
 	return file;
 }
 
+static bool path_root_exists(wchar_t *path)
+{
+	const size_t root_length = get_path_root_length(path);
+	const wchar_t saved = path[root_length];
+	DWORD attributes;
+	DWORD error;
+
+	path[root_length] = 0;
+	attributes = GetFileAttributesW(path);
+	error = GetLastError();
+	path[root_length] = saved;
+
+	if (attributes == INVALID_FILE_ATTRIBUTES) {
+		set_errno_from_win32(error);
+		return false;
+	}
+	return true;
+}
+
 int os_check_path_safe(const char *path)
 {
 	wchar_t *wide_path = NULL;
@@ -1676,7 +1697,10 @@ int os_check_path_safe(const char *path)
 	while (wcslen(absolute) > get_path_root_length(absolute) && absolute[wcslen(absolute) - 1] == L'\\')
 		absolute[wcslen(absolute) - 1] = 0;
 
-	if (!lock_safe_components(absolute, true, &handles, &count))
+	/* lock_safe_components starts below the root, so a bare root like Z:\ would pass unchecked. */
+	if (!path_root_exists(absolute))
+		error = errno;
+	else if (!lock_safe_components(absolute, true, &handles, &count))
 		error = errno;
 	close_handles(handles, count);
 	bfree(absolute);

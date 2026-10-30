@@ -227,6 +227,37 @@ TEST_CASE("Path safety check reports why a path was rejected", "[util][file][win
 	CHECK(os_check_path_safe(nullptr) == EINVAL);
 }
 
+TEST_CASE("Path safety check verifies the drive or share root itself", "[util][file][windows]")
+{
+	// A path that is only a root has no components below it, so the root must be checked directly.
+	TestFiles files;
+	files.initialize();
+	CHECK(os_check_path_safe(files.root.root_path().u8string().c_str()) == 0);
+
+	SECTION("missing drive")
+	{
+		const DWORD drives = GetLogicalDrives();
+		int unused = -1;
+		for (int i = 25; i >= 3 && unused < 0; i--) {
+			if (!(drives & (1u << i)))
+				unused = i;
+		}
+		if (unused < 0)
+			SKIP("Every drive letter from D: to Z: is in use.");
+		const std::string root = std::string(1, char('A' + unused)) + ":\\";
+		CAPTURE(root);
+		CHECK(os_check_path_safe(root.c_str()) == ENOENT);
+		CHECK(os_check_path_safe(root.substr(0, 2).c_str()) != 0);
+	}
+
+	SECTION("missing share")
+	{
+		const std::string share = "\\\\localhost\\obs-missing-share-" + std::to_string(GetCurrentProcessId()) + "\\";
+		CAPTURE(share);
+		CHECK(os_check_path_safe(share.c_str()) == ENOENT);
+	}
+}
+
 TEST_CASE("File output rejects directory junctions without modifying their target", "[util][file][windows]")
 {
 	TestFiles files;
