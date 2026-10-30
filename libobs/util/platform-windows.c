@@ -1378,6 +1378,8 @@ static void set_errno_from_win32(DWORD error)
 	switch (error) {
 	case ERROR_FILE_NOT_FOUND:
 	case ERROR_PATH_NOT_FOUND:
+	case ERROR_BAD_NETPATH:
+	case ERROR_BAD_NET_NAME:
 		errno = ENOENT;
 		break;
 	case ERROR_FILE_EXISTS:
@@ -1468,15 +1470,23 @@ static bool is_safe_path_handle(HANDLE handle, bool require_directory, bool *is_
 {
 	FILE_ATTRIBUTE_TAG_INFO info;
 
-	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)))
+	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info))) {
+		set_errno_from_win32(GetLastError());
 		return false;
+	}
 	const bool reparse = (info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 	if (is_reparse)
 		*is_reparse = reparse;
 	/* Cloud placeholders are reparse points but not name surrogates. */
-	if (reparse && IsReparseTagNameSurrogate(info.ReparseTag))
+	if (reparse && IsReparseTagNameSurrogate(info.ReparseTag)) {
+		errno = ELOOP;
 		return false;
-	return !require_directory || (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	}
+	if (require_directory && (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+		errno = ENOTDIR;
+		return false;
+	}
+	return true;
 }
 
 static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **handles_out, size_t *count_out)
@@ -1520,9 +1530,10 @@ static bool lock_safe_components(wchar_t *path, bool include_final, HANDLE **han
 		}
 
 		if (!is_safe_path_handle(handle, !final || include_final, NULL)) {
+			const int error = errno;
 			CloseHandle(handle);
 			close_handles(handles, count);
-			errno = EACCES;
+			errno = error;
 			return false;
 		}
 
@@ -1596,10 +1607,8 @@ FILE *os_fopen_write_nofollow(const char *path)
 		goto cleanup;
 	}
 
-	if (!is_safe_path_handle(handle, false, &reparse)) {
-		errno = EACCES;
+	if (!is_safe_path_handle(handle, false, &reparse))
 		goto cleanup;
-	}
 
 	if (reparse) {
 		if (!GetFileInformationByHandle(handle, &reparse_info)) {
@@ -1649,28 +1658,55 @@ cleanup:
 	return file;
 }
 
-bool os_is_path_safe(const char *path)
+static bool path_root_exists(wchar_t *path)
+{
+	const size_t root_length = get_path_root_length(path);
+	const wchar_t saved = path[root_length];
+	HANDLE handle;
+	DWORD error;
+
+	/* Open the root as a directory, as lock_safe_components does for each component.
+	 * GetFileAttributesW can fail on share roots that exist and open fine. */
+	path[root_length] = 0;
+	handle = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+			     FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	error = GetLastError();
+	path[root_length] = saved;
+
+	if (handle == INVALID_HANDLE_VALUE) {
+		set_errno_from_win32(error);
+		return false;
+	}
+	CloseHandle(handle);
+	return true;
+}
+
+int os_check_path_safe(const char *path)
 {
 	wchar_t *wide_path = NULL;
 	wchar_t *absolute = NULL;
 	HANDLE *handles = NULL;
 	size_t count = 0;
-	bool safe = false;
+	int error = 0;
 
 	if (!path || !*path)
-		return false;
+		return EINVAL;
 
 	os_utf8_to_wcs_ptr(path, 0, &wide_path);
 	absolute = get_absolute_path(wide_path);
 	bfree(wide_path);
 	if (!absolute)
-		return false;
+		return EINVAL;
 
 	while (wcslen(absolute) > get_path_root_length(absolute) && absolute[wcslen(absolute) - 1] == L'\\')
 		absolute[wcslen(absolute) - 1] = 0;
 
-	safe = lock_safe_components(absolute, true, &handles, &count);
+	/* lock_safe_components starts below the root, so a bare root like Z:\ would pass unchecked. */
+	if (!path_root_exists(absolute))
+		error = errno;
+	else if (!lock_safe_components(absolute, true, &handles, &count))
+		error = errno;
 	close_handles(handles, count);
 	bfree(absolute);
-	return safe;
+	return error;
 }

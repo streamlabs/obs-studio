@@ -203,6 +203,79 @@ TEST_CASE("File output creates a regular file and permits concurrent writers", "
 	CHECK(fclose(first.release()) == 0);
 }
 
+TEST_CASE("Path safety check reports why a path was rejected", "[util][file][windows]")
+{
+	TestFiles files;
+	files.initialize();
+	CHECK(os_is_path_safe(files.root.u8string().c_str()));
+	CHECK(os_is_path_safe((files.root / L"target\\").u8string().c_str()));
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe((files.root / L"missing").u8string().c_str()));
+	CHECK(errno == ENOENT);
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe((files.root / L"target.bin").u8string().c_str()));
+	CHECK(errno == ENOTDIR);
+	errno = 0;
+	CHECK_FALSE(os_is_path_safe(""));
+	CHECK(errno == EINVAL);
+
+	// The return value carries the reason to callers whose CRT can't see libobs' errno.
+	CHECK(os_check_path_safe(files.root.u8string().c_str()) == 0);
+	CHECK(os_check_path_safe((files.root / L"missing").u8string().c_str()) == ENOENT);
+	CHECK(os_check_path_safe((files.root / L"target.bin").u8string().c_str()) == ENOTDIR);
+	CHECK(os_check_path_safe("") == EINVAL);
+	CHECK(os_check_path_safe(nullptr) == EINVAL);
+}
+
+TEST_CASE("Path safety check verifies the drive or share root itself", "[util][file][windows]")
+{
+	// A path that is only a root has no components below it, so the root must be checked directly.
+	TestFiles files;
+	files.initialize();
+	CHECK(os_check_path_safe(files.root.root_path().u8string().c_str()) == 0);
+
+	SECTION("missing drive")
+	{
+		const DWORD drives = GetLogicalDrives();
+		int unused = -1;
+		for (int i = 25; i >= 3 && unused < 0; i--) {
+			if (!(drives & (1u << i)))
+				unused = i;
+		}
+		if (unused < 0)
+			SKIP("Every drive letter from D: to Z: is in use.");
+		const std::string root = std::string(1, char('A' + unused)) + ":\\";
+		CAPTURE(root);
+		CHECK(os_check_path_safe(root.c_str()) == ENOENT);
+		CHECK(os_check_path_safe(root.substr(0, 2).c_str()) != 0);
+	}
+
+	SECTION("missing share")
+	{
+		const std::string share = "\\\\localhost\\obs-missing-share-" + std::to_string(GetCurrentProcessId()) + "\\";
+		CAPTURE(share);
+		CHECK(os_check_path_safe(share.c_str()) == ENOENT);
+	}
+
+	SECTION("existing share")
+	{
+		// The drive's administrative share stands in for a network recording folder.
+		const std::wstring local = files.root.native();
+		REQUIRE(local.size() > 3);
+		REQUIRE(local[1] == L':');
+		const std::filesystem::path share = L"\\\\localhost\\" + std::wstring(1, local[0]) + L"$\\";
+		HANDLE probe = CreateFileW(share.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+					   nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+		if (probe == INVALID_HANDLE_VALUE)
+			SKIP("Administrative share " << share.u8string() << " is not reachable: Windows error " << GetLastError());
+		CloseHandle(probe);
+
+		CAPTURE(share.u8string());
+		CHECK(os_check_path_safe(share.u8string().c_str()) == 0);
+		CHECK(os_check_path_safe((share / local.substr(3)).u8string().c_str()) == 0);
+	}
+}
+
 TEST_CASE("File output rejects directory junctions without modifying their target", "[util][file][windows]")
 {
 	TestFiles files;
@@ -211,10 +284,15 @@ TEST_CASE("File output rejects directory junctions without modifying their targe
 	const bool created = createJunction(junction, files.root / L"target");
 	INFO("Create junction: Windows error " << GetLastError());
 	REQUIRE(created);
+	errno = 0;
 	File output = openOutput(junction / L"child.bin");
 	CHECK_FALSE(output);
+	CHECK(errno == ELOOP);
 	output.reset();
+	errno = 0;
 	CHECK_FALSE(os_is_path_safe(junction.u8string().c_str()));
+	CHECK(errno == ELOOP);
+	CHECK(os_check_path_safe(junction.u8string().c_str()) == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
 }
 
@@ -227,13 +305,17 @@ TEST_CASE("File output rejects symbolic links without modifying their targets", 
 	createSymlink(linkedFile, files.root / L"target.bin", 0);
 	createSymlink(linkedDirectory, files.root / L"target", SYMBOLIC_LINK_FLAG_DIRECTORY);
 
+	errno = 0;
 	File fileOutput = openOutput(linkedFile);
 	CHECK_FALSE(fileOutput);
+	CHECK(errno == ELOOP);
 	fileOutput.reset();
 	File childOutput = openOutput(linkedDirectory / L"child.bin");
 	CHECK_FALSE(childOutput);
 	childOutput.reset();
+	errno = 0;
 	CHECK_FALSE(os_is_path_safe(linkedDirectory.u8string().c_str()));
+	CHECK(errno == ELOOP);
 	TestFiles::checkSentinel(files.root / L"target.bin");
 	TestFiles::checkSentinel(files.root / L"target" / L"child.bin");
 }
