@@ -186,7 +186,9 @@ public:
 			SKIP("Every drive letter from D: to Z: is in use.");
 
 		wchar_t tempPath[MAX_PATH];
-		REQUIRE(GetTempPathW(MAX_PATH, tempPath) > 0);
+		const DWORD length = GetTempPathW(MAX_PATH, tempPath);
+		REQUIRE(length > 0);
+		REQUIRE(length < MAX_PATH);
 		const std::wstring name = L"obs-" + filesystem + L"-" + std::to_wstring(GetCurrentProcessId());
 		disk = std::filesystem::path(tempPath) / (name + L".vhdx");
 		script = std::filesystem::path(tempPath) / (name + L".txt");
