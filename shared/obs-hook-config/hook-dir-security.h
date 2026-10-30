@@ -54,24 +54,45 @@
  * and every path on the machine failing. */
 #define HOOK_ROOT_WRITE_ACCESS (FILE_DELETE_CHILD | WRITE_DAC | WRITE_OWNER | GENERIC_ALL)
 
-static inline bool hook_enable_privilege(const wchar_t *name)
+/* previous->PrivilegeCount is non-zero only if this call changed the privilege. */
+static inline bool hook_enable_privilege(const wchar_t *name, TOKEN_PRIVILEGES *previous)
 {
 	TOKEN_PRIVILEGES privileges = {0};
+	DWORD previous_size = sizeof(*previous);
 	HANDLE token = NULL;
 	bool success = false;
 
-	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token))
+	memset(previous, 0, sizeof(*previous));
+
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
 		return false;
 
 	if (LookupPrivilegeValueW(NULL, name, &privileges.Privileges[0].Luid)) {
 		privileges.PrivilegeCount = 1;
 		privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-		success = AdjustTokenPrivileges(token, false, &privileges, sizeof(privileges), NULL, NULL) &&
+		success = AdjustTokenPrivileges(token, false, &privileges, sizeof(privileges), previous,
+						&previous_size) &&
 			  GetLastError() == ERROR_SUCCESS;
+		if (!success)
+			memset(previous, 0, sizeof(*previous));
 	}
 
 	CloseHandle(token);
 	return success;
+}
+
+static inline void hook_restore_privilege(const TOKEN_PRIVILEGES *previous)
+{
+	HANDLE token = NULL;
+
+	if (!previous->PrivilegeCount)
+		return;
+
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token))
+		return;
+
+	AdjustTokenPrivileges(token, false, (TOKEN_PRIVILEGES *)previous, 0, NULL, NULL);
+	CloseHandle(token);
 }
 
 static inline bool hook_sid_is_trusted(PSID sid)
@@ -411,13 +432,17 @@ static inline DWORD hook_dir_take_ownership(const wchar_t *dir)
 	PSECURITY_DESCRIPTOR sd = NULL;
 	PSID owner = NULL;
 	BOOL defaulted = false;
+	TOKEN_PRIVILEGES previous_take_ownership;
+	TOKEN_PRIVILEGES previous_restore;
 	DWORD s;
 
-	hook_enable_privilege(L"SeTakeOwnershipPrivilege");
-	hook_enable_privilege(L"SeRestorePrivilege");
+	hook_enable_privilege(L"SeTakeOwnershipPrivilege", &previous_take_ownership);
+	hook_enable_privilege(L"SeRestorePrivilege", &previous_restore);
 
-	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(HOOK_DIR_SDDL, SDDL_REVISION_1, &sd, NULL))
-		return GetLastError();
+	if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(HOOK_DIR_SDDL, SDDL_REVISION_1, &sd, NULL)) {
+		s = GetLastError();
+		goto restore;
+	}
 
 	if (!GetSecurityDescriptorOwner(sd, &owner, &defaulted) || !owner) {
 		s = ERROR_INVALID_SECURITY_DESCR;
@@ -428,6 +453,9 @@ static inline DWORD hook_dir_take_ownership(const wchar_t *dir)
 
 done:
 	LocalFree(sd);
+restore:
+	hook_restore_privilege(&previous_restore);
+	hook_restore_privilege(&previous_take_ownership);
 	return s;
 }
 
