@@ -36,9 +36,9 @@ EXPORT FILE *os_fopen(const char *path, const char *mode);
  * (errno is ELOOP if one is found). */
 EXPORT FILE *os_fopen_write_nofollow(const char *path);
 /* On Windows, best-effort preflight that path is an existing directory with no name-surrogate
-  * reparse point in any component; write-time enforcement is os_fopen_write_nofollow. Failure sets
-  * errno: ELOOP (reparse point), ENOENT, ENOTDIR, EINVAL (bad path), or EACCES (other errors).
-  * On other platforms, only checks that path is non-null and non-empty. */
+ * reparse point in any component; write-time enforcement is os_fopen_write_nofollow.
+ * Returns 0 on success or an error code: ELOOP (reparse point), ENOENT, ENOTDIR, EINVAL (bad path),
+ * or EACCES (other errors). On other platforms, only checks that path is non-null and non-empty. */
 EXPORT int os_check_path_safe(const char *path);
 /* os_check_path_safe(path) == 0; on failure also sets errno to its result. */
 EXPORT bool os_is_path_safe(const char *path);
