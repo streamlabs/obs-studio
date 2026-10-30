@@ -256,6 +256,24 @@ TEST_CASE("Path safety check verifies the drive or share root itself", "[util][f
 		CAPTURE(share);
 		CHECK(os_check_path_safe(share.c_str()) == ENOENT);
 	}
+
+	SECTION("existing share")
+	{
+		// The drive's administrative share stands in for a network recording folder.
+		const std::wstring local = files.root.native();
+		REQUIRE(local.size() > 3);
+		REQUIRE(local[1] == L':');
+		const std::filesystem::path share = L"\\\\localhost\\" + std::wstring(1, local[0]) + L"$\\";
+		HANDLE probe = CreateFileW(share.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+					   nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+		if (probe == INVALID_HANDLE_VALUE)
+			SKIP("Administrative share " << share.u8string() << " is not reachable: Windows error " << GetLastError());
+		CloseHandle(probe);
+
+		CAPTURE(share.u8string());
+		CHECK(os_check_path_safe(share.u8string().c_str()) == 0);
+		CHECK(os_check_path_safe((share / local.substr(3)).u8string().c_str()) == 0);
+	}
 }
 
 TEST_CASE("File output rejects directory junctions without modifying their target", "[util][file][windows]")

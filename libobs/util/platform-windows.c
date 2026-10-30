@@ -1662,18 +1662,22 @@ static bool path_root_exists(wchar_t *path)
 {
 	const size_t root_length = get_path_root_length(path);
 	const wchar_t saved = path[root_length];
-	DWORD attributes;
+	HANDLE handle;
 	DWORD error;
 
+	/* Open the root as a directory, as lock_safe_components does for each component.
+	 * GetFileAttributesW can fail on share roots that exist and open fine. */
 	path[root_length] = 0;
-	attributes = GetFileAttributesW(path);
+	handle = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			     OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	error = GetLastError();
 	path[root_length] = saved;
 
-	if (attributes == INVALID_FILE_ATTRIBUTES) {
+	if (handle == INVALID_HANDLE_VALUE) {
 		set_errno_from_win32(error);
 		return false;
 	}
+	CloseHandle(handle);
 	return true;
 }
 
