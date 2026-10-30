@@ -1668,8 +1668,8 @@ static bool path_root_exists(wchar_t *path)
 	/* Open the root as a directory, as lock_safe_components does for each component.
 	 * GetFileAttributesW can fail on share roots that exist and open fine. */
 	path[root_length] = 0;
-	handle = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
-			     OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	handle = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+			     FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	error = GetLastError();
 	path[root_length] = saved;
 
