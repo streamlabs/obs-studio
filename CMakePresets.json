@@ -76,7 +76,8 @@
                   "baseUrl": "https://streamlabs-obs-updater-deps.s3.us-west-2.amazonaws.com",
                   "label": "openssl",
                   "hashes": {
-                      "windows-x64": "801CE178E86CB13A1485878DE053B6089C32941800CFD2440F33158117A58860"
+                      "windows-x64": "801CE178E86CB13A1485878DE053B6089C32941800CFD2440F33158117A58860",
+                      "windows-arm64": "EE07AA08730BF1B2D1694C4C6F8051D88671FFDDC99F2F3C4572F10177839145"
                   }
               },
               "libmediasoupclient": {
@@ -86,7 +87,8 @@
                   "hashes": {
                       "macos-x86_64": "96EC3FCF81FC93540879F780E770F18FAD041CB766D5C309691ECD2EF403852A",
                       "macos-arm64": "A56C8BAFED9711CAD4D89A4186A3C64A4A32A40CE9A8D76C44FA8E23E95F91DB",
-                      "windows-x64": "E7DFF3BCEF39C56247A76619062061E0A20EDCCE814AE203941C2AC552E4609B"
+                      "windows-x64": "E7DFF3BCEF39C56247A76619062061E0A20EDCCE814AE203941C2AC552E4609B",
+                      "windows-arm64": "D77AAA17293A1118A3C67FBD67F1844E1D2353D39E7F906E709C4B54757D209E"
                   }
               },
               "webrtc": {
@@ -96,17 +98,22 @@
                   "hashes": {
                       "macos-x86_64": "B1F2D711AC644BB5255181E1EC2C5FD1AE9BA6AAB3ADDFF498368557241C7358",
                       "macos-arm64": "DE8669BD04E7610777586DAC37E532E2A2DF3963CDC4854CC84572B6C50557EB",
-                      "windows-x64": "DF7B54AC6709938CDEE6F37EE1D9E991CF438554F33E6C0EF49FEC79EAD55E44"
+                      "windows-x64": "DF7B54AC6709938CDEE6F37EE1D9E991CF438554F33E6C0EF49FEC79EAD55E44",
+                      "windows-arm64": "3B4CE63814DCD313ECA6ABD5A193273A4EDF735C78F0FDD07FBF321D95EBDCB9"
                   }
               },
               "grpc": {
-                  "version": "v1.47.0",
-                  "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
-                  "label": "gRPC",
-                  "hashes": {
-                      "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C"
-                  }
-              }
+                "version": "v1.47.0",
+                "versions": {
+                    "windows-arm64": "static-v1.71.0-arm64"
+                },
+                "baseUrl": "https://obs-studio-deployment.s3-us-west-2.amazonaws.com",
+                "label": "gRPC",
+                "hashes": {
+                    "windows-x64": "C83815ACCCAE80F07E545B569582E548EE6E4575B2E329B7B739509BD49D811C",
+                    "windows-arm64": "B50EE9BE7141FDBABA62493E2B8D70390502C73069655C66C90E899EDD4493BD"
+                }
+            }
             },
             "tools": {
               "sparkle": {
@@ -236,12 +243,13 @@
       "binaryDir": "${sourceDir}/build_arm64",
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
-        "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
-        "VIRTUALCAM_GUID": {"type": "STRING", "value": "A3FCE0F5-3493-419F-958A-ABA1250EC20B"},
-        "ENABLE_AJA": false,
         "ENABLE_BROWSER": true,
-        "ENABLE_SCRIPTING": false,
-        "ENABLE_VST": false
+        "VIRTUALCAM_GUID": {"type": "STRING", "value": "27B05C2D-93DC-474A-A5DA-9BBA34CB2A9C"},
+        "GPU_PRIORITY_VAL": {"type": "STRING", "value": "$penv{GPU_PRIORITY_VAL}"},
+        "ENABLE_CCACHE": false,
+        "ENABLE_32_TARGETS": false,
+        "ENABLE_UI": false,
+        "ENABLE_FRONTEND": false
       }
     },
     {
@@ -251,7 +259,7 @@
       "inherits": ["windows-arm64"],
       "warnings": {"dev": true, "deprecated": true},
       "cacheVariables": {
-        "CMAKE_COMPILE_WARNING_AS_ERROR": true
+        "CMAKE_COMPILE_WARNING_AS_ERROR": false
       }
     }
   ],

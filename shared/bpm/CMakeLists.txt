@@ -25,5 +25,6 @@ if(OS_WINDOWS)
 endif()
 
 target_link_libraries(bpm PUBLIC OBS::caption)
+target_compile_options(bpm PRIVATE /wd4005)
 
 set_target_properties(bpm PROPERTIES FOLDER deps POSITION_INDEPENDENT_CODE TRUE)

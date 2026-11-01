@@ -9,7 +9,7 @@ function(extract_archive file destination)
   endif()
 
   # Determine the file extension
-  get_filename_component(extension "${file}" EXT)
+  get_filename_component(extension "${file}" LAST_EXT)
   string(TOLOWER "${extension}" extension)
 
   # CMake's ZIP extraction has been unreliable with some large Windows dependency archives.
@@ -126,6 +126,10 @@ function(_check_dependencies)
 
     string(JSON data GET ${dependency_data} ${dependency})
     string(JSON version GET ${data} version)
+    string(JSON platform_version ERROR_VARIABLE error GET ${data} versions ${platform})
+    if(platform_version)
+      set(version "${platform_version}")
+    endif()
     string(JSON hash GET ${data} hashes ${platform})
     string(JSON url GET ${data} baseUrl)
     string(JSON label GET ${data} label)
