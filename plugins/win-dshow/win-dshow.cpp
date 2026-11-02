@@ -438,7 +438,7 @@ void DShowInput::DeviceRemoved()
 {
 	{
 		CriticalScope scope(mutex);
-		if (!actions.empty() || !captureStatus.DeviceRemoved(captureStatus.generation))
+		if (!captureStatus.DeviceRemoved(captureStatus.generation))
 			return;
 	}
 	// Keep logical activation enabled so a returning camera can be restarted.

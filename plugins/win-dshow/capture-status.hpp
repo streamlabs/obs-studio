@@ -43,7 +43,7 @@ struct CaptureStatus {
 		return state == "error" && reconnectAttemptsRemaining &&
 		       (reason == "device_not_found" || reason == "start_failed");
 	}
-	bool CanCheckDevice() const { return state == "running" || CanReconnect(); }
+	bool CanCheckDevice() const { return state == "running" || state == "error"; }
 
 	bool DeviceRemoved(uint64_t request)
 	{

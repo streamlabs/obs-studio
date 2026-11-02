@@ -27,7 +27,8 @@ TEST_CASE("Camera access and configuration errors stop retries and clear after e
 		CHECK(status.reason == FailureReason(code));
 		CHECK(status.errorCode == code);
 		CHECK(status.deviceName == "Camera A");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 		CHECK(status.Reconnect(status.generation) == 0);
 
 		// Correcting permissions/settings and explicitly activating starts a fresh attempt.
@@ -131,7 +132,7 @@ TEST_CASE("Camera reconnect survives transient startup failures until the driver
 	CHECK_FALSE(status.CanReconnect());
 }
 
-TEST_CASE("Camera reconnect attempts are bounded and a new removal re-arms recovery", "[capture-status]")
+TEST_CASE("Camera presence checks survive retry exhaustion and rearm after later removal", "[capture-status]")
 {
 	CaptureStatus status;
 	status.Complete(status.Request(true), false, "Camera A", "device_not_found", 0);
@@ -144,10 +145,47 @@ TEST_CASE("Camera reconnect attempts are bounded and a new removal re-arms recov
 		}
 		CHECK(status.state == "error");
 		CHECK(status.reason == "start_failed");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 		CHECK(status.Reconnect(status.generation) == 0);
 		if (cycle == 0)
 			REQUIRE(status.DeviceRemoved(status.generation));
+	}
+	REQUIRE(status.DeviceRemoved(status.generation));
+	const auto retry = status.Reconnect(status.generation);
+	REQUIRE(retry != 0);
+	status.Complete(retry, true, "Camera A", "", 0);
+	CHECK(status.state == "running");
+	CHECK(status.reason.empty());
+}
+
+TEST_CASE("Camera removal cannot supersede a queued activation or deactivation", "[capture-status]")
+{
+	CaptureStatus status;
+	status.Complete(status.Request(true), true, "Camera A", "", 0);
+	const auto running = status.generation;
+
+	SECTION("activation already queued")
+	{
+		const auto activation = status.Request(true);
+		CHECK_FALSE(status.DeviceRemoved(activation));
+		CHECK_FALSE(status.DeviceRemoved(running));
+		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.state == "starting");
+		CHECK(status.generation == activation);
+		status.Complete(activation, true, "Camera B", "", 0);
+		CHECK(status.state == "running");
+		CHECK(status.deviceName == "Camera B");
+	}
+	SECTION("deactivation already queued")
+	{
+		const auto deactivation = status.Request(false);
+		CHECK_FALSE(status.DeviceRemoved(deactivation));
+		CHECK_FALSE(status.DeviceRemoved(running));
+		CHECK_FALSE(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
+		CHECK(status.state == "inactive");
+		CHECK(status.generation == deactivation);
 	}
 }
 
@@ -172,14 +210,16 @@ TEST_CASE("Camera reconnect budget is cancelled by newer requests and permanent 
 		status.Complete(retry, false, "Camera A", "device_not_found", 0);
 		status.Complete(manual, false, "Camera B", "start_failed", 0);
 		CHECK(status.deviceName == "Camera B");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 		CHECK(status.Reconnect(status.generation) == 0);
 	}
 	SECTION("confirmed bandwidth exhaustion stops recovery immediately")
 	{
 		status.Complete(retry, false, "Camera A", FailureReason(0x800718CFu), 0x800718CFu);
 		CHECK(status.reason == "insufficient_bandwidth");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 		CHECK(status.Reconnect(status.generation) == 0);
 	}
 }
@@ -191,13 +231,15 @@ TEST_CASE("Camera enumeration failure distinguishes absent hardware from an unop
 	{
 		status.Complete(status.Request(true), false, "Camera A", EnumerationFailureReason(true), 0);
 		CHECK(status.reason == "start_failed");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 	}
 	SECTION("unknown presence is not evidence of a missing camera")
 	{
 		status.Complete(status.Request(true), false, "Camera A", EnumerationFailureReason(std::nullopt), 0);
 		CHECK(status.reason == "start_failed");
-		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.CanCheckDevice());
+		CHECK_FALSE(status.CanReconnect());
 	}
 	SECTION("confirmed absence waits for the returning camera")
 	{
