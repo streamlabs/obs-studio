@@ -76,11 +76,19 @@ FILE *os_fopen_write_nofollow(const char *path)
 	return os_fopen(path, "wb");
 }
 
-bool os_is_path_safe(const char *path)
+int os_check_path_safe(const char *path)
 {
-	return path && *path;
+	return path && *path ? 0 : EINVAL;
 }
 #endif
+
+bool os_is_path_safe(const char *path)
+{
+	const int error = os_check_path_safe(path);
+	if (error)
+		errno = error;
+	return !error;
+}
 
 int64_t os_fgetsize(FILE *file)
 {
