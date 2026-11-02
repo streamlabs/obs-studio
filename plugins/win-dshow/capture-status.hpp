@@ -8,8 +8,17 @@ namespace DShowCapture {
 
 inline const char *FailureReason(uint32_t code)
 {
-	// ERROR_CAMERA_INSUFFICIENT_BANDWIDTH. Other resource errors do not prove USB exhaustion.
-	return code == 0x800718CFu ? "insufficient_bandwidth" : "start_failed";
+	switch (code) {
+	case 0x800718CFu: // HRESULT_FROM_WIN32(ERROR_CAMERA_INSUFFICIENT_BANDWIDTH)
+		return "insufficient_bandwidth";
+	case 0x80070005u: // E_ACCESSDENIED
+		return "access_denied";
+	case 0x800718CEu: // HRESULT_FROM_WIN32(ERROR_CAMERA_INVALID_CONFIGURATION)
+		return "invalid_configuration";
+	default:
+		// Generic resource/device errors do not establish a specific cause.
+		return "start_failed";
+	}
 }
 
 inline const char *EnumerationFailureReason(std::optional<bool> present)
@@ -86,7 +95,8 @@ struct CaptureStatus {
 
 private:
 	// Only confirmed absence/removal arms retries. Transient startup failures during
-	// that recovery consume the budget; ordinary startup and bandwidth errors do not retry.
+	// that recovery consume the budget. Bandwidth, access, and configuration errors
+	// require user action; ordinary startup failures do not arm retries either.
 	uint32_t reconnectAttemptsRemaining = 0;
 };
 

@@ -3,12 +3,39 @@
 
 using namespace DShowCapture;
 
-TEST_CASE("Camera failures identify only confirmed bandwidth exhaustion", "[capture-status]")
+TEST_CASE("Camera failures identify confirmed bandwidth, access and configuration errors", "[capture-status]")
 {
 	CHECK(std::string(FailureReason(0x800718CFu)) == "insufficient_bandwidth");
+	CHECK(std::string(FailureReason(0x80070005u)) == "access_denied");
+	CHECK(std::string(FailureReason(0x800718CEu)) == "invalid_configuration");
 	CHECK(std::string(FailureReason(0x800705AAu)) == "start_failed");
 	CHECK(std::string(FailureReason(0x8007001Fu)) == "start_failed");
+	CHECK(std::string(FailureReason(0x80004005u)) == "start_failed");
 	CHECK(std::string(FailureReason(0)) == "start_failed");
+}
+
+TEST_CASE("Camera access and configuration errors stop retries and clear after explicit recovery", "[capture-status]")
+{
+	for (const auto code : {0x80070005u, 0x800718CEu}) {
+		INFO("HRESULT: " << code);
+		CaptureStatus status;
+		status.Complete(status.Request(true), false, "Camera A", "device_not_found", 0);
+		const auto retry = status.Reconnect(status.generation);
+		REQUIRE(retry != 0);
+		status.Complete(retry, false, "Camera A", FailureReason(code), code);
+		CHECK(status.state == "error");
+		CHECK(status.reason == FailureReason(code));
+		CHECK(status.errorCode == code);
+		CHECK(status.deviceName == "Camera A");
+		CHECK_FALSE(status.CanCheckDevice());
+		CHECK(status.Reconnect(status.generation) == 0);
+
+		// Correcting permissions/settings and explicitly activating starts a fresh attempt.
+		status.Complete(status.Request(true), true, "Camera A", "", 0);
+		CHECK(status.state == "running");
+		CHECK(status.reason.empty());
+		CHECK(status.errorCode == 0);
+	}
 }
 
 TEST_CASE("Camera status retains failures and rejects superseded completions", "[capture-status]")
