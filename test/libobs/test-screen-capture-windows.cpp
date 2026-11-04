@@ -1,11 +1,85 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <obs.h>
+#include <util/base.h>
 
+#include <windows.h>
+
+#include <atomic>
+#include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <system_error>
 
 namespace {
+
+constexpr const char *kDisableCompatUpdate = "OBS_WIN_CAPTURE_DISABLE_COMPAT_UPDATE";
+
+// win-capture's compatibility updater makes an HTTP request with no timeout, and module
+// unload joins it. Keep it off so the test never depends on the network.
+struct CompatUpdateDisabled {
+	std::string previous;
+	bool hadPrevious = false;
+	CompatUpdateDisabled()
+	{
+		char buffer[256];
+		const DWORD len = GetEnvironmentVariableA(kDisableCompatUpdate, buffer, sizeof(buffer));
+		hadPrevious = len > 0 && len < sizeof(buffer);
+		if (hadPrevious)
+			previous.assign(buffer, len);
+		SetEnvironmentVariableA(kDisableCompatUpdate, "1");
+	}
+	~CompatUpdateDisabled() { SetEnvironmentVariableA(kDisableCompatUpdate, hadPrevious ? previous.c_str() : nullptr); }
+	CompatUpdateDisabled(const CompatUpdateDisabled &) = delete;
+	CompatUpdateDisabled &operator=(const CompatUpdateDisabled &) = delete;
+};
+
+// Records whether win-capture reported honoring the updater switch.
+struct UpdaterDisabledLog {
+	log_handler_t previous = nullptr;
+	void *previousData = nullptr;
+	std::atomic_bool seen{false};
+	UpdaterDisabledLog()
+	{
+		base_get_log_handler(&previous, &previousData);
+		base_set_log_handler(
+			[](int level, const char *format, va_list args, void *data) {
+				auto &log = *static_cast<UpdaterDisabledLog *>(data);
+				if (strstr(format, "Compatibility updater disabled"))
+					log.seen = true;
+				if (log.previous)
+					log.previous(level, format, args, log.previousData);
+			},
+			this);
+	}
+	~UpdaterDisabledLog() { base_set_log_handler(previous, previousData); }
+	UpdaterDisabledLog(const UpdaterDisabledLog &) = delete;
+	UpdaterDisabledLog &operator=(const UpdaterDisabledLog &) = delete;
+};
+
+// Module config files go to a per-run temporary directory instead of the working directory.
+struct TempConfigDir {
+	std::filesystem::path path;
+	TempConfigDir()
+	{
+		path = std::filesystem::temp_directory_path() /
+		       ("obs-screen-capture-test-" + std::to_string(GetCurrentProcessId()));
+		std::filesystem::create_directories(path);
+	}
+	~TempConfigDir()
+	{
+		std::error_code ec;
+		std::filesystem::remove_all(path, ec);
+	}
+	std::string utf8() const
+	{
+		const auto u8 = path.generic_u8string();
+		return std::string(u8.begin(), u8.end());
+	}
+	TempConfigDir(const TempConfigDir &) = delete;
+	TempConfigDir &operator=(const TempConfigDir &) = delete;
+};
 
 struct ObsShutdownGuard {
 	~ObsShutdownGuard()
@@ -45,9 +119,13 @@ obs_source_t *active_child(obs_source_t *parent)
 // way to mute it, doubling game audio alongside Desktop Audio.
 TEST_CASE("Screen Capture's internal game capture never captures audio", "[win-capture][screen-capture][windows]")
 {
+	CompatUpdateDisabled no_update;
+	UpdaterDisabledLog updater_log;
+	TempConfigDir config_dir;
 	ObsShutdownGuard shutdown;
-	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	REQUIRE(obs_startup("en-US", config_dir.utf8().c_str(), nullptr));
 	load_win_capture();
+	REQUIRE(updater_log.seen);
 
 	// game_capture itself still defaults to capturing audio; only the hidden child opts out.
 	Data defaults(obs_get_source_defaults("game_capture"), obs_data_release);
