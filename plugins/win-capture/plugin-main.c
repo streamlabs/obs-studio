@@ -119,7 +119,13 @@ bool obs_module_load(void)
 	if (config_dir) {
 		os_mkdirs(config_dir);
 
-		if (local_dir) {
+		/* Tests load this module without network access; the updater's
+		 * request has no timeout and unload joins its thread. */
+		bool update_disabled = GetEnvironmentVariableA("OBS_WIN_CAPTURE_DISABLE_COMPAT_UPDATE", NULL, 0) > 0;
+		if (update_disabled)
+			blog(LOG_INFO, WIN_CAPTURE_LOG_STRING "Compatibility updater disabled by environment");
+
+		if (local_dir && !update_disabled) {
 			update_info = update_info_create(WIN_CAPTURE_LOG_STRING, WIN_CAPTURE_VER_STRING, update_url,
 							 local_dir, config_dir, confirm_compat_file, NULL);
 		}

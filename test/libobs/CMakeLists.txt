@@ -43,6 +43,16 @@ if(OS_WINDOWS)
       OBS_TEST_D3D11_MODULE="$<TARGET_FILE:OBS::libobs-d3d11>"
       OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/"
   )
+  if(TARGET win-capture)
+    target_sources(libobs_unit_tests PRIVATE test-screen-capture-windows.cpp)
+    add_dependencies(libobs_unit_tests win-capture)
+    target_compile_definitions(
+      libobs_unit_tests
+      PRIVATE
+        OBS_TEST_WIN_CAPTURE_MODULE="$<TARGET_FILE:win-capture>"
+        OBS_TEST_WIN_CAPTURE_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/win-capture/data/"
+    )
+  endif()
 else()
   # Compile the private converter to test its flags as well as the exported platform wrappers.
   target_sources(libobs_unit_tests PRIVATE ../../libobs/util/utf8.c)
