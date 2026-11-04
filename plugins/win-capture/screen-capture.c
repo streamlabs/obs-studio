@@ -323,6 +323,7 @@ static void switch_to_game_capture_mode(struct screen_capture *context)
 		break;
 	}
 	obs_data_set_bool(game_capture_settings, "internal_mode", true);
+	obs_data_set_bool(game_capture_settings, "capture_audio", false);
 
 	WaitForSingleObject(context->subsources_mutex, INFINITE);
 	context->game_capture = obs_source_create_private(
