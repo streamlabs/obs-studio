@@ -82,6 +82,9 @@ add_compile_definitions(
   _UNICODE
   _CRT_SECURE_NO_WARNINGS
   _CRT_NONSTDC_NO_WARNINGS
+  # VS 2022 17.10+ gives std::mutex a constexpr constructor that msvcp140.dll older than 14.40 cannot handle: the first
+  # lock crashes in mtx_do_lock. Users can load such an old runtime, so keep the old mutex initialization.
+  _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR
   $<$<CONFIG:DEBUG>:DEBUG>
   $<$<CONFIG:DEBUG>:_DEBUG>
 )
