@@ -21,10 +21,16 @@
 #include "../util/dstr.h"
 #include "vec4.h"
 
+#include <limits.h>
+
 #define blog(level, format, ...) blog(level, "%s: " format, __FUNCTION__, __VA_ARGS__)
+#define MAX_GIF_DIMENSION 4096
 
 static void *bi_def_bitmap_create(int width, int height)
 {
+	if (width <= 0 || height <= 0 || width > MAX_GIF_DIMENSION || height > MAX_GIF_DIMENSION)
+		return NULL;
+
 	return bmalloc((size_t)4 * width * height);
 }
 
@@ -55,11 +61,6 @@ static void bi_def_bitmap_modified(void *bitmap)
 	UNUSED_PARAMETER(bitmap);
 }
 
-static inline int get_full_decoded_gif_size(gs_image_file_t *image)
-{
-	return image->gif.width * image->gif.height * 4 * image->gif.frame_count;
-}
-
 static inline void *alloc_mem(gs_image_file_t *image, uint64_t *mem_usage, size_t size)
 {
 	UNUSED_PARAMETER(image);
@@ -75,6 +76,7 @@ static bool init_animated_gif(gs_image_file_t *image, const char *path, uint64_t
 	bool is_animated_gif = true;
 	gif_result result;
 	uint64_t max_size;
+	int64_t file_size;
 	size_t size, size_read;
 	FILE *file;
 
@@ -93,9 +95,12 @@ static bool init_animated_gif(gs_image_file_t *image, const char *path, uint64_t
 		goto fail;
 	}
 
-	fseek(file, 0, SEEK_END);
-	size = (size_t)os_ftelli64(file);
-	fseek(file, 0, SEEK_SET);
+	if (fseek(file, 0, SEEK_END) != 0 || (file_size = os_ftelli64(file)) < 13 || file_size > UINT_MAX ||
+	    fseek(file, 0, SEEK_SET) != 0) {
+		blog(LOG_WARNING, "Invalid gif file size in '%s'", path);
+		goto fail;
+	}
+	size = (size_t)file_size;
 
 	image->gif_data = bmalloc(size);
 	size_read = fread(image->gif_data, 1, size, file);
@@ -115,15 +120,15 @@ static bool init_animated_gif(gs_image_file_t *image, const char *path, uint64_t
 		}
 	} while (result != GIF_OK);
 
-	if (image->gif.width > 4096 || image->gif.height > 4096) {
+	if (image->gif.width > MAX_GIF_DIMENSION || image->gif.height > MAX_GIF_DIMENSION) {
 		blog(LOG_WARNING, "Bad texture dimensions (%dx%d) in '%s'", image->gif.width, image->gif.height, path);
 		goto fail;
 	}
 
 	max_size = (uint64_t)image->gif.width * (uint64_t)image->gif.height * (uint64_t)image->gif.frame_count * 4LLU;
 
-	if ((uint64_t)get_full_decoded_gif_size(image) != max_size) {
-		blog(LOG_WARNING, "Gif '%s' overflowed maximum pointer size", path);
+	if (max_size > INT_MAX) {
+		blog(LOG_WARNING, "Gif '%s' exceeds maximum decoded size", path);
 		goto fail;
 	}
 
@@ -132,7 +137,7 @@ static bool init_animated_gif(gs_image_file_t *image, const char *path, uint64_t
 		gif_decode_frame(&image->gif, 0);
 
 		image->animation_frame_cache = alloc_mem(image, mem_usage, image->gif.frame_count * sizeof(uint8_t *));
-		image->animation_frame_data = alloc_mem(image, mem_usage, get_full_decoded_gif_size(image));
+		image->animation_frame_data = alloc_mem(image, mem_usage, (size_t)max_size);
 
 		for (unsigned int i = 0; i < image->gif.frame_count; i++) {
 			if (gif_decode_frame(&image->gif, i) != GIF_OK)
@@ -169,8 +174,10 @@ static bool init_animated_gif(gs_image_file_t *image, const char *path, uint64_t
 	image->loaded = true;
 
 fail:
-	if (!image->loaded)
+	if (!image->loaded) {
+		gif_finalise(&image->gif);
 		gs_image_file_free(image);
+	}
 not_animated:
 	if (file)
 		fclose(file);

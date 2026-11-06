@@ -25,6 +25,7 @@ add_executable(
   test-dstr.cpp
   test-calldata.cpp
   test-integer.cpp
+  test-image-file.cpp
   test-math.cpp
   test-crc32.cpp
   test-media-helpers.cpp
