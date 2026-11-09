@@ -26,6 +26,7 @@ add_executable(
   test-calldata.cpp
   test-integer.cpp
   test-image-file.cpp
+  test-module-loading.cpp
   test-math.cpp
   test-crc32.cpp
   test-media-helpers.cpp
@@ -35,6 +36,18 @@ add_executable(
   test-declarations.cpp
 )
 add_dependencies(tests libobs_unit_tests)
+add_library(obs-test-failure MODULE module-load-failure.c)
+target_link_libraries(obs-test-failure PRIVATE OBS::libobs)
+set_target_properties(
+  obs-test-failure
+  PROPERTIES
+    PREFIX ""
+    FOLDER "Tests and Examples"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
+)
+add_dependencies(libobs_unit_tests obs-test-failure)
+target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_MODULE_DIRECTORY="$<TARGET_FILE_DIR:obs-test-failure>")
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
   add_dependencies(libobs_unit_tests OBS::libobs-d3d11)
@@ -52,6 +65,7 @@ if(OS_WINDOWS)
       PRIVATE
         OBS_TEST_WIN_CAPTURE_MODULE="$<TARGET_FILE:win-capture>"
         OBS_TEST_WIN_CAPTURE_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/win-capture/data/"
+        OBS_TEST_DEPENDENCY_DIRECTORY="$<TARGET_FILE_DIR:FFmpeg::avformat>"
     )
   endif()
 else()

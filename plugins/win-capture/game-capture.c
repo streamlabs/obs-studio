@@ -203,7 +203,7 @@ struct game_capture {
 	struct auto_game_capture auto_capture;
 	int placeholder_text_height;
 	int placeholder_text_width;
-	gs_image_file2_t placeholder_image;
+	gs_image_file_ex_t placeholder_image;
 	gs_texture_t *placeholder_text_texture;
 	struct dstr placeholder_image_path;
 	struct dstr placeholder_text; // currently active placeholder message
@@ -691,11 +691,10 @@ static void load_placeholder_image(struct game_capture *gc)
 	unload_placeholder_image(gc);
 
 	if (!dstr_is_empty(&gc->placeholder_image_path)) {
-		gs_image_file2_init(&gc->placeholder_image,
-				    gc->placeholder_image_path.array);
+		gs_image_file_ex_init(&gc->placeholder_image, gc->placeholder_image_path.array, GS_IMAGE_ALPHA_STRAIGHT);
 
 		obs_enter_graphics();
-		gs_image_file2_init_texture(&gc->placeholder_image);
+		gs_image_file_ex_init_texture(&gc->placeholder_image);
 		obs_leave_graphics();
 	}
 
@@ -808,9 +807,9 @@ static void load_placeholder_image(struct game_capture *gc)
 
 static void unload_placeholder_image(struct game_capture *gc)
 {
-	if (gc->placeholder_image.image.loaded) {
+	if (gc->placeholder_image.loaded) {
 		obs_enter_graphics();
-		gs_image_file2_free(&gc->placeholder_image);
+		gs_image_file_ex_free(&gc->placeholder_image);
 		obs_leave_graphics();
 	}
 	if (gc->placeholder_text_texture) {
@@ -1243,8 +1242,14 @@ static inline bool create_inject_process(struct game_capture *gc, const char *in
 	STARTUPINFO si = {0};
 	bool success = false;
 
-	os_utf8_to_wcs_ptr(inject_path, 0, &inject_path_w);
-	os_utf8_to_wcs_ptr(hook_dll, 0, &hook_dll_w);
+	char *abs_inject_path = os_get_abs_path_ptr(inject_path);
+	char *abs_hook_dll = os_get_abs_path_ptr(hook_dll);
+
+	os_utf8_to_wcs_ptr(abs_inject_path, 0, &inject_path_w);
+	os_utf8_to_wcs_ptr(abs_hook_dll, 0, &hook_dll_w);
+
+	bfree(abs_inject_path);
+	bfree(abs_hook_dll);
 
 	si.cb = sizeof(si);
 
@@ -1482,6 +1487,12 @@ static void get_game_window(struct game_capture *gc)
 	}
 }
 
+static int rects_nearly_equal(RECT first, RECT second, long delta)
+{
+	return abs(first.left - second.left) <= delta && abs(first.right - second.right) <= delta &&
+	       abs(first.top - second.top) <= delta && abs(first.bottom - second.bottom) <= delta;
+}
+
 static void get_fullscreen_window(struct game_capture *gc)
 {
 	HWND window = GetForegroundWindow();
@@ -1515,8 +1526,11 @@ static void get_fullscreen_window(struct game_capture *gc)
 		return;
 	}
 
-	if (rect.left == mi.rcMonitor.left && rect.right == mi.rcMonitor.right && rect.bottom == mi.rcMonitor.bottom &&
-	    rect.top == mi.rcMonitor.top) {
+	/* Some apps extend their windows 1-2 pixels beyond the monitor's supported resolution to circumvent certain
+	 * exclusive fullscreen-related issues caused either by their graphics library, Windows itself, or both. Thus,
+	 * we compare the window's corner coordinates with those of the monitor using an acceptable relative margin of
+	 * 2, allowing it to extend slightly past the edge of the monitor. */
+	if (rects_nearly_equal(rect, mi.rcMonitor, 2)) {
 		setup_window(gc, window);
 	} else {
 		gc->wait_for_target_startup = true;
@@ -2311,7 +2325,7 @@ static void game_capture_render(void *data, gs_effect_t *unused)
 	struct game_capture *gc = data;
 	if (!gc->texture || !gc->active) {
 		if (gc->config.mode == CAPTURE_MODE_AUTO) {
-			if (gc->placeholder_image.image.texture) {
+			if (gc->placeholder_image.texture) {
 				//draw placeholder image
 				gs_effect_t *effect;
 				effect =
@@ -2322,13 +2336,12 @@ static void game_capture_render(void *data, gs_effect_t *unused)
 				gs_effect_set_texture(
 					gs_effect_get_param_by_name(effect,
 								    "image"),
-					gc->placeholder_image.image.texture);
+					gc->placeholder_image.texture);
 
 				size_t passes = gs_technique_begin(tech);
 				for (size_t i = 0; i < passes; i++) {
 					gs_technique_begin_pass(tech, i);
-					gs_draw_sprite(gc->placeholder_image
-							       .image.texture,
+					gs_draw_sprite(gc->placeholder_image.texture,
 						       0, gc->config.base_width,
 						       gc->config.base_height);
 					gs_technique_end_pass(tech);

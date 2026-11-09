@@ -73,6 +73,14 @@ set_source_files_properties(
   PROPERTIES COMPILE_DEFINITIONS OBS_VERSION="${OBS_VERSION_CANONICAL}"
 )
 
+set_source_files_properties(
+  graphics/libnsgif/gif.c
+  graphics/libnsgif/lzw.c
+  graphics/libnsgif/lzw.h
+  graphics/libnsgif/nsgif.h
+  PROPERTIES COMPILE_OPTIONS "/wd4244;/wd4267"
+)
+
 target_link_libraries(
   libobs
   PRIVATE Avrt Dwmapi Dxgi winmm Rpcrt4 OBS::obfuscate OBS::winhandle OBS::COMutils
@@ -85,7 +93,7 @@ set_target_properties(libobs PROPERTIES PREFIX "" OUTPUT_NAME "obs")
 
 find_package(LibDataChannel 0.20 REQUIRED)
 
-if(NOT ENABLE_UI)
+if(NOT ENABLE_FRONTEND)
   set(
     DEPENDENCY_DLLS
     $<TARGET_FILE:FFmpeg::avcodec>
