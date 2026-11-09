@@ -1606,7 +1606,6 @@ static bool obs_init(const char *locale, const char *module_config_path, profile
 	if (!audio_output_config_init(&obs->audio_config))
 		return false;
 
-
 	obs->core_modules_loaded = false;
 	return true;
 }

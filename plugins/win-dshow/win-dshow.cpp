@@ -224,10 +224,11 @@ struct DShowInput {
 	{
 		CriticalScope scope(mutex);
 		uint64_t generation = captureStatus.generation;
-		if (action == Action::Activate || action == Action::ActivateBlock)
+		if (action == Action::Activate || action == Action::ActivateBlock) {
 			generation = captureStatus.Request(true);
-		else if (action == Action::Deactivate || action == Action::Shutdown)
+		} else if (action == Action::Deactivate || action == Action::Shutdown) {
 			generation = captureStatus.Request(false);
+		}
 		actions.push_back({action, generation});
 		ReleaseSemaphore(semaphore, 1, nullptr);
 	}
@@ -256,8 +257,9 @@ struct DShowInput {
 		}
 
 		shutdown_started = CreateEvent(nullptr, true, false, nullptr);
-		if (!shutdown_started)
+		if (!shutdown_started) {
 			throw "Failed to create shutdown_started";
+		}
 
 		activated_event = CreateEvent(nullptr, false, false, nullptr);
 		if (!activated_event) {
@@ -348,11 +350,12 @@ void DShowInput::DShowLoop()
 		const uint64_t now = GetTickCount64();
 		{
 			CriticalScope scope(mutex);
-			if (!captureStatus.CanCheckDevice())
+			if (!captureStatus.CanCheckDevice()) {
 				nextDeviceCheck = 0;
-			else if (!nextDeviceCheck &&
-				 (captureStatus.CanReconnect() || !deviceChanges.HasNotifications()))
+			} else if (!nextDeviceCheck &&
+				   (captureStatus.CanReconnect() || !deviceChanges.HasNotifications())) {
 				nextDeviceCheck = now + 2000;
+			}
 		}
 		const DWORD timeout = !nextDeviceCheck        ? INFINITE
 				      : nextDeviceCheck > now ? DWORD(nextDeviceCheck - now)
@@ -363,8 +366,9 @@ void DShowInput::DShowLoop()
 			CheckDevicePresence();
 			continue;
 		} else if (ret == WAIT_OBJECT_0 + 1) {
-			if (deviceChanges.TakeRemoval())
+			if (deviceChanges.TakeRemoval()) {
 				DeviceRemoved();
+			}
 			// Arrival can precede driver readiness; coalesce events and retry missing devices below.
 			nextDeviceCheck = GetTickCount64() + 300;
 			continue;
@@ -384,8 +388,9 @@ void DShowInput::DShowLoop()
 			}
 		}
 		const Action action = queued.action;
-		if (action != Action::None)
+		if (action != Action::None) {
 			blog(LOG_INFO, "DShowLoop process action %d for %08X", action, this);
+		}
 
 		switch (action) {
 		case Action::Activate:
@@ -445,8 +450,9 @@ void DShowInput::DeviceRemoved()
 {
 	{
 		CriticalScope scope(mutex);
-		if (!captureStatus.DeviceRemoved(captureStatus.generation))
+		if (!captureStatus.DeviceRemoved(captureStatus.generation)) {
 			return;
+		}
 	}
 	// Keep logical activation enabled so a returning camera can be restarted.
 	Deactivate();
@@ -457,13 +463,15 @@ void DShowInput::CheckDevicePresence()
 	uint64_t generation;
 	{
 		CriticalScope scope(mutex);
-		if (!actions.empty() || !captureStatus.CanCheckDevice())
+		if (!actions.empty() || !captureStatus.CanCheckDevice()) {
 			return;
+		}
 		generation = captureStatus.generation;
 	}
 	const auto present = deviceChanges.IsPresent();
-	if (!present.has_value())
+	if (!present.has_value()) {
 		return;
+	}
 	if (!*present) {
 		bool disconnected;
 		{
@@ -471,14 +479,16 @@ void DShowInput::CheckDevicePresence()
 			disconnected = captureStatus.reason != "device_not_found" &&
 				       captureStatus.DeviceRemoved(generation);
 		}
-		if (disconnected)
+		if (disconnected) {
 			Deactivate();
+		}
 		return;
 	}
 	{
 		CriticalScope scope(mutex);
-		if (!actions.empty() || captureStatus.generation != generation || !captureStatus.CanReconnect())
+		if (!actions.empty() || captureStatus.generation != generation || !captureStatus.CanReconnect()) {
 			return;
+		}
 		generation = captureStatus.Reconnect(generation);
 	}
 	blog(LOG_INFO, "%s: camera returned, retrying capture", obs_source_get_name(source));
@@ -489,8 +499,9 @@ void DShowInput::CheckDevicePresence()
 		CriticalScope scope(mutex);
 		captureStatus.Complete(generation, success, activationDevice, activationFailure, activationError);
 	}
-	if (!success)
+	if (!success) {
 		obs_source_output_video2(source, nullptr);
+	}
 }
 
 #define FPS_HIGHEST 0LL
