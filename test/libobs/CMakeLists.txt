@@ -46,6 +46,10 @@ set_target_properties(
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
 )
+if(OS_MACOS)
+  # Match the extensionless binary names inside macOS plugin bundles.
+  set_target_properties(obs-test-failure PROPERTIES SUFFIX "")
+endif()
 add_dependencies(libobs_unit_tests obs-test-failure)
 target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_MODULE_DIRECTORY="$<TARGET_FILE_DIR:obs-test-failure>")
 if(OS_WINDOWS)
