@@ -564,7 +564,8 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device, void *io
             break;
         }
         case kCVPixelFormatType_64RGBAHalf: {
-            color_format = GL_RGBA;
+            obs_format = GS_RGBA16F;
+            gl_format = GL_RGBA;
             internal_format = GL_RGBA_FLOAT16_APPLE;
             texture_type = GL_HALF_APPLE;
             break;
