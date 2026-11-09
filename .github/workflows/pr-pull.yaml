@@ -2,6 +2,12 @@ name: Pull
 run-name: ${{ github.event.pull_request.title }} pull request run 🚀
 on:
   workflow_dispatch:
+    inputs:
+      baseRef:
+        description: Git reference used by change-based checks
+        required: true
+        type: string
+        default: origin/streamlabs
   pull_request:
     paths-ignore:
       - '**.md'
@@ -28,7 +34,7 @@ jobs:
 
   compatibility-validation:
     name: Validate Compatibility 🕵️
-    if: github.base_ref == 'streamlabs'
+    if: github.base_ref == 'streamlabs' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
     permissions:
       checks: write
@@ -41,7 +47,7 @@ jobs:
         uses: ./.github/actions/check-changes
         id: checks
         with:
-          baseRef: origin/${{ github.base_ref }}
+          baseRef: ${{ github.base_ref && format('origin/{0}', github.base_ref) || inputs.baseRef }}
           checkGlob: plugins/win-capture/data/*.json
 
       - name: Check for Invalid Compatibility Data 📉
@@ -52,7 +58,7 @@ jobs:
 
   services-validation:
     name: Validate Services 🕵️
-    if: github.base_ref == 'streamlabs'
+    if: github.base_ref == 'streamlabs' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
     permissions:
       checks: write
@@ -65,7 +71,7 @@ jobs:
         uses: ./.github/actions/check-changes
         id: checks
         with:
-          baseRef: origin/${{ github.base_ref }}
+          baseRef: ${{ github.base_ref && format('origin/{0}', github.base_ref) || inputs.baseRef }}
           checkGlob: plugins/rtmp-services/data/*.json
 
       - name: Check Services JSON Schema 📉
