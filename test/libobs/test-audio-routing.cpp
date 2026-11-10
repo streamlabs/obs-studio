@@ -55,11 +55,17 @@ struct PcmEncoder {
 	std::array<float, kFrames * 2> packet;
 };
 
+struct PcmPacket {
+	int64_t timestamp_usec;
+	std::vector<float> samples;
+};
+
 struct PcmOutput {
 	obs_output_t *output;
 	std::mutex mutex;
 	std::condition_variable cv;
-	std::vector<std::vector<float>> packets;
+	int64_t minimum_timestamp_usec = 0;
+	std::vector<PcmPacket> packets;
 
 	explicit PcmOutput(obs_output_t *output) : output(output) {}
 
@@ -68,23 +74,25 @@ struct PcmOutput {
 		if (!packet || packet->type != OBS_ENCODER_AUDIO)
 			return;
 		std::lock_guard lock(mutex);
-		if (packets.size() < 16) {
+		if (packet->sys_dts_usec >= minimum_timestamp_usec && packets.size() < 16) {
 			const auto *samples = reinterpret_cast<const float *>(packet->data);
-			packets.emplace_back(samples, samples + packet->size / sizeof(float));
+			packets.push_back({packet->sys_dts_usec, {samples, samples + packet->size / sizeof(float)}});
 		}
 		cv.notify_all();
 	}
 
-	void clear()
+	void capture_from(uint64_t timestamp_ns)
 	{
 		std::lock_guard lock(mutex);
+		minimum_timestamp_usec = static_cast<int64_t>((timestamp_ns + 999) / 1000);
 		packets.clear();
 	}
 
-	std::vector<std::vector<float>> take(size_t count)
+	std::vector<PcmPacket> take(size_t count)
 	{
 		std::unique_lock lock(mutex);
-		const bool received = cv.wait_for(lock, 2s, [&] { return packets.size() >= count; });
+		const bool received = cv.wait_for(lock, 3s, [&] { return packets.size() >= count; });
+		CAPTURE(minimum_timestamp_usec, packets.size());
 		REQUIRE(received);
 		return {packets.begin(), packets.begin() + count};
 	}
@@ -238,8 +246,8 @@ struct AudioRoutingFixture {
 		REQUIRE(obs_set_video_info(canvases[1], &video) == OBS_VIDEO_SUCCESS);
 		canvases[0] = obs_get_video_info_by_index2(0);
 		REQUIRE(canvases[0]);
-		const obs_audio_info audio{kRate, SPEAKERS_STEREO};
-		REQUIRE(obs_reset_audio(&audio));
+		const obs_audio_info2 audio{kRate, SPEAKERS_STEREO, 100, true};
+		REQUIRE(obs_reset_audio2(&audio));
 		register_test_types();
 		input.reset(obs_source_create_private(kInputId, "shared PCM input", nullptr));
 		REQUIRE(input);
@@ -339,16 +347,18 @@ struct AudioRoutingFixture {
 
 	void check_levels(float horizontal, float vertical, std::chrono::milliseconds settle = 150ms)
 	{
-		std::this_thread::sleep_for(settle);
+		const uint64_t timestamp =
+			os_gettime_ns() + std::chrono::duration_cast<std::chrono::nanoseconds>(settle).count();
+		// Visibility actions follow media timestamps, which can lag wall time by the audio buffer duration.
 		for (auto &output : outputs)
-			static_cast<PcmOutput *>(obs_obj_get_data(output.get()))->clear();
+			static_cast<PcmOutput *>(obs_obj_get_data(output.get()))->capture_from(timestamp);
 		for (size_t i = 0; i < outputs.size(); ++i) {
 			INFO((i == 0 ? "horizontal final PCM" : "vertical final PCM"));
 			const float expected = i == 0 ? horizontal : vertical;
 			const auto packets = static_cast<PcmOutput *>(obs_obj_get_data(outputs[i].get()))->take(4);
 			for (size_t packet_index = 0; packet_index < packets.size(); ++packet_index) {
-				const auto &packet = packets[packet_index];
-				CAPTURE(expected, packet_index);
+				const auto &packet = packets[packet_index].samples;
+				CAPTURE(expected, packet_index, packets[packet_index].timestamp_usec);
 				REQUIRE(packet.size() == kFrames * 2);
 				REQUIRE(std::all_of(packet.begin(), packet.end(),
 						    [](float sample) { return std::isfinite(sample); }));
