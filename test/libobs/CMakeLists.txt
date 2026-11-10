@@ -59,7 +59,8 @@ if(OS_WINDOWS)
 else()
   add_dependencies(libobs_unit_tests OBS::libobs-opengl)
   target_compile_definitions(
-    libobs_unit_tests PRIVATE OBS_TEST_AUDIO_GRAPHICS_MODULE="$<TARGET_FILE:OBS::libobs-opengl>"
+    libobs_unit_tests
+    PRIVATE OBS_TEST_AUDIO_GRAPHICS_MODULE="$<TARGET_FILE:OBS::libobs-opengl>"
   )
   # Compile the private converter to test its flags as well as the exported platform wrappers.
   target_sources(libobs_unit_tests PRIVATE ../../libobs/util/utf8.c)
