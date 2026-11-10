@@ -1923,6 +1923,8 @@ static bool scene_audio_render(void *data, uint64_t *ts_out, struct obs_source_a
 			continue;
 		}
 
+		obs_audio_route_add(scene->source, source, item->canvas, source_ts, apply_buf ? buf : NULL, count,
+				    mixers);
 		obs_source_get_audio_mix(source, &child_audio);
 
 		if (!source->audio_is_duplicated) {
@@ -2042,6 +2044,8 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 			continue;
 		}
 
+		obs_audio_route_add(scene->source, source, item->canvas, source_ts, apply_buf ? buf : NULL, count,
+				    mixers);
 		obs_source_get_audio_mix(source, &child_audio);
 
 		if (source->audio_is_duplicated) {
