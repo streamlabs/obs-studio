@@ -23,6 +23,7 @@ using namespace std::chrono_literals;
 
 constexpr uint32_t kRate = 48000;
 constexpr size_t kFrames = AUDIO_OUTPUT_FRAMES;
+constexpr uint64_t kProducerLeadFrames = kRate / 4;
 constexpr float kLevel = 0.125f;
 constexpr const char *kInputId = "audio-routing-test-input";
 constexpr const char *kEncoderId = "audio-routing-test-pcm";
@@ -276,7 +277,9 @@ struct AudioRoutingFixture {
 				audio.timestamp = start + frame * 1000000000ULL / kRate;
 				obs_source_output_audio(input.get(), &audio);
 				frame += kFrames;
-				os_sleepto_ns(start + frame * 1000000000ULL / kRate);
+				// Keep the independent mixer supplied when the producer's host thread wakes late.
+				if (frame > kProducerLeadFrames)
+					os_sleepto_ns(start + (frame - kProducerLeadFrames) * 1000000000ULL / kRate);
 			}
 		});
 	}
@@ -343,7 +346,9 @@ struct AudioRoutingFixture {
 			INFO((i == 0 ? "horizontal final PCM" : "vertical final PCM"));
 			const float expected = i == 0 ? horizontal : vertical;
 			const auto packets = static_cast<PcmOutput *>(obs_obj_get_data(outputs[i].get()))->take(4);
-			for (const auto &packet : packets) {
+			for (size_t packet_index = 0; packet_index < packets.size(); ++packet_index) {
+				const auto &packet = packets[packet_index];
+				CAPTURE(expected, packet_index);
 				REQUIRE(packet.size() == kFrames * 2);
 				REQUIRE(std::all_of(packet.begin(), packet.end(),
 						    [](float sample) { return std::isfinite(sample); }));
