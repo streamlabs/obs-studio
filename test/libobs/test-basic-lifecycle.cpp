@@ -92,6 +92,83 @@ TEST_CASE("OBS scene exposes its source and releases before shutdown", "[scene][
 	CHECK_FALSE(obs_initialized());
 }
 
+TEST_CASE("Replacing an output service detaches the previous service", "[output][service][lifecycle]")
+{
+	REQUIRE_FALSE(obs_initialized());
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+
+	obs_output_info outputInfo = {};
+	outputInfo.id = "lifecycle_output";
+	outputInfo.flags = OBS_OUTPUT_SERVICE | OBS_OUTPUT_ENCODED;
+	outputInfo.get_name = [](void *) {
+		return "Lifecycle output";
+	};
+	outputInfo.create = [](obs_data_t *, obs_output_t *output) -> void * {
+		return output;
+	};
+	outputInfo.destroy = [](void *) {
+	};
+	outputInfo.start = [](void *) {
+		return true;
+	};
+	outputInfo.stop = [](void *, uint64_t) {
+	};
+	outputInfo.encoded_packet = [](void *, encoder_packet *) {
+	};
+	outputInfo.protocols = "lifecycle";
+	obs_register_output(&outputInfo);
+
+	obs_service_info serviceInfo = {};
+	serviceInfo.id = "lifecycle_service";
+	serviceInfo.get_name = [](void *) {
+		return "Lifecycle service";
+	};
+	serviceInfo.create = [](obs_data_t *, obs_service_t *service) -> void * {
+		return service;
+	};
+	serviceInfo.destroy = [](void *) {
+	};
+	serviceInfo.get_protocol = [](void *) {
+		return "lifecycle";
+	};
+	obs_register_service(&serviceInfo);
+
+	std::unique_ptr<obs_output_t, decltype(&obs_output_release)> output(
+		obs_output_create(outputInfo.id, "output", nullptr, nullptr), obs_output_release);
+	std::unique_ptr<obs_output_t, decltype(&obs_output_release)> otherOutput(
+		obs_output_create(outputInfo.id, "other output", nullptr, nullptr), obs_output_release);
+	std::unique_ptr<obs_service_t, decltype(&obs_service_release)> previousService(
+		obs_service_create(serviceInfo.id, "previous service", nullptr, nullptr), obs_service_release);
+	std::unique_ptr<obs_service_t, decltype(&obs_service_release)> replacementService(
+		obs_service_create(serviceInfo.id, "replacement service", nullptr, nullptr), obs_service_release);
+	REQUIRE(output);
+	REQUIRE(otherOutput);
+	REQUIRE(previousService);
+	REQUIRE(replacementService);
+	obs_output_set_service(output.get(), previousService.get());
+	REQUIRE(obs_output_get_service(output.get()) == previousService.get());
+
+	SECTION("assigning a new service") {}
+	SECTION("reassigning the same service first")
+	{
+		obs_output_set_service(output.get(), previousService.get());
+		CHECK(obs_output_get_service(output.get()) == previousService.get());
+	}
+	SECTION("moving the replacement from another output")
+	{
+		obs_output_set_service(otherOutput.get(), replacementService.get());
+	}
+
+	obs_output_set_service(output.get(), replacementService.get());
+	CHECK(obs_output_get_service(output.get()) == replacementService.get());
+	CHECK(obs_output_get_service(otherOutput.get()) == nullptr);
+	previousService.reset();
+	CHECK(obs_output_get_service(output.get()) == replacementService.get());
+	replacementService.reset();
+	CHECK(obs_output_get_service(output.get()) == nullptr);
+}
+
 TEST_CASE("OBS audio sync signals preserve input and callback adjusted offsets", "[core][callback][lifecycle]")
 {
 	REQUIRE_FALSE(obs_initialized());

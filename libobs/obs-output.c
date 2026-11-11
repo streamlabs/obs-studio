@@ -1214,6 +1214,9 @@ void obs_output_set_service(obs_output_t *output, obs_service_t *service)
 	if (!log_flag_service(output, __FUNCTION__) || active(output) || !service || service->active)
 		return;
 
+	if (output->service)
+		output->service->output = NULL;
+
 	if (service->output)
 		service->output->service = NULL;
 
