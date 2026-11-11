@@ -2,7 +2,10 @@
 
 #include <obs.h>
 #include <obs-audio-routing.h>
+#include <util/darray.h>
 #include <util/platform.h>
+#include <util/threading.h>
+#include <obs-scene.h>
 
 #include <algorithm>
 #include <array>
@@ -26,6 +29,7 @@ constexpr size_t kFrames = AUDIO_OUTPUT_FRAMES;
 constexpr uint64_t kProducerLeadFrames = kRate / 4;
 constexpr float kLevel = 0.125f;
 constexpr const char *kInputId = "audio-routing-test-input";
+constexpr const char *kDelayedInputId = "audio-routing-test-delayed-input";
 constexpr const char *kEncoderId = "audio-routing-test-pcm";
 constexpr const char *kOutputId = "audio-routing-test-output";
 constexpr const char *kTransitionId = "audio-routing-test-transition";
@@ -34,6 +38,23 @@ using Source = std::unique_ptr<obs_source_t, decltype(&obs_source_release)>;
 using Scene = std::unique_ptr<obs_scene_t, decltype(&obs_scene_release)>;
 using Encoder = std::unique_ptr<obs_encoder_t, decltype(&obs_encoder_release)>;
 using Output = std::unique_ptr<obs_output_t, decltype(&obs_output_release)>;
+
+constexpr uint64_t kSourceDelayNs = 5000000;
+constexpr uint64_t kHideTimeNs = 10000000;
+
+struct DelayedPcmInput {
+	Source clock{nullptr, obs_source_release};
+
+	bool render(uint64_t *timestamp, obs_source_audio_mix &audio)
+	{
+		if (!clock || obs_source_audio_pending(clock.get()))
+			return false;
+		*timestamp = obs_source_get_audio_timestamp(clock.get()) + kSourceDelayNs;
+		std::fill_n(audio.output[0].data[0], kFrames, kLevel);
+		std::fill_n(audio.output[0].data[1], kFrames, -kLevel);
+		return true;
+	}
+};
 
 struct ObsShutdownGuard {
 	~ObsShutdownGuard()
@@ -123,6 +144,29 @@ void register_test_types()
 	input.destroy = [](void *) {
 	};
 	obs_register_source(&input);
+
+	obs_source_info delayed = input;
+	delayed.id = kDelayedInputId;
+	delayed.create = [](obs_data_t *, obs_source_t *) -> void * {
+		return new DelayedPcmInput;
+	};
+	delayed.destroy = [](void *data) {
+		delete static_cast<DelayedPcmInput *>(data);
+	};
+	delayed.audio_render = [](void *data, uint64_t *ts, obs_source_audio_mix *audio, uint32_t, size_t, size_t) {
+		return static_cast<DelayedPcmInput *>(data)->render(ts, *audio);
+	};
+	delayed.audio_render_do = [](void *data, uint64_t *ts, audio_data_mixes_outputs *audio, uint32_t, size_t,
+				     size_t) {
+		if (!audio->outputs.num)
+			return false;
+		for (size_t i = 0; i < audio->outputs.num; ++i) {
+			if (!static_cast<DelayedPcmInput *>(data)->render(ts, audio->outputs.array[i]))
+				return false;
+		}
+		return true;
+	};
+	obs_register_source(&delayed);
 
 	obs_encoder_info encoder{};
 	encoder.id = kEncoderId;
@@ -344,6 +388,8 @@ struct AudioRoutingFixture {
 	}
 
 	void publish(obs_scene_t *scene) { obs_set_output_source(0, obs_scene_get_source(scene)); }
+
+	PcmOutput &capture(size_t canvas) { return *static_cast<PcmOutput *>(obs_obj_get_data(outputs[canvas].get())); }
 
 	void check_levels(float horizontal, float vertical, std::chrono::milliseconds settle = 150ms)
 	{
@@ -585,6 +631,110 @@ TEST_CASE("Audio routing preserves unrestricted leaves and global channel source
 	fixture.check_levels(kLevel, kLevel);
 	obs_set_output_source(1, nullptr);
 	fixture.check_levels(kLevel, kLevel);
+}
+
+TEST_CASE("Audio routing applies timed visibility on the scene sample boundary", "[core][audio][routing][graphics]")
+{
+	AudioRoutingFixture fixture;
+	auto *scene = fixture.scene("timed visibility");
+	fixture.add(scene, fixture.input.get(), nullptr);
+	fixture.publish(scene);
+	fixture.check_levels(kLevel, kLevel);
+	obs_source_set_volume(fixture.input.get(), 0.0f);
+	fixture.check_levels(0.0f, 0.0f);
+
+	Source delayed(obs_source_create_private(kDelayedInputId, "delayed PCM input", nullptr), obs_source_release);
+	REQUIRE(delayed);
+	obs_source_set_audio_mixers(delayed.get(), 1);
+	struct {
+		DelayedPcmInput *delayed;
+		obs_source_t *clock;
+	} setup{static_cast<DelayedPcmInput *>(obs_obj_get_data(delayed.get())), fixture.input.get()};
+	obs_queue_task(
+		OBS_TASK_AUDIO,
+		[](void *data) {
+			auto &params = *static_cast<decltype(setup) *>(data);
+			params.delayed->clock.reset(obs_source_get_ref(params.clock));
+		},
+		&setup, true);
+	bool duplicate = false;
+	auto *horizontal = fixture.add(scene, delayed.get(), fixture.canvases[0]);
+	SECTION("Single scene item") {}
+	SECTION("Shared source on both canvases")
+	{
+		fixture.add(scene, delayed.get(), fixture.canvases[1]);
+		duplicate = true;
+	}
+	for (size_t i = 0; i < 2; ++i)
+		fixture.capture(i).capture_from(os_gettime_ns() + 150000000);
+	fixture.capture(0).take(1);
+	fixture.capture(1).take(1);
+
+	struct {
+		AudioRoutingFixture &fixture;
+		obs_sceneitem_t *item;
+		uint64_t timestamp = 0;
+		bool queued = false;
+	} hide{fixture, horizontal};
+	obs_queue_task(
+		OBS_TASK_AUDIO,
+		[](void *data) {
+			auto &params = *static_cast<decltype(hide) *>(data);
+			// After discarding this block, the clock points at the next mix block.
+			params.timestamp = obs_source_get_audio_timestamp(params.fixture.input.get());
+			if (!params.timestamp || !obs_sceneitem_set_visible(params.item, false))
+				return;
+			auto &actions = params.item->audio_actions;
+			actions.array[actions.num - 1].timestamp = params.timestamp + kHideTimeNs;
+			for (size_t i = 0; i < 2; ++i)
+				params.fixture.capture(i).capture_from(params.timestamp - 1000000);
+			params.queued = true;
+		},
+		&hide, true);
+	REQUIRE(hide.queued);
+	for (size_t i = 0; i < 2; ++i) {
+		const auto packet = fixture.capture(i).take(1).front();
+		CAPTURE(i, hide.timestamp, packet.timestamp_usec);
+		REQUIRE(std::abs(packet.timestamp_usec - static_cast<int64_t>(hide.timestamp / 1000)) < 1000);
+		REQUIRE(packet.samples.size() == kFrames * 2);
+		const size_t first = ns_to_audio_frames(kRate, kSourceDelayNs);
+		const size_t end = i == 0 ? ns_to_audio_frames(kRate, kHideTimeNs) : duplicate ? kFrames : first;
+		for (size_t frame = 0; frame < kFrames; ++frame) {
+			CAPTURE(frame);
+			const float level = frame >= first && frame < end ? kLevel : 0.0f;
+			REQUIRE(packet.samples[frame] == level);
+			REQUIRE(packet.samples[kFrames + frame] == -level);
+		}
+	}
+}
+
+TEST_CASE("Audio routing applies transition gains to a shared source on different canvases",
+	  "[core][audio][routing][graphics]")
+{
+	AudioRoutingFixture fixture;
+	auto *outgoing = fixture.scene("horizontal outgoing");
+	auto *incoming = fixture.scene("vertical incoming");
+	fixture.add(outgoing, fixture.input.get(), fixture.canvases[0]);
+	fixture.add(outgoing, fixture.input.get(), fixture.canvases[0]);
+	fixture.add(incoming, fixture.input.get(), fixture.canvases[1]);
+	fixture.transition.reset(obs_source_create_private(kTransitionId, "PCM test fade", nullptr));
+	REQUIRE(fixture.transition);
+	obs_transition_set(fixture.transition.get(), obs_scene_get_source(outgoing));
+	obs_set_output_source(0, fixture.transition.get());
+	fixture.check_levels(kLevel, 0.0f);
+	REQUIRE(obs_transition_start(fixture.transition.get(), OBS_TRANSITION_MODE_MANUAL, 1000,
+				     obs_scene_get_source(incoming)));
+	obs_transition_set_manual_time(fixture.transition.get(), 0.25f);
+	fixture.check_levels(kLevel * 0.75f, kLevel * 0.25f);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.5f);
+	fixture.check_levels(kLevel / 2, kLevel / 2);
+	obs_set_output_source(1, fixture.input.get());
+	fixture.check_levels(kLevel, kLevel);
+	obs_set_output_source(1, nullptr);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.75f);
+	fixture.check_levels(kLevel * 0.25f, kLevel * 0.75f);
+	obs_transition_set_manual_time(fixture.transition.get(), 1.0f);
+	fixture.check_levels(0.0f, kLevel);
 }
 
 TEST_CASE("Audio routing retains unity gain for shared leaves during a scene transition",

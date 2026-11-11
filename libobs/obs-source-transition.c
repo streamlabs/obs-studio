@@ -908,14 +908,33 @@ static inline void mix_child(obs_source_t *transition, float *out, float *in, si
 }
 
 static void record_transition_audio_routes(obs_source_t *transition, const struct transition_state *state,
-					   uint64_t timestamp, uint32_t mixers)
+					   uint64_t timestamp, uint32_t mixers, size_t sample_rate,
+					   obs_transition_audio_mix_callback_t mix_a,
+					   obs_transition_audio_mix_callback_t mix_b)
 {
-	size_t count = state->transitioning_audio ? 2 : 1;
-	for (size_t i = 0; i < count; i++) {
+	const obs_transition_audio_mix_callback_t mix[] = {mix_a, mix_b};
+	const size_t children = state->transitioning_audio ? 2 : 1;
+	for (size_t i = 0; i < children; i++) {
 		obs_source_t *child = state->s[i];
-		if (child && !child->audio_pending && child->audio_ts && !obs_source_removed(child))
+		if (!child || child->audio_pending || !child->audio_ts || obs_source_removed(child))
+			continue;
+		if (!state->transitioning_audio) {
 			obs_audio_route_add(transition, child, NULL, timestamp, NULL, AUDIO_OUTPUT_FRAMES,
 					    mixers & transition->audio_mixers);
+			continue;
+		}
+		const uint64_t child_ts = child->audio_ts;
+		const size_t pos = (size_t)ns_to_audio_frames(sample_rate, child_ts - timestamp);
+		if (pos >= AUDIO_OUTPUT_FRAMES)
+			continue;
+		const size_t frames = AUDIO_OUTPUT_FRAMES - pos;
+		float *gain = obs_audio_route_add_transition(transition, child, child_ts, frames,
+							     mixers & transition->audio_mixers);
+		if (gain) {
+			for (size_t f = 0; f < frames; f++)
+				gain[f] = mix[i](transition->context.data,
+						 get_sample_time(transition, sample_rate, f, child_ts));
+		}
 	}
 }
 
@@ -1069,7 +1088,7 @@ bool obs_transition_audio_render(obs_source_t *transition, uint64_t *ts_out, str
 	unlock_transition(transition);
 
 	if (min_ts) {
-		record_transition_audio_routes(transition, &state, min_ts, mixers);
+		record_transition_audio_routes(transition, &state, min_ts, mixers, sample_rate, mix_a, mix_b);
 		if (state.transitioning_audio) {
 			if (state.s[0])
 				process_audio(transition, state.s[0], audio, min_ts, mixers, channels, sample_rate,
@@ -1137,7 +1156,7 @@ bool obs_transition_audio_render_do(obs_source_t *transition, uint64_t *ts_out,
 	unlock_transition(transition);
 
 	if (min_ts) {
-		record_transition_audio_routes(transition, &state, min_ts, mixers);
+		record_transition_audio_routes(transition, &state, min_ts, mixers, sample_rate, mix_a, mix_b);
 		if (state.transitioning_audio) {
 			if (state.s[0])
 				process_audio_do(transition, state.s[0], audio,
