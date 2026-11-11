@@ -1800,7 +1800,7 @@ static void process_all_audio_actions(struct obs_scene_item *item, size_t sample
 static void mix_audio_with_buf(float *p_out, float *p_in, float *buf_in, size_t pos, size_t count)
 {
 	register float *out = p_out + pos;
-	register float *buf = buf_in;
+	register float *buf = buf_in + pos;
 	register float *in = p_in;
 	register float *end = in + count;
 
@@ -1923,6 +1923,8 @@ static bool scene_audio_render(void *data, uint64_t *ts_out, struct obs_source_a
 			continue;
 		}
 
+		obs_audio_route_add(scene->source, source, item->canvas, source_ts, apply_buf ? buf + pos : NULL, count,
+				    mixers);
 		obs_source_get_audio_mix(source, &child_audio);
 
 		if (!source->audio_is_duplicated) {
@@ -2042,6 +2044,8 @@ static bool scene_audio_render_do(void *data, uint64_t *ts_out,
 			continue;
 		}
 
+		obs_audio_route_add(scene->source, source, item->canvas, source_ts, apply_buf ? buf + pos : NULL, count,
+				    mixers);
 		obs_source_get_audio_mix(source, &child_audio);
 
 		if (source->audio_is_duplicated) {

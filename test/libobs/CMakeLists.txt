@@ -19,6 +19,7 @@ add_executable(
   test-basic-lifecycle.cpp
   test-capture-status.cpp
   test-audio-config.cpp
+  test-audio-routing.cpp
   test-util.cpp
   test-process-pipe.cpp
   test-deque.cpp
@@ -35,6 +36,16 @@ add_executable(
   test-declarations.cpp
 )
 add_dependencies(tests libobs_unit_tests)
+target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/")
+if(TARGET obs-transitions)
+  add_dependencies(libobs_unit_tests obs-transitions)
+  target_compile_definitions(
+    libobs_unit_tests
+    PRIVATE
+      OBS_TEST_TRANSITIONS_MODULE="$<TARGET_FILE:obs-transitions>"
+      OBS_TEST_TRANSITIONS_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/obs-transitions/data/"
+  )
+endif()
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
   add_dependencies(libobs_unit_tests OBS::libobs-d3d11)
@@ -42,7 +53,7 @@ if(OS_WINDOWS)
     libobs_unit_tests
     PRIVATE
       OBS_TEST_D3D11_MODULE="$<TARGET_FILE:OBS::libobs-d3d11>"
-      OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/"
+      OBS_TEST_AUDIO_GRAPHICS_MODULE="$<TARGET_FILE:OBS::libobs-d3d11>"
   )
   if(TARGET win-capture)
     target_sources(libobs_unit_tests PRIVATE test-screen-capture-windows.cpp)
@@ -55,6 +66,11 @@ if(OS_WINDOWS)
     )
   endif()
 else()
+  add_dependencies(libobs_unit_tests OBS::libobs-opengl)
+  target_compile_definitions(
+    libobs_unit_tests
+    PRIVATE OBS_TEST_AUDIO_GRAPHICS_MODULE="$<TARGET_FILE:OBS::libobs-opengl>"
+  )
   # Compile the private converter to test its flags as well as the exported platform wrappers.
   target_sources(libobs_unit_tests PRIVATE ../../libobs/util/utf8.c)
 endif()
