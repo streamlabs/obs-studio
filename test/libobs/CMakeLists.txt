@@ -37,6 +37,15 @@ add_executable(
 )
 add_dependencies(tests libobs_unit_tests)
 target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/")
+if(TARGET obs-transitions)
+  add_dependencies(libobs_unit_tests obs-transitions)
+  target_compile_definitions(
+    libobs_unit_tests
+    PRIVATE
+      OBS_TEST_TRANSITIONS_MODULE="$<TARGET_FILE:obs-transitions>"
+      OBS_TEST_TRANSITIONS_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/obs-transitions/data/"
+  )
+endif()
 if(OS_WINDOWS)
   target_sources(libobs_unit_tests PRIVATE test-file-opening-windows.cpp)
   add_dependencies(libobs_unit_tests OBS::libobs-d3d11)

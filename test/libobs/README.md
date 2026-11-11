@@ -116,11 +116,17 @@ group ancestors, intersecting canvas restrictions, unrestricted child items,
 alternate paths, global channel sources, duplicate-source gain, and a shared
 source during a scene transition. Another case explicitly selects the streaming,
 recording, and main audio rendering modes and checks their item visibility flags.
-Each phase allows routing to settle before
-checking every sample in four output blocks; these checks do not prove the exact
-sample offset of an interactive visibility change. Separate deterministic tests
-exercise the production gate helpers with parent/child intersection, alternate
-path union, positive and negative timestamp offsets, 63/64/65-frame boundaries,
+When the transitions plugin is built, the tests load that build's Fade to Color
+plugin and check shared-source unity through its non-complementary envelopes,
+single-leg canvas fades, audio-track exclusions, and a nested visibility change
+at an exact sample boundary. The shared-source checks run in main and selective
+streaming rendering modes.
+Steady-state phases allow routing to settle before checking every sample in four
+output blocks. Timed visibility tests schedule a hide 10 ms into an audio block,
+including a source delayed by 5 ms and shared Fade to Color transition paths.
+Separate deterministic tests exercise the production gate helpers with
+parent/child intersection, alternate path union, positive and negative timestamp
+offsets, 63/64/65-frame boundaries,
 the last frame, and disjoint blocks at exact 1 kHz and 50 kHz sample periods.
 Capture waits are bounded,
 and the producer, outputs, encoders, scenes, and sources are released before OBS

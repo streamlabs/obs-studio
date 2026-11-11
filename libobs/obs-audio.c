@@ -197,8 +197,8 @@ struct route_gain_context {
 	uint32_t mixer;
 };
 
-/* Memoize gains in the leaf's sample window. Parallel scene paths keep the
- * strongest gain, while the two legs of one transition can add up to unity. */
+/* Memoize gains and eligibility in the leaf's sample window. Shared transition
+ * legs keep unity even when both envelopes are zero. */
 static const float *audio_route_gain(const struct route_gain_context *context, size_t idx)
 {
 	struct obs_core_audio *audio = context->audio;
@@ -207,9 +207,13 @@ static const float *audio_route_gain(const struct route_gain_context *context, s
 	if (node->gain_resolved)
 		return node->gain_audible ? samples : NULL;
 	node->gain_resolved = true;
+	struct obs_audio_route_gate *eligibility = &audio->route_gates.array[idx];
+	memset(eligibility, 0, sizeof(*eligibility));
+	memset(samples, 0, sizeof(struct obs_audio_route_gain));
 	if (idx == context->leaf) {
 		for (size_t i = 0; i < AUDIO_OUTPUT_FRAMES; i++)
 			samples[i] = 1.0f;
+		memset(eligibility, 0xff, sizeof(*eligibility));
 		node->gain_audible = true;
 		return samples;
 	}
@@ -233,21 +237,24 @@ static const float *audio_route_gain(const struct route_gain_context *context, s
 		const float *child_gain = audio_route_gain(context, edge->child);
 		if (!child_gain)
 			continue;
-		if (!node->gain_audible) {
-			memset(samples, 0, sizeof(struct obs_audio_route_gain));
-			node->gain_audible = true;
-		}
+		const struct obs_audio_route_gate *child_eligibility = &audio->route_gates.array[edge->child];
 		const float *gain = edge->transition_gain != DARRAY_INVALID
 					    ? audio->route_transition_gains.array[edge->transition_gain].samples
 					    : NULL;
 		for (int64_t f = first; f < end; f++) {
 			const size_t frame = (size_t)(f + edge_offset);
-			if (!(edge->gate.bits[frame / 64] & (1ULL << (frame % 64))))
+			const uint64_t bit = 1ULL << (f % 64);
+			if (!(edge->gate.bits[frame / 64] & (1ULL << (frame % 64))) ||
+			    !(child_eligibility->bits[f / 64] & bit))
 				continue;
 			if (gain)
-				samples[f] = fminf(1.0f, samples[f] + child_gain[f] * gain[frame]);
+				samples[f] = (eligibility->bits[f / 64] & bit)
+						     ? 1.0f
+						     : fminf(1.0f, child_gain[f] * gain[frame]);
 			else
 				samples[f] = fmaxf(samples[f], child_gain[f]);
+			eligibility->bits[f / 64] |= bit;
+			node->gain_audible = true;
 		}
 	}
 	return node->gain_audible ? samples : NULL;
@@ -396,8 +403,10 @@ static void mix_routed_audio(struct obs_core_audio *audio, struct audio_data_mix
 	if (!audio->route_nodes.num)
 		return;
 	const bool weighted = audio->route_transition_gains.num != 0;
-	if (weighted)
+	if (weighted) {
 		da_resize(audio->route_gains, audio->route_nodes.num);
+		da_resize(audio->route_gates, audio->route_nodes.num);
+	}
 	for (size_t canvas = 0; canvas < mixes->outputs.num; canvas++) {
 		for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
 			if (!(mixers & (1U << mix)))

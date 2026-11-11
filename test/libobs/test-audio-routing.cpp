@@ -270,7 +270,7 @@ struct AudioRoutingFixture {
 	std::atomic_bool stop_producer{false};
 	std::thread producer;
 
-	AudioRoutingFixture()
+	explicit AudioRoutingFixture(size_t vertical_mixer = 0)
 	{
 		REQUIRE(obs_startup("en-US", nullptr, nullptr));
 		data_path = std::make_unique<ObsDataPathGuard>();
@@ -298,7 +298,7 @@ struct AudioRoutingFixture {
 		obs_source_set_audio_mixers(input.get(), 1);
 		for (size_t i = 0; i < outputs.size(); ++i) {
 			encoders[i].reset(obs_audio_encoder_create(kEncoderId, i ? "vertical PCM" : "horizontal PCM",
-								   nullptr, 0, nullptr));
+								   nullptr, i ? vertical_mixer : 0, nullptr));
 			REQUIRE(encoders[i]);
 			obs_encoder_set_audio(encoders[i].get(), obs_get_audio());
 			auto *mix = obs_video_mix_get(canvases[i], OBS_MAIN_VIDEO_RENDERING);
@@ -390,6 +390,45 @@ struct AudioRoutingFixture {
 	void publish(obs_scene_t *scene) { obs_set_output_source(0, obs_scene_get_source(scene)); }
 
 	PcmOutput &capture(size_t canvas) { return *static_cast<PcmOutput *>(obs_obj_get_data(outputs[canvas].get())); }
+
+	uint64_t capture_timed_hide(obs_sceneitem_t *item)
+	{
+		struct {
+			AudioRoutingFixture &fixture;
+			obs_sceneitem_t *item;
+			uint64_t timestamp = 0;
+			bool queued = false;
+		} hide{*this, item};
+		obs_queue_task(
+			OBS_TASK_AUDIO,
+			[](void *data) {
+				auto &params = *static_cast<decltype(hide) *>(data);
+				// After discarding this block, the clock points at the next mix block.
+				params.timestamp = obs_source_get_audio_timestamp(params.fixture.input.get());
+				if (!params.timestamp || !obs_sceneitem_set_visible(params.item, false))
+					return;
+				auto &actions = params.item->audio_actions;
+				actions.array[actions.num - 1].timestamp = params.timestamp + kHideTimeNs;
+				for (size_t i = 0; i < 2; ++i)
+					params.fixture.capture(i).capture_from(params.timestamp - 1000000);
+				params.queued = true;
+			},
+			&hide, true);
+		REQUIRE(hide.queued);
+		return hide.timestamp;
+	}
+
+#ifdef OBS_TEST_TRANSITIONS_MODULE
+	void create_fade_to_color()
+	{
+		obs_module_t *module = nullptr;
+		REQUIRE(obs_open_module(&module, OBS_TEST_TRANSITIONS_MODULE, OBS_TEST_TRANSITIONS_DATA_PATH) ==
+			MODULE_SUCCESS);
+		REQUIRE(obs_init_module(module));
+		transition.reset(obs_source_create_private("fade_to_color_transition", "PCM Fade to Color", nullptr));
+		REQUIRE(transition);
+	}
+#endif
 
 	void check_levels(float horizontal, float vertical, std::chrono::milliseconds settle = 150ms)
 	{
@@ -670,32 +709,11 @@ TEST_CASE("Audio routing applies timed visibility on the scene sample boundary",
 	fixture.capture(0).take(1);
 	fixture.capture(1).take(1);
 
-	struct {
-		AudioRoutingFixture &fixture;
-		obs_sceneitem_t *item;
-		uint64_t timestamp = 0;
-		bool queued = false;
-	} hide{fixture, horizontal};
-	obs_queue_task(
-		OBS_TASK_AUDIO,
-		[](void *data) {
-			auto &params = *static_cast<decltype(hide) *>(data);
-			// After discarding this block, the clock points at the next mix block.
-			params.timestamp = obs_source_get_audio_timestamp(params.fixture.input.get());
-			if (!params.timestamp || !obs_sceneitem_set_visible(params.item, false))
-				return;
-			auto &actions = params.item->audio_actions;
-			actions.array[actions.num - 1].timestamp = params.timestamp + kHideTimeNs;
-			for (size_t i = 0; i < 2; ++i)
-				params.fixture.capture(i).capture_from(params.timestamp - 1000000);
-			params.queued = true;
-		},
-		&hide, true);
-	REQUIRE(hide.queued);
+	const uint64_t hide_timestamp = fixture.capture_timed_hide(horizontal);
 	for (size_t i = 0; i < 2; ++i) {
 		const auto packet = fixture.capture(i).take(1).front();
-		CAPTURE(i, hide.timestamp, packet.timestamp_usec);
-		REQUIRE(std::abs(packet.timestamp_usec - static_cast<int64_t>(hide.timestamp / 1000)) < 1000);
+		CAPTURE(i, hide_timestamp, packet.timestamp_usec);
+		REQUIRE(std::abs(packet.timestamp_usec - static_cast<int64_t>(hide_timestamp / 1000)) < 1000);
 		REQUIRE(packet.samples.size() == kFrames * 2);
 		const size_t first = ns_to_audio_frames(kRate, kSourceDelayNs);
 		const size_t end = i == 0 ? ns_to_audio_frames(kRate, kHideTimeNs) : duplicate ? kFrames : first;
@@ -773,5 +791,130 @@ TEST_CASE("Audio routing retains unity gain for shared leaves during a scene tra
 	obs_sceneitem_set_visible(incoming_h, true);
 	fixture.check_levels(kLevel, kLevel);
 }
+
+#ifdef OBS_TEST_TRANSITIONS_MODULE
+TEST_CASE("Audio routing preserves shared source unity through Fade to Color", "[core][audio][routing][graphics]")
+{
+	bool multiple_rendering = false;
+	SECTION("Main rendering") {}
+	SECTION("Selective streaming rendering")
+	{
+		multiple_rendering = true;
+	}
+	AudioRoutingFixture fixture;
+	obs_set_multiple_rendering(multiple_rendering);
+	obs_set_audio_rendering_mode(multiple_rendering ? OBS_STREAMING_AUDIO_RENDERING : OBS_MAIN_AUDIO_RENDERING);
+	const auto set_visible = multiple_rendering ? obs_sceneitem_set_stream_visible : obs_sceneitem_set_visible;
+	auto *outgoing = fixture.scene("color outgoing");
+	auto *incoming = fixture.scene("color incoming");
+	auto *outgoing_h = fixture.add(outgoing, fixture.input.get(), fixture.canvases[0]);
+	fixture.add(outgoing, fixture.input.get(), fixture.canvases[1]);
+	fixture.add(incoming, fixture.input.get(), fixture.canvases[0]);
+	auto *incoming_v = fixture.add(incoming, fixture.input.get(), fixture.canvases[1]);
+	fixture.create_fade_to_color();
+	obs_transition_set(fixture.transition.get(), obs_scene_get_source(outgoing));
+	obs_set_output_source(0, fixture.transition.get());
+	fixture.check_levels(kLevel, kLevel);
+	REQUIRE(obs_transition_start(fixture.transition.get(), OBS_TRANSITION_MODE_MANUAL, 1000,
+				     obs_scene_get_source(incoming)));
+	obs_transition_set_manual_time(fixture.transition.get(), 0.25f);
+	fixture.check_levels(kLevel, kLevel);
+	set_visible(incoming_v, false);
+	fixture.check_levels(kLevel, kLevel * 0.375f);
+	set_visible(incoming_v, true);
+	fixture.check_levels(kLevel, kLevel);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.5f);
+	fixture.check_levels(kLevel, kLevel);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.75f);
+	fixture.check_levels(kLevel, kLevel);
+	set_visible(outgoing_h, false);
+	fixture.check_levels(kLevel * 0.375f, kLevel);
+	set_visible(outgoing_h, true);
+	fixture.check_levels(kLevel, kLevel);
+}
+
+TEST_CASE("Audio routing keeps single leg Fade to Color gains per canvas", "[core][audio][routing][graphics]")
+{
+	AudioRoutingFixture fixture;
+	auto *outgoing = fixture.scene("color outgoing");
+	auto *incoming = fixture.scene("color incoming");
+	fixture.add(outgoing, fixture.input.get(), fixture.canvases[0]);
+	fixture.add(incoming, fixture.input.get(), fixture.canvases[1]);
+	fixture.create_fade_to_color();
+	obs_transition_set(fixture.transition.get(), obs_scene_get_source(outgoing));
+	obs_set_output_source(0, fixture.transition.get());
+	fixture.check_levels(kLevel, 0.0f);
+	REQUIRE(obs_transition_start(fixture.transition.get(), OBS_TRANSITION_MODE_MANUAL, 1000,
+				     obs_scene_get_source(incoming)));
+	obs_transition_set_manual_time(fixture.transition.get(), 0.25f);
+	fixture.check_levels(kLevel * 0.375f, 0.0f);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.5f);
+	fixture.check_levels(0.0f, 0.0f);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.75f);
+	fixture.check_levels(0.0f, kLevel * 0.375f);
+	obs_set_output_source(1, fixture.input.get());
+	fixture.check_levels(kLevel, kLevel);
+}
+
+TEST_CASE("Audio routing preserves Fade to Color unity on eligible audio tracks", "[core][audio][routing][graphics]")
+{
+	AudioRoutingFixture fixture(1);
+	obs_source_set_audio_mixers(fixture.input.get(), 3);
+	auto *outgoing = fixture.scene("color outgoing");
+	auto *incoming = fixture.scene("color incoming");
+	fixture.add(outgoing, fixture.input.get(), nullptr);
+	fixture.add(incoming, fixture.input.get(), nullptr);
+	fixture.create_fade_to_color();
+	obs_transition_set(fixture.transition.get(), obs_scene_get_source(outgoing));
+	obs_set_output_source(0, fixture.transition.get());
+	fixture.check_levels(kLevel, kLevel);
+	REQUIRE(obs_transition_start(fixture.transition.get(), OBS_TRANSITION_MODE_MANUAL, 1000,
+				     obs_scene_get_source(incoming)));
+	obs_transition_set_manual_time(fixture.transition.get(), 0.25f);
+	fixture.check_levels(kLevel, kLevel);
+	obs_source_set_audio_mixers(fixture.input.get(), 1);
+	fixture.check_levels(kLevel, 0.0f);
+	obs_source_set_audio_mixers(fixture.input.get(), 2);
+	fixture.check_levels(0.0f, kLevel);
+	obs_source_set_audio_mixers(fixture.input.get(), 3);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.5f);
+	fixture.check_levels(kLevel, kLevel);
+	obs_transition_set_manual_time(fixture.transition.get(), 0.75f);
+	fixture.check_levels(kLevel, kLevel);
+}
+
+TEST_CASE("Audio routing updates Fade to Color overlap at the timed visibility sample",
+	  "[core][audio][routing][graphics]")
+{
+	AudioRoutingFixture fixture;
+	auto *outgoing = fixture.scene("color outgoing");
+	auto *incoming = fixture.scene("color incoming");
+	auto *nested = fixture.scene("color nested");
+	fixture.add(outgoing, fixture.input.get(), nullptr);
+	fixture.add(nested, fixture.input.get(), nullptr);
+	auto *incoming_path = fixture.add(incoming, obs_scene_get_source(nested), nullptr);
+	fixture.create_fade_to_color();
+	obs_transition_set(fixture.transition.get(), obs_scene_get_source(outgoing));
+	obs_set_output_source(0, fixture.transition.get());
+	fixture.check_levels(kLevel, kLevel);
+	REQUIRE(obs_transition_start(fixture.transition.get(), OBS_TRANSITION_MODE_MANUAL, 1000,
+				     obs_scene_get_source(incoming)));
+	obs_transition_set_manual_time(fixture.transition.get(), 0.25f);
+	fixture.check_levels(kLevel, kLevel);
+	const uint64_t hide_timestamp = fixture.capture_timed_hide(incoming_path);
+	for (size_t i = 0; i < 2; ++i) {
+		const auto packet = fixture.capture(i).take(1).front();
+		CAPTURE(i, hide_timestamp, packet.timestamp_usec);
+		REQUIRE(std::abs(packet.timestamp_usec - static_cast<int64_t>(hide_timestamp / 1000)) < 1000);
+		REQUIRE(packet.samples.size() == kFrames * 2);
+		for (size_t frame = 0; frame < kFrames; ++frame) {
+			CAPTURE(frame);
+			const float level = frame < ns_to_audio_frames(kRate, kHideTimeNs) ? kLevel : kLevel * 0.375f;
+			REQUIRE(packet.samples[frame] == level);
+			REQUIRE(packet.samples[kFrames + frame] == -level);
+		}
+	}
+}
+#endif
 
 } // namespace
