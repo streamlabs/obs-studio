@@ -687,6 +687,38 @@ bool obs_load_core_modules(void)
 	return success;
 }
 
+bool obs_load_core_modules_from_paths(const char *binary_path, const char *data_path,
+				      struct obs_module_failure_info *error)
+{
+	if (!error)
+		return false;
+	memset(error, 0, sizeof(*error));
+	if (!obs || !binary_path || !data_path)
+		return false;
+	if (obs->core_modules_loaded)
+		return true;
+
+	struct fail_info failure = {0};
+	for (unsigned int i = 0; i < obs_core_modules_count; i++) {
+		struct dstr binary = {0};
+		struct dstr data = {0};
+		dstr_copy(&binary, binary_path);
+		dstr_copy(&data, data_path);
+		dstr_replace(&binary, "%module%", obs_core_modules[i]);
+		dstr_replace(&data, "%module%", obs_core_modules[i]);
+		struct obs_runtime_module_info info = {.path_info = {.binary = binary.array, .data = data.array},
+						       .type = OBS_MODULE_TYPE_CORE};
+		bool found = find_core_module(&info, load_all_callback, &failure);
+		dstr_free(&binary);
+		dstr_free(&data);
+		if (!found)
+			break;
+	}
+	obs->core_modules_loaded = failure.failures.num == 0;
+	take_module_failures(&failure, error);
+	return obs->core_modules_loaded;
+}
+
 static void find_modules_in_path(struct obs_module_path *omp, obs_find_module_callback2_t callback, void *param);
 
 void obs_load_plugins(struct obs_runtime_module_info *info, struct obs_module_failure_info *error)

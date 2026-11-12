@@ -48,6 +48,29 @@ TEST_CASE("Plugin initialization failures retain structured diagnostics after un
 	CHECK(failures.info.failures == nullptr);
 }
 
+TEST_CASE("Host core module paths preserve missing-module diagnostics and retryability", "[core][modules]")
+{
+	const auto root =
+		std::filesystem::temp_directory_path() /
+		("obs-core-path-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto binary = (root / "core/%module%/%module%").generic_string();
+	const auto data = (root / "core/%module%/data").generic_string();
+	const auto working_directory = std::filesystem::current_path();
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	const auto allocations = bnum_allocs();
+	for (int attempt = 0; attempt < 2; ++attempt) {
+		ModuleFailures failures;
+		CHECK_FALSE(obs_load_core_modules_from_paths(binary.c_str(), data.c_str(), &failures.info));
+		REQUIRE(failures.info.count == 1);
+		REQUIRE(failures.info.failures);
+		CHECK(std::string(failures.info.failures[0].code) == "MODULE_MISSING");
+		CHECK_FALSE(std::string(failures.info.failures[0].module).empty());
+		CHECK(std::filesystem::current_path() == working_directory);
+	}
+	CHECK(bnum_allocs() == allocations);
+}
+
 #ifdef _WIN32
 TEST_CASE("Missing core modules fail with diagnostics and remain retryable", "[core][modules]")
 {

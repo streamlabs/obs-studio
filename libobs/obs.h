@@ -700,6 +700,14 @@ EXPORT bool obs_load_core_modules(void);
 /** Loads core modules and returns owned failure details; release them with obs_module_failure_info_free(). */
 EXPORT bool obs_load_core_modules2(struct obs_module_failure_info *error);
 
+/** Loads the compiled core module list from host-supplied binary and data path patterns.
+ * Each pattern substitutes %module% with the module name; binary paths omit the platform extension.
+ * Requires initialized OBS and non-null arguments. Returns false on invalid arguments or load failure.
+ * Failure details are owned by the caller and must be released with obs_module_failure_info_free().
+ */
+EXPORT bool obs_load_core_modules_from_paths(const char *binary_path, const char *data_path,
+					     struct obs_module_failure_info *error);
+
 /** Loads plugins at a given path. omp defines if modern or legacy plugins at path. */
 EXPORT void obs_load_plugins(struct obs_runtime_module_info *info, struct obs_module_failure_info *error);
 
