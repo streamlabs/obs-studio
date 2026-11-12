@@ -102,3 +102,36 @@ wait, and both threads are joined before assertions or graphics cleanup.
 These tests verify shared configuration/reset behavior and the producer's
 independence from the video mutex; they do not reproduce CoreAudio callback
 timing, Wave Link, or long-running macOS stream crackling.
+
+Audio routing tests (`[core][audio][routing][graphics]`) initialize Direct3D 11 on
+Windows or OpenGL on macOS and fail if graphics initialization fails. A paced
+synthetic stereo source feeds two test PCM encoders bound to distinct canvas
+video mixes. In-memory encoded outputs inspect the final PCM from each canvas,
+including exact unity amplitude, instead of observing source meters or input
+callbacks. No capture devices, installed encoder plugins, network, or provider
+credentials are required.
+
+The cases cover independent horizontal/vertical visibility, hidden scene and
+group ancestors, intersecting canvas restrictions, unrestricted child items,
+alternate paths, global channel sources, duplicate-source gain, and a shared
+source during a scene transition. Another case explicitly selects the streaming,
+recording, and main audio rendering modes and checks their item visibility flags.
+When the transitions plugin is built, the tests load that build's Fade to Color
+plugin and check shared-source unity through its non-complementary envelopes,
+single-leg canvas fades, audio-track exclusions, and a nested visibility change
+at an exact sample boundary. The shared-source checks run in main and selective
+streaming rendering modes.
+Steady-state phases allow routing to settle before checking every sample in four
+output blocks. Timed visibility tests schedule a hide 10 ms into an audio block,
+including a source delayed by 5 ms and shared Fade to Color transition paths.
+Separate deterministic tests exercise the production gate helpers with
+parent/child intersection, alternate path union, positive and negative timestamp
+offsets, 63/64/65-frame boundaries,
+the last frame, and disjoint blocks at exact 1 kHz and 50 kHz sample periods.
+Capture waits are bounded,
+and the producer, outputs, encoders, scenes, and sources are released before OBS
+shuts down. Run these cases with:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "Audio routing"
+```

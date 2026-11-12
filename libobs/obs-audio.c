@@ -16,6 +16,7 @@
 ******************************************************************************/
 
 #include <inttypes.h>
+#include <math.h>
 #include "obs-internal.h"
 #include "util/util_uint64.h"
 
@@ -38,6 +39,254 @@ void cache_multiple_rendering(void)
 bool get_cached_multiple_rendering(void)
 {
 	return audio_multiple_rendering;
+}
+
+static THREAD_LOCAL struct obs_core_audio *route_audio;
+
+static size_t find_route_node(const struct obs_core_audio *audio, const obs_source_t *source)
+{
+	for (size_t i = 0; i < audio->route_nodes.num; i++) {
+		if (audio->route_nodes.array[i].source == source)
+			return i;
+	}
+	return DARRAY_INVALID;
+}
+
+static size_t route_node(struct obs_core_audio *audio, obs_source_t *source)
+{
+	size_t idx = find_route_node(audio, source);
+	if (idx != DARRAY_INVALID)
+		return idx;
+
+	struct obs_audio_route_node node = {.source = obs_source_get_ref(source), .first_edge = DARRAY_INVALID};
+	if (!node.source)
+		return DARRAY_INVALID;
+	da_push_back(audio->route_nodes, &node);
+	return audio->route_nodes.num - 1;
+}
+
+static struct obs_audio_route_edge *add_audio_route(obs_source_t *parent, obs_source_t *child,
+						    struct obs_video_info *canvas, uint64_t timestamp,
+						    const float *visibility, size_t frames, uint32_t mixers)
+{
+	struct obs_core_audio *audio = route_audio;
+	if (!audio || !parent || !child || !timestamp || !mixers || !frames || obs_source_removed(child))
+		return NULL;
+
+	size_t parent_idx = route_node(audio, parent);
+	size_t child_idx = route_node(audio, child);
+	if (parent_idx == DARRAY_INVALID || child_idx == DARRAY_INVALID)
+		return NULL;
+
+	struct obs_audio_route_edge edge = {0};
+	edge.child = child_idx;
+	edge.next = audio->route_nodes.array[parent_idx].first_edge;
+	edge.transition_gain = DARRAY_INVALID;
+	edge.canvas = canvas;
+	edge.timestamp = timestamp;
+	edge.mixers = mixers & parent->audio_mixers;
+	if (frames > AUDIO_OUTPUT_FRAMES)
+		frames = AUDIO_OUTPUT_FRAMES;
+	for (size_t i = 0; i < frames; i++) {
+		if (!visibility || visibility[i] != 0.0f)
+			edge.gate.bits[i / 64] |= 1ULL << (i % 64);
+	}
+	audio->route_nodes.array[parent_idx].first_edge = audio->route_edges.num;
+	da_push_back(audio->route_edges, &edge);
+	return &audio->route_edges.array[audio->route_edges.num - 1];
+}
+
+void obs_audio_route_add(obs_source_t *parent, obs_source_t *child, struct obs_video_info *canvas, uint64_t timestamp,
+			 const float *visibility, size_t frames, uint32_t mixers)
+{
+	add_audio_route(parent, child, canvas, timestamp, visibility, frames, mixers);
+}
+
+float *obs_audio_route_add_transition(obs_source_t *parent, obs_source_t *child, uint64_t timestamp, size_t frames,
+				      uint32_t mixers)
+{
+	struct obs_audio_route_edge *edge = add_audio_route(parent, child, NULL, timestamp, NULL, frames, mixers);
+	if (!edge)
+		return NULL;
+	edge->transition_gain = route_audio->route_transition_gains.num;
+	da_resize(route_audio->route_transition_gains, edge->transition_gain + 1);
+	return route_audio->route_transition_gains.array[edge->transition_gain].samples;
+}
+
+static void clear_audio_routes(struct obs_core_audio *audio)
+{
+	for (size_t i = 0; i < audio->route_nodes.num; i++)
+		obs_source_release(audio->route_nodes.array[i].source);
+	da_resize(audio->route_nodes, 0);
+	da_resize(audio->route_edges, 0);
+	da_resize(audio->route_transition_gains, 0);
+	da_resize(audio->route_roots, 0);
+	da_resize(audio->route_pending, 0);
+}
+
+void obs_audio_routes_free(struct obs_core_audio *audio)
+{
+	clear_audio_routes(audio);
+	da_free(audio->route_nodes);
+	da_free(audio->route_edges);
+	da_free(audio->route_roots);
+	da_free(audio->route_gates);
+	da_free(audio->route_transition_gains);
+	da_free(audio->route_gains);
+	da_free(audio->route_pending);
+	da_free(audio->route_canvases);
+}
+
+static void record_composite_route(obs_source_t *parent, obs_source_t *child, void *unused)
+{
+	obs_audio_route_add(parent, child, NULL, parent->audio_ts, NULL, AUDIO_OUTPUT_FRAMES, parent->audio_mixers);
+	UNUSED_PARAMETER(unused);
+}
+
+static bool source_has_route_audio(const obs_source_t *source, uint32_t mixer)
+{
+	return !source->audio_pending && source->audio_ts && (source->audio_mixers & mixer);
+}
+
+static bool can_follow_audio_route(const struct obs_audio_route_edge *edge, const obs_source_t *child,
+				   const struct obs_video_info *canvas, uint32_t mixer)
+{
+	return (!edge->canvas || edge->canvas == canvas) && (edge->mixers & mixer) &&
+	       source_has_route_audio(child, mixer);
+}
+
+static void resolve_audio_routes(struct obs_core_audio *audio, struct obs_video_info *canvas, size_t mix)
+{
+	da_resize(audio->route_gates, audio->route_nodes.num);
+	memset(audio->route_gates.array, 0, audio->route_gates.num * sizeof(*audio->route_gates.array));
+	da_resize(audio->route_pending, 0);
+	for (size_t i = 0; i < audio->route_roots.num; i++) {
+		obs_source_t *source = audio->route_roots.array[i];
+		if (!source_has_route_audio(source, 1U << mix))
+			continue;
+		size_t idx = find_route_node(audio, source);
+		if (idx == DARRAY_INVALID)
+			continue;
+		memset(&audio->route_gates.array[idx], 0xff, sizeof(struct obs_audio_route_gate));
+		da_push_back(audio->route_pending, &idx);
+	}
+
+	/* Eligibility follows complete output paths. A child rendered under a hidden
+	 * parent must not claim the source ahead of another visible parent. */
+	for (size_t pending = 0; pending < audio->route_pending.num; pending++) {
+		size_t idx = audio->route_pending.array[pending];
+		struct obs_audio_route_node *node = &audio->route_nodes.array[idx];
+		for (size_t e = node->first_edge; e != DARRAY_INVALID; e = audio->route_edges.array[e].next) {
+			const struct obs_audio_route_edge *edge = &audio->route_edges.array[e];
+			obs_source_t *child = audio->route_nodes.array[edge->child].source;
+			if (!can_follow_audio_route(edge, child, canvas, 1U << mix))
+				continue;
+			struct obs_audio_route_gate *out = &audio->route_gates.array[edge->child];
+			if (obs_audio_route_gate_merge(out, &audio->route_gates.array[idx], &edge->gate,
+						       child->audio_ts, node->source->audio_ts, edge->timestamp,
+						       audio->samples_per_sec))
+				da_push_back(audio->route_pending, &edge->child);
+		}
+	}
+}
+
+struct route_gain_context {
+	struct obs_core_audio *audio;
+	const struct obs_video_info *canvas;
+	size_t leaf;
+	uint32_t mixer;
+};
+
+/* Memoize gains and eligibility in the leaf's sample window. Shared transition
+ * legs keep unity even when both envelopes are zero. */
+static const float *audio_route_gain(const struct route_gain_context *context, size_t idx)
+{
+	struct obs_core_audio *audio = context->audio;
+	struct obs_audio_route_node *node = &audio->route_nodes.array[idx];
+	float *samples = audio->route_gains.array[idx].samples;
+	if (node->gain_resolved)
+		return node->gain_audible ? samples : NULL;
+	node->gain_resolved = true;
+	struct obs_audio_route_gate *eligibility = &audio->route_gates.array[idx];
+	memset(eligibility, 0, sizeof(*eligibility));
+	memset(samples, 0, sizeof(struct obs_audio_route_gain));
+	if (idx == context->leaf) {
+		for (size_t i = 0; i < AUDIO_OUTPUT_FRAMES; i++)
+			samples[i] = 1.0f;
+		memset(eligibility, 0xff, sizeof(*eligibility));
+		node->gain_audible = true;
+		return samples;
+	}
+
+	const uint64_t leaf_ts = audio->route_nodes.array[context->leaf].source->audio_ts;
+	const int64_t parent_offset =
+		obs_audio_route_frame_offset(leaf_ts, node->source->audio_ts, audio->samples_per_sec);
+	for (size_t e = node->first_edge; e != DARRAY_INVALID; e = audio->route_edges.array[e].next) {
+		const struct obs_audio_route_edge *edge = &audio->route_edges.array[e];
+		const obs_source_t *child = audio->route_nodes.array[edge->child].source;
+		if (!can_follow_audio_route(edge, child, context->canvas, context->mixer))
+			continue;
+		const int64_t edge_offset =
+			obs_audio_route_frame_offset(leaf_ts, edge->timestamp, audio->samples_per_sec);
+		const int64_t earlier = parent_offset < edge_offset ? parent_offset : edge_offset;
+		const int64_t later = parent_offset > edge_offset ? parent_offset : edge_offset;
+		const int64_t first = earlier < 0 ? -earlier : 0;
+		const int64_t end = AUDIO_OUTPUT_FRAMES - (later > 0 ? later : 0);
+		if (first >= end)
+			continue;
+		const float *child_gain = audio_route_gain(context, edge->child);
+		if (!child_gain)
+			continue;
+		const struct obs_audio_route_gate *child_eligibility = &audio->route_gates.array[edge->child];
+		const float *gain = edge->transition_gain != DARRAY_INVALID
+					    ? audio->route_transition_gains.array[edge->transition_gain].samples
+					    : NULL;
+		for (int64_t f = first; f < end; f++) {
+			const size_t frame = (size_t)(f + edge_offset);
+			const uint64_t bit = 1ULL << (f % 64);
+			if (!(edge->gate.bits[frame / 64] & (1ULL << (frame % 64))) ||
+			    !(child_eligibility->bits[f / 64] & bit))
+				continue;
+			if (gain)
+				samples[f] = (eligibility->bits[f / 64] & bit)
+						     ? 1.0f
+						     : fminf(1.0f, child_gain[f] * gain[frame]);
+			else
+				samples[f] = fmaxf(samples[f], child_gain[f]);
+			eligibility->bits[f / 64] |= bit;
+			node->gain_audible = true;
+		}
+	}
+	return node->gain_audible ? samples : NULL;
+}
+
+static bool resolve_audio_route_gain(const struct route_gain_context *context, float *samples)
+{
+	struct obs_core_audio *audio = context->audio;
+	bool found = false;
+	for (size_t i = 0; i < audio->route_nodes.num; i++) {
+		audio->route_nodes.array[i].gain_resolved = false;
+		audio->route_nodes.array[i].gain_audible = false;
+	}
+	for (size_t i = 0; i < audio->route_roots.num; i++) {
+		obs_source_t *source = audio->route_roots.array[i];
+		if (!source_has_route_audio(source, context->mixer))
+			continue;
+		const size_t idx = find_route_node(audio, source);
+		if (idx == DARRAY_INVALID)
+			continue;
+		const float *gain = audio_route_gain(context, idx);
+		if (!gain)
+			continue;
+		if (!found) {
+			memcpy(samples, gain, sizeof(struct obs_audio_route_gain));
+			found = true;
+		} else {
+			for (size_t f = 0; f < AUDIO_OUTPUT_FRAMES; f++)
+				samples[f] = fmaxf(samples[f], gain[f]);
+		}
+	}
+	return found;
 }
 
 static void push_audio_tree(obs_source_t *parent, obs_source_t *source, void *p)
@@ -88,7 +337,8 @@ static void push_audio_tree2(obs_source_t *parent, obs_source_t *source, void *p
 		/* Source already present in tree → mark as duplicated if applicable */
 		obs_source_t *s = audio->render_order.array[idx];
 		if (is_individual_audio_source(s) && !s->audio_is_duplicated) {
-			da_push_back(audio->root_nodes, &source);
+			if (da_find(audio->root_nodes, &source, 0) == DARRAY_INVALID)
+				da_push_back(audio->root_nodes, &source);
 			s->audio_is_duplicated = true;
 		}
 	}
@@ -142,6 +392,67 @@ static void mix_audio(struct audio_data_mixes_outputs *mixes,
 
 				while (aud < end)
 					*(mix++) += *(aud++);
+			}
+		}
+	}
+}
+
+static void mix_routed_audio(struct obs_core_audio *audio, struct audio_data_mixes_outputs *mixes, size_t channels,
+			     size_t sample_rate, uint32_t mixers, struct ts_info *ts)
+{
+	if (!audio->route_nodes.num)
+		return;
+	const bool weighted = audio->route_transition_gains.num != 0;
+	if (weighted) {
+		da_resize(audio->route_gains, audio->route_nodes.num);
+		da_resize(audio->route_gates, audio->route_nodes.num);
+	}
+	for (size_t canvas = 0; canvas < mixes->outputs.num; canvas++) {
+		for (size_t mix = 0; mix < MAX_AUDIO_MIXES; mix++) {
+			if (!(mixers & (1U << mix)))
+				continue;
+			if (!weighted)
+				resolve_audio_routes(audio, audio->route_canvases.array[canvas], mix);
+			for (size_t i = 0; i < audio->route_nodes.num; i++) {
+				obs_source_t *source = audio->route_nodes.array[i].source;
+				if (!source->audio_is_duplicated || source->audio_pending || !source->audio_ts ||
+				    source->audio_ts < ts->start || source->audio_ts >= ts->end)
+					continue;
+				size_t pos = convert_time_to_frames(sample_rate, source->audio_ts - ts->start);
+				if (pos >= AUDIO_OUTPUT_FRAMES)
+					continue;
+				struct obs_audio_route_gain gain;
+				const struct obs_audio_route_gate *gate = NULL;
+				if (weighted) {
+					const struct route_gain_context context = {
+						audio, audio->route_canvases.array[canvas], i, 1U << mix};
+					if (!resolve_audio_route_gain(&context, gain.samples))
+						continue;
+				} else {
+					gate = &audio->route_gates.array[i];
+					uint64_t any = 0;
+					for (size_t w = 0; w < OBS_AUDIO_ROUTE_WORDS; w++)
+						any |= gate->bits[w];
+					if (!any)
+						continue;
+				}
+				pthread_mutex_lock(&source->audio_buf_mutex);
+				for (size_t ch = 0; ch < channels; ch++) {
+					size_t source_canvas = source->info.audio_render ? canvas : 0;
+					const float *in = get_source_audio_output_buf(source, source_canvas, mix, ch);
+					float *out = mixes->outputs.array[canvas].output[mix].data[ch];
+					if (!in)
+						continue;
+					for (size_t f = 0; f < AUDIO_OUTPUT_FRAMES - pos; f++) {
+						if (weighted) {
+							if (gain.samples[f] != 0.0f)
+								out[pos + f] += in[f] * gain.samples[f];
+						} else if (gate->bits[f / 64] & (1ULL << (f % 64))) {
+							out[pos + f] += in[f];
+						}
+					}
+				}
+				pthread_mutex_unlock(&source->audio_buf_mutex);
 			}
 		}
 	}
@@ -597,6 +908,7 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 
 	da_resize(audio->render_order, 0);
 	da_resize(audio->root_nodes, 0);
+	clear_audio_routes(audio);
 
 	/* ------------------------------------------------ */
 	/* build audio render order */
@@ -619,8 +931,12 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 				continue;
 
 			/* first, add top - level sources as root_nodes */
-			if (obs->video.mixes.array[j]->mix_audio)
-				da_push_back(audio->root_nodes, &source);
+			if (obs->video.mixes.array[j]->mix_audio) {
+				if (da_find(audio->root_nodes, &source, 0) == DARRAY_INVALID)
+					da_push_back(audio->root_nodes, &source);
+				if (da_find(audio->route_roots, &source, 0) == DARRAY_INVALID)
+					da_push_back(audio->route_roots, &source);
+			}
 
 			/* Build audio tree, tag duplicate individual sources */
 			obs_source_enum_active_tree(source, push_audio_tree2, audio);
@@ -656,6 +972,14 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 
 	/* ------------------------------------------------ */
 	/* render audio data */
+	/* Scene actions can change visible/active state during rendering. Retain
+	 * their sample windows now instead of rescanning the resulting graph. */
+	for (size_t i = 0; i < audio->render_order.num; i++) {
+		if (audio->render_order.array[i]->audio_is_duplicated) {
+			route_audio = audio;
+			break;
+		}
+	}
 	struct obs_monitoring_deduplication *deduplication = &obs->monitoring_deduplication;
 	pthread_mutex_lock(&deduplication->mutex);
 	obs_source_t *dup_src = obs_weak_source_get_source(deduplication->source);
@@ -664,6 +988,9 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 	for (size_t i = 0; i < audio->render_order.num; i++) {
 		obs_source_t *source = audio->render_order.array[i];
 		obs_source_audio_render(source, mixers, channels, sample_rate, audio_size);
+		if (route_audio && source->info.type != OBS_SOURCE_TYPE_SCENE &&
+		    source->info.type != OBS_SOURCE_TYPE_TRANSITION && !obs_source_is_group(source))
+			obs_source_enum_active_sources(source, record_composite_route, NULL);
 		if (should_silence_monitored_source(source, dup_src))
 			clear_audio_output_buf(source, dup_src);
 
@@ -693,6 +1020,18 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 			}
 		}
 	}
+	bool routed = route_audio != NULL;
+	route_audio = NULL;
+	if (routed) {
+		for (size_t i = 0; i < audio->route_roots.num; i++)
+			route_node(audio, audio->route_roots.array[i]);
+		da_resize(audio->route_canvases, mixes->outputs.num);
+		pthread_mutex_lock(&obs->video.canvases_mutex);
+		for (size_t i = 0; i < mixes->outputs.num; i++)
+			audio->route_canvases.array[i] = i < obs->video.canvases.num ? obs->video.canvases.array[i]
+										     : NULL;
+		pthread_mutex_unlock(&obs->video.canvases_mutex);
+	}
 	obs_source_release(dup_src);
 
 	/* ------------------------------------------------ */
@@ -717,7 +1056,7 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 		for (size_t i = 0; i < audio->root_nodes.num; i++) {
 			obs_source_t *source = audio->root_nodes.array[i];
 
-			if (source->audio_pending)
+			if (source->audio_pending || source->audio_is_duplicated)
 				continue;
 
 			pthread_mutex_lock(&source->audio_buf_mutex);
@@ -729,6 +1068,8 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 
 			pthread_mutex_unlock(&source->audio_buf_mutex);
 		}
+		if (routed)
+			mix_routed_audio(audio, mixes, channels, sample_rate, mixers, &ts);
 	}
 
 	/* ------------------------------------------------ */
@@ -748,6 +1089,7 @@ bool audio_callback(void *param, uint64_t start_ts_in, uint64_t end_ts_in, uint6
 
 	/* ------------------------------------------------ */
 	/* release audio sources */
+	clear_audio_routes(audio);
 	release_audio_sources(audio);
 
 	deque_pop_front(&audio->buffered_timestamps, NULL, sizeof(ts));

@@ -39,6 +39,7 @@
 
 #include "obs.h"
 #include "obs-audio-config.h"
+#include "obs-audio-routing.h"
 
 #include <obsversion.h>
 #include <caption/caption.h>
@@ -481,6 +482,27 @@ extern void add_ready_encoder_group(obs_encoder_t *encoder);
 
 struct audio_monitor;
 
+struct obs_audio_route_node {
+	obs_source_t *source;
+	size_t first_edge;
+	bool gain_resolved;
+	bool gain_audible;
+};
+
+struct obs_audio_route_edge {
+	size_t child;
+	size_t next;
+	size_t transition_gain;
+	struct obs_video_info *canvas;
+	uint64_t timestamp;
+	uint32_t mixers;
+	struct obs_audio_route_gate gate;
+};
+
+struct obs_audio_route_gain {
+	float samples[AUDIO_OUTPUT_FRAMES];
+};
+
 struct obs_core_audio {
 	audio_t *audio;
 	/* These 3 values are not present in the original OBS code. They serve as a main audio parameters cache,
@@ -491,6 +513,14 @@ struct obs_core_audio {
 
 	DARRAY(struct obs_source *) render_order;
 	DARRAY(struct obs_source *) root_nodes;
+	DARRAY(struct obs_source *) route_roots;
+	DARRAY(struct obs_audio_route_node) route_nodes;
+	DARRAY(struct obs_audio_route_edge) route_edges;
+	DARRAY(struct obs_audio_route_gate) route_gates;
+	DARRAY(struct obs_audio_route_gain) route_transition_gains;
+	DARRAY(struct obs_audio_route_gain) route_gains;
+	DARRAY(size_t) route_pending;
+	DARRAY(struct obs_video_info *) route_canvases;
 
 	uint64_t buffered_ts;
 	struct deque buffered_timestamps;
@@ -507,6 +537,12 @@ struct obs_core_audio {
 	pthread_mutex_t task_mutex;
 	struct deque tasks;
 };
+
+void obs_audio_route_add(obs_source_t *parent, obs_source_t *child, struct obs_video_info *canvas, uint64_t timestamp,
+			 const float *visibility, size_t frames, uint32_t mixers);
+float *obs_audio_route_add_transition(obs_source_t *parent, obs_source_t *child, uint64_t timestamp, size_t frames,
+				      uint32_t mixers);
+void obs_audio_routes_free(struct obs_core_audio *audio);
 
 struct obs_monitoring_deduplication {
 	/* Source-lifetime state that must survive audio output resets. */

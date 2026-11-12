@@ -1254,6 +1254,7 @@ static void obs_free_audio(void)
 	deque_free(&audio->buffered_timestamps);
 	da_free(audio->render_order);
 	da_free(audio->root_nodes);
+	obs_audio_routes_free(audio);
 
 	da_free(audio->monitors);
 	bfree(audio->monitoring_device_name);
