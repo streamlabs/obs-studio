@@ -26,6 +26,7 @@ add_executable(
   test-dstr.cpp
   test-calldata.cpp
   test-integer.cpp
+  test-encoder-timing.cpp
   test-image-file.cpp
   test-module-loading.cpp
   test-math.cpp

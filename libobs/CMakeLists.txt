@@ -37,6 +37,7 @@ target_sources(
     $<$<BOOL:${ENABLE_HEVC}>:obs-hevc.h>
     obs-audio-config.h
     obs-audio-routing.h
+    obs-encoder-timing.h
     obs-audio-controls.c
     obs-audio-controls.h
     obs-audio.c

@@ -29,6 +29,20 @@ Tests are enabled in the Windows x64 and macOS CI presets. Other configurations
 can opt in with `BUILD_TESTING=ON`. Tests and Catch2 are not installed into the
 product package.
 
+Encoder timing tests (`[core][encoder][timing]`) cover wide group alignment,
+mixed frame-rate divisors, timestamp exhaustion and invalid packet timebases.
+They also initialize a synthetic encoder through libobs to verify that invalid
+timing is rejected before the plugin is created and that corrected settings can
+be retried. A graphics case uses synthetic CPU and texture encoders to verify
+that an overflowing group stops without deadlocking and can restart with valid
+settings. It requires the build's graphics backend; the texture section skips
+when NV12 textures are unavailable. The remaining cases need no graphics device
+or encoder plugins:
+
+```powershell
+ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "Encoder timing"
+```
+
 Process-pipe tests (`[util][pipe]`) start short-lived shell children and check
 normal exit codes and the legacy signed return values used by FFmpeg. On POSIX,
 they also check signal termination and `ECHILD` after explicitly reaping a child.

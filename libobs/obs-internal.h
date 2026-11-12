@@ -1492,7 +1492,7 @@ struct obs_encoder_group {
 	uint32_t num_encoders_started;
 	uint64_t start_timestamp;
 
-	uint32_t frame_rate_divisors_lcm;
+	uint64_t frame_rate_divisors_lcm;
 
 	uint64_t reconfigure_request;
 	int64_t next_pts;
@@ -1551,6 +1551,7 @@ struct obs_encoder {
 	// the total frame count at the time the encoder was started
 	uint32_t frame_rate_divisor;
 	uint32_t frame_rate_divisor_counter; // only used for GPU encoders
+	bool timing_error_pending;
 	video_t *fps_override;
 
 	// Number of frames successfully encoded

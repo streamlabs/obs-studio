@@ -17,6 +17,7 @@
 
 #include "obs.h"
 #include "obs-internal.h"
+#include "obs-encoder-timing.h"
 #include "util/util_uint64.h"
 
 #define encoder_active(encoder) os_atomic_load_bool(&encoder->active)
@@ -388,26 +389,6 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		obs_free_video_mix(to_free);
 }
 
-static int gcd(int a, int b)
-{
-	if (a < b) {
-		int temp = a;
-		a = b;
-		b = temp;
-	}
-
-	int remainder = a % b;
-	if (!remainder)
-		return b;
-
-	return gcd(b, remainder);
-}
-
-static int lcm(int a, int b)
-{
-	return (a / gcd(a, b)) * b;
-}
-
 static void add_connection(struct obs_encoder *encoder)
 {
 	blog(LOG_INFO, "add_connection '%s' (%s) (%p)", obs_encoder_get_name(encoder), obs_encoder_get_id(encoder),
@@ -430,7 +411,8 @@ static void add_connection(struct obs_encoder *encoder)
 
 	if (encoder->encoder_group) {
 		pthread_mutex_lock(&encoder->encoder_group->mutex);
-		if (encoder->encoder_group->frame_rate_divisors_lcm == 0)
+		/* An overflowed LCM stays invalid until the entire group restarts. */
+		if (encoder->encoder_group->num_encoders_started == 0)
 			encoder->encoder_group->frame_rate_divisors_lcm = 1;
 
 		/* The Least Common Multiple (LCM) of all frame rate divisors determines the alignment boundary
@@ -440,8 +422,8 @@ static void add_connection(struct obs_encoder *encoder)
 		 * encoder runs at 60fps and another at 30fps, reconfiguration can only occur on every 2nd frame
 		 * of the 60fps encoder).
 		 */
-		encoder->encoder_group->frame_rate_divisors_lcm =
-			lcm(encoder->encoder_group->frame_rate_divisors_lcm, encoder->frame_rate_divisor);
+		encoder->encoder_group->frame_rate_divisors_lcm = obs_encoder_divisor_lcm(
+			encoder->encoder_group->frame_rate_divisors_lcm, encoder->frame_rate_divisor);
 
 		encoder->encoder_group->num_encoders_started += 1;
 		bool ready = encoder->encoder_group->num_encoders_started >= encoder->encoder_group->encoders.num;
@@ -736,6 +718,17 @@ static void intitialize_audio_encoder(struct obs_encoder *encoder)
 
 static THREAD_LOCAL bool can_reroute = false;
 
+static bool encoder_timebase_valid(obs_encoder_t *encoder)
+{
+	if (encoder->info.type != OBS_ENCODER_VIDEO ||
+	    obs_encoder_timebase_valid(encoder->timebase_num, encoder->timebase_den, encoder->frame_rate_divisor))
+		return true;
+
+	obs_encoder_set_last_error(encoder, "Video encoder timebase exceeds the supported range");
+	blog(LOG_ERROR, "Invalid timebase for video encoder '%s'", encoder->context.name);
+	return false;
+}
+
 static bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 {
 	blog(LOG_INFO, "obs_encoder_initialize_internal - %s", obs_encoder_get_name(encoder));
@@ -744,6 +737,8 @@ static bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 		     encoder->context.name);
 		return false;
 	}
+	if (os_atomic_load_bool(&encoder->timing_error_pending))
+		return false;
 
 	if (!encoder->media) {
 		blog(LOG_ERROR, "obs_encoder_initialize_internal: encoder '%s' has no media set",
@@ -755,6 +750,8 @@ static bool obs_encoder_initialize_internal(obs_encoder_t *encoder)
 		return true;
 	if (encoder->initialized)
 		return true;
+	if (!encoder_timebase_valid(encoder))
+		return false;
 
 	obs_encoder_shutdown(encoder);
 
@@ -861,12 +858,11 @@ static void release_encoder_only_gpu_rescale_mix(obs_encoder_t *encoder)
 /* Stops every output using the encoder without holding init_mutex across
  * obs_output_force_stop(), which may join a reconnect thread that needs the
  * same mutex. The caller holds init_mutex on entry and again on return. */
-static void force_stop_encoder_for_video_mix_removal(obs_encoder_t *encoder)
+static void force_stop_encoder(obs_encoder_t *encoder)
 {
 	DARRAY(obs_output_t *) outputs;
 	da_init(outputs);
 
-	assert(os_atomic_load_bool(&encoder->video_mix_removal_pending));
 	pthread_mutex_unlock(&encoder->init_mutex);
 
 	pthread_mutex_lock(&encoder->outputs_mutex);
@@ -961,7 +957,7 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 				blog(LOG_ERROR,
 				     "obs_encoder_release_video_mix_references: active audio encoder '%s' references a freed video mix; forcing output stop (mix removal requires stopped encoders)",
 				     obs_encoder_get_name(enc));
-				force_stop_encoder_for_video_mix_removal(enc);
+				force_stop_encoder(enc);
 			}
 			if (enc->video == mix)
 				enc->video = NULL;
@@ -973,7 +969,7 @@ void obs_encoder_release_video_mix_references(struct obs_core_video_mix *mix)
 			blog(LOG_ERROR,
 			     "obs_encoder_release_video_mix_references: active video encoder '%s' references a freed video mix; forcing output stop (mix removal requires stopped encoders)",
 			     obs_encoder_get_name(enc));
-			force_stop_encoder_for_video_mix_removal(enc);
+			force_stop_encoder(enc);
 		}
 
 		if (enc->context.data) {
@@ -1050,10 +1046,13 @@ static inline bool obs_encoder_start_internal(obs_encoder_t *encoder, encoded_ca
 	struct encoder_callback cb = {false, new_packet, param};
 	bool first = false;
 
-	if (os_atomic_load_bool(&encoder->video_mix_removal_pending))
+	if (os_atomic_load_bool(&encoder->video_mix_removal_pending) ||
+	    os_atomic_load_bool(&encoder->timing_error_pending))
 		return false;
 
 	if (!encoder->context.data || !encoder->media)
+		return false;
+	if (!encoder_timebase_valid(encoder))
 		return false;
 
 	pthread_mutex_lock(&encoder->callbacks_mutex);
@@ -1830,10 +1829,25 @@ static void encoder_group_new_reconfigure_request(struct obs_encoder_group *grou
 	group->reconfigure_again = false;
 }
 
-void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder)
+static void stop_video_encoder_for_invalid_timing(void *param)
 {
+	obs_encoder_t *encoder = param;
+	pthread_mutex_lock(&encoder->init_mutex);
+	if (encoder_active(encoder))
+		force_stop_encoder(encoder);
+	os_atomic_set_bool(&encoder->timing_error_pending, false);
+	pthread_mutex_unlock(&encoder->init_mutex);
+	obs_encoder_release(encoder);
+}
+
+bool prepare_video_encoder_frame(obs_encoder_t *encoder, int64_t *next_pts)
+{
+	if (os_atomic_load_bool(&encoder->timing_error_pending))
+		return false;
+	if (!obs_encoder_next_pts(encoder->cur_pts, encoder->timebase_num, encoder->frame_rate_divisor, next_pts))
+		goto invalid_timing;
 	if (!encoder->encoder_group)
-		return;
+		return true;
 
 	struct obs_encoder_group *group = encoder->encoder_group;
 	pthread_mutex_lock(&group->mutex);
@@ -1850,22 +1864,35 @@ void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder)
 			encoder_group_new_reconfigure_request(group);
 
 	} else if (new_reconfigure_request || encoder->cur_pts == group->next_pts) {
+		int64_t aligned;
+		if (!obs_encoder_group_next_pts(*next_pts, encoder->timebase_num, group->frame_rate_divisors_lcm,
+						&aligned)) {
+			pthread_mutex_unlock(&group->mutex);
+			goto invalid_timing;
+		}
+
 		encoder->last_reconfigure_request = group->reconfigure_request;
-
-		int64_t overall_timestep = encoder->timebase_num * group->frame_rate_divisors_lcm;
-
-		int64_t next_pts = encoder->cur_pts + encoder->timebase_num * encoder->frame_rate_divisor;
-
-		if (next_pts % overall_timestep != 0)
-			next_pts = (next_pts / overall_timestep + 1) * overall_timestep;
-
-		if (next_pts > group->next_pts)
-			group->next_pts = next_pts;
+		if (aligned > group->next_pts)
+			group->next_pts = aligned;
 
 		if (new_reconfigure_request)
 			group->encoders_updated_next_pts += 1;
 	}
 	pthread_mutex_unlock(&group->mutex);
+	return true;
+
+invalid_timing:
+	obs_encoder_set_last_error(encoder, "Video encoder timing exceeds the supported timestamp range");
+	blog(LOG_ERROR, "Invalid frame timing for video encoder '%s'", encoder->context.name);
+	obs_encoder_t *ref = obs_encoder_get_ref(encoder);
+	if (ref && !os_atomic_exchange_bool(&encoder->timing_error_pending, true)) {
+		/* GPU teardown waits for the callback thread, so it must run elsewhere.
+		 * Block restart until this retained task has finished stopping the encoder. */
+		obs_queue_task(OBS_TASK_DESTROY, stop_video_encoder_for_invalid_timing, ref, false);
+	} else {
+		obs_encoder_release(ref);
+	}
+	return false;
 }
 
 static const char *receive_video_name = "receive_video";
@@ -1904,7 +1931,9 @@ static void receive_video(void *param, struct video_data *frame)
 	if (video_pause_check(&encoder->pause, frame->timestamp))
 		goto wait_for_audio;
 
-	handle_encoder_group_reconfigure_request(encoder);
+	int64_t next_pts;
+	if (!prepare_video_encoder_frame(encoder, &next_pts))
+		goto wait_for_audio;
 
 	memset(&enc_frame, 0, sizeof(struct encoder_frame));
 
@@ -1920,7 +1949,7 @@ static void receive_video(void *param, struct video_data *frame)
 	enc_frame.pts = encoder->cur_pts;
 
 	if (do_encode(encoder, &enc_frame, &frame->timestamp))
-		encoder->cur_pts += encoder->timebase_num * encoder->frame_rate_divisor;
+		encoder->cur_pts = next_pts;
 
 wait_for_audio:
 	profile_end(receive_video_name);

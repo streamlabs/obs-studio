@@ -17,7 +17,7 @@
 
 #include "obs-internal.h"
 
-void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder);
+bool prepare_video_encoder_frame(obs_encoder_t *encoder, int64_t *next_pts);
 
 #define NBSP "\xC2\xA0"
 static const char *gpu_encode_frame_name = "gpu_encode_frame";
@@ -132,7 +132,9 @@ static void *gpu_encode_thread(void *data)
 			if (skip)
 				continue;
 
-			handle_encoder_group_reconfigure_request(encoder);
+			int64_t next_pts;
+			if (!prepare_video_encoder_frame(encoder, &next_pts))
+				continue;
 
 			if (encoder->reconfigure_requested) {
 				encoder->reconfigure_requested = false;
@@ -192,7 +194,7 @@ static void *gpu_encode_thread(void *data)
 
 			lock_key = next_key;
 
-			encoder->cur_pts += encoder->timebase_num * encoder->frame_rate_divisor;
+			encoder->cur_pts = next_pts;
 		}
 
 		/* -------------- */
