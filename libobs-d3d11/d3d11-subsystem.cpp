@@ -204,8 +204,14 @@ void gs_swap_chain::Resize(uint32_t cx, uint32_t cy, gs_color_format format)
 
 void gs_swap_chain::Init()
 {
-	const gs_color_format format =
-		get_swap_format_from_space(get_next_space(device, hwnd, swapDesc.SwapEffect), initData.format);
+	const gs_color_format format = get_swap_format_from_space(space, initData.format);
+
+	DXGI_SWAP_CHAIN_DESC desc;
+	HRESULT hr = swap->GetDesc(&desc);
+	if (FAILED(hr))
+		throw HRError("Failed to get swap chain desc", hr);
+	const uint32_t cx = desc.BufferDesc.Width;
+	const uint32_t cy = desc.BufferDesc.Height;
 
 	target.device = device;
 	target.isRenderTarget = true;
@@ -213,12 +219,30 @@ void gs_swap_chain::Init()
 	target.dxgiFormatResource = ConvertGSTextureFormatResource(format);
 	target.dxgiFormatView = ConvertGSTextureFormatView(format);
 	target.dxgiFormatViewLinear = ConvertGSTextureFormatViewLinear(format);
-	InitTarget(initData.cx, initData.cy);
+	InitTarget(cx, cy);
 
 	zs.device = device;
 	zs.format = initData.zsformat;
 	zs.dxgiFormat = ConvertGSZStencilFormat(initData.zsformat);
-	InitZStencilBuffer(initData.cx, initData.cy);
+	InitZStencilBuffer(cx, cy);
+}
+
+void gs_swap_chain::CreateSwapChain(ID3D11Device *dev, DXGI_SWAP_EFFECT effect, UINT flags)
+{
+	space = make_swap_desc(device, swapDesc, &initData, effect, flags);
+	HRESULT hr = device->factory->CreateSwapChain(dev, &swapDesc, swap.Assign());
+	if (FAILED(hr))
+		throw HRError("Failed to create swap chain", hr);
+
+	/* Ignore Alt+Enter */
+	device->factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
+
+	if (flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
+		ComPtr<IDXGISwapChain2> swap2 = ComQIPtr<IDXGISwapChain2>(swap);
+		hWaitable = swap2->GetFrameLatencyWaitableObject();
+		if (hWaitable == NULL)
+			blog(LOG_WARNING, "Failed to GetFrameLatencyWaitableObject");
+	}
 }
 
 gs_swap_chain::gs_swap_chain(gs_device *device, const gs_init_data *data)
@@ -238,22 +262,7 @@ gs_swap_chain::gs_swap_chain(gs_device *device, const gs_init_data *data)
 		flags |= DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 	}
 
-	space = make_swap_desc(device, swapDesc, &initData, effect, flags);
-	HRESULT hr = device->factory->CreateSwapChain(device->device, &swapDesc, swap.Assign());
-	if (FAILED(hr))
-		throw HRError("Failed to create swap chain", hr);
-
-	/* Ignore Alt+Enter */
-	device->factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
-
-	if (flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
-		ComPtr<IDXGISwapChain2> swap2 = ComQIPtr<IDXGISwapChain2>(swap);
-		hWaitable = swap2->GetFrameLatencyWaitableObject();
-		if (hWaitable == NULL) {
-			throw HRError("Failed to GetFrameLatencyWaitableObject", hr);
-		}
-	}
-
+	CreateSwapChain(device->device, effect, flags);
 	Init();
 }
 
