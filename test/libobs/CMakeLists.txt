@@ -20,6 +20,7 @@ add_executable(
   test-capture-status.cpp
   test-audio-config.cpp
   test-audio-routing.cpp
+  test-wasapi-buffer.cpp
   test-util.cpp
   test-process-pipe.cpp
   test-deque.cpp

@@ -29,6 +29,12 @@ Tests are enabled in the Windows x64 and macOS CI presets. Other configurations
 can opt in with `BUILD_TESTING=ON`. Tests and Catch2 are not installed into the
 product package.
 
+WASAPI buffer tests (`[audio][wasapi]`) exercise the Windows monitor's portable
+size and delay-packet helpers without an audio device. They cover wide products,
+invalid sizes, complete records, wrapped queues, differing packet frame counts,
+and sample-versus-byte allocation units. Run them with
+`ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure --no-tests=error -R "WASAPI"`.
+
 Encoder timing tests (`[core][encoder][timing]`) cover wide group alignment,
 mixed frame-rate divisors, timestamp exhaustion and invalid packet timebases.
 They also initialize a synthetic encoder through libobs to verify that invalid
