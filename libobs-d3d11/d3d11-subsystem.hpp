@@ -809,6 +809,7 @@ struct gs_swap_chain : gs_obj {
 	void InitTarget(uint32_t cx, uint32_t cy);
 	void InitZStencilBuffer(uint32_t cx, uint32_t cy);
 	void Resize(uint32_t cx, uint32_t cy, gs_color_format format);
+	void CreateSwapChain(ID3D11Device *dev, DXGI_SWAP_EFFECT effect, UINT flags);
 	void Init();
 
 	void Rebuild(ID3D11Device *dev);

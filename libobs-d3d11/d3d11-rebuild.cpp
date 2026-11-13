@@ -249,9 +249,7 @@ void gs_pixel_shader::Rebuild(ID3D11Device *dev)
 
 void gs_swap_chain::Rebuild(ID3D11Device *dev)
 {
-	HRESULT hr = device->factory->CreateSwapChain(dev, &swapDesc, &swap);
-	if (FAILED(hr))
-		throw HRError("Failed to create swap chain", hr);
+	CreateSwapChain(dev, swapDesc.SwapEffect, swapDesc.Flags);
 	Init();
 }
 
@@ -458,6 +456,7 @@ try {
 	/* ----------------------------------------------------------------- */
 
 	InitFactory();
+	monitor_to_hdr.clear();
 	InitAdapter(adpIdx);
 
 	uint32_t createFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
