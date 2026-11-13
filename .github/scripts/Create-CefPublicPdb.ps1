@@ -186,7 +186,15 @@ $windowsKitsPdbCopy = if (${env:ProgramFiles(x86)}) {
   Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers\x64\pdbcopy.exe'
 }
 $pdbCopy = Resolve-Executable -Name 'pdbcopy.exe' -RequestedPath $PdbCopyPath -Candidates @($windowsKitsPdbCopy)
-$pdbUtil = Resolve-Executable -Name 'llvm-pdbutil.exe' -RequestedPath $LlvmPdbUtilPath -Candidates @(
+$vsLlvmCandidates = @()
+$vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+if (Test-Path -LiteralPath $vsWhere -PathType Leaf) {
+  $vsInstallations = @(& $vsWhere -all -products '*' -property installationPath)
+  if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate Visual Studio installations.' }
+  $vsLlvmCandidates = @($vsInstallations | ForEach-Object { Join-Path $_ 'VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe' })
+}
+
+$pdbUtil = Resolve-Executable -Name 'llvm-pdbutil.exe' -RequestedPath $LlvmPdbUtilPath -Candidates (@(
   (Join-Path $cefSource 'third_party\llvm-build\Release+Asserts\bin\llvm-pdbutil.exe'),
   (Join-Path $cefRoot 'third_party\llvm-build\Release+Asserts\bin\llvm-pdbutil.exe'),
   (Join-Path $env:ProgramFiles 'LLVM\bin\llvm-pdbutil.exe'),
@@ -194,7 +202,7 @@ $pdbUtil = Resolve-Executable -Name 'llvm-pdbutil.exe' -RequestedPath $LlvmPdbUt
   (Join-Path $env:ProgramFiles 'Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe'),
   (Join-Path $env:ProgramFiles 'Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe'),
   (Join-Path $env:ProgramFiles 'Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\llvm-pdbutil.exe')
-)
+) + $vsLlvmCandidates)
 
 Assert-SafePublicPdbPath -CefOut $cefOut -PrivatePdb $privatePdb -PublicPdb $publicPdb
 $pdbCopyOutput = @(& $pdbCopy $privatePdb $publicPdb -p 2>&1)

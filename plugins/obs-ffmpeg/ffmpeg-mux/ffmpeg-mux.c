@@ -30,6 +30,7 @@
 #include <util/platform.h>
 #include <util/deque.h>
 #include <util/dstr.h>
+#include <media-io/audio-io.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
@@ -421,7 +422,7 @@ static bool init_params(int *argc, char ***argv, struct main_params *params, str
 		puts("Invalid number of video tracks\n");
 		return false;
 	}
-	if (params->tracks < 0) {
+	if (params->tracks < 0 || params->tracks > MAX_AUDIO_MIXES) {
 		puts("Invalid number of audio tracks\n");
 		return false;
 	}
@@ -463,7 +464,9 @@ static bool init_params(int *argc, char ***argv, struct main_params *params, str
 		if (!get_opt_str(argc, argv, &params->acodec, "audio codec"))
 			return false;
 
-		audio = calloc(params->tracks, sizeof(*audio));
+		audio = calloc(MAX_AUDIO_MIXES, sizeof(*audio));
+		if (!audio)
+			return false;
 
 		for (int i = 0; i < params->tracks; i++) {
 			if (!get_audio_params(&audio[i], argc, argv)) {
@@ -943,11 +946,7 @@ static int64_t ffmpeg_mux_seek_av_buffer(void *opaque, int64_t offset, int whenc
 	return 0;
 }
 
-#if LIBAVFORMAT_VERSION_MAJOR >= 61
 static int ffmpeg_mux_write_av_buffer(void *opaque, const uint8_t *buf, int buf_size)
-#else
-static int ffmpeg_mux_write_av_buffer(void *opaque, uint8_t *buf, int buf_size)
-#endif
 {
 	struct ffmpeg_mux *ffm = opaque;
 
@@ -1279,6 +1278,9 @@ int main(int argc, char *argv[])
 	char **argv;
 
 	SetErrorMode(SEM_FAILCRITICALERRORS);
+	SetSearchPathMode(BASE_SEARCH_PATH_ENABLE_SAFE_SEARCHMODE | BASE_SEARCH_PATH_PERMANENT);
+	SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+	SetDllDirectoryW(L"");
 
 	argv = malloc(argc * sizeof(char *));
 	for (int i = 0; i < argc; i++) {

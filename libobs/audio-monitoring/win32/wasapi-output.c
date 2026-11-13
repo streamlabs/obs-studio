@@ -6,6 +6,7 @@
 #include "../../obs-internal.h"
 
 #include "wasapi-output.h"
+#include "wasapi-buffer.h"
 
 #define ACTUALLY_DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
 	EXTERN_C const GUID DECLSPEC_SELECTANY name = {l, w1, w2, {b1, b2, b3, b4, b5, b6, b7, b8}}
@@ -43,7 +44,7 @@ struct audio_monitor {
 	struct deque delay_buffer;
 	uint32_t delay_size;
 
-	DARRAY(float) buf;
+	wasapi_sample_buffer buf;
 	SRWLOCK playback_mutex;
 };
 
@@ -58,7 +59,6 @@ static bool process_audio_delay(struct audio_monitor *monitor, float **data, uin
 	uint64_t front_ts;
 	uint64_t cur_ts;
 	int64_t diff;
-	uint32_t blocksize = monitor->channels * sizeof(float);
 
 	/* cut off audio if long-since leftover audio in delay buffer */
 	if (cur_time - monitor->last_recv_time > 1000000000)
@@ -67,9 +67,8 @@ static bool process_audio_delay(struct audio_monitor *monitor, float **data, uin
 
 	ts += monitor->source->sync_offset;
 
-	deque_push_back(&monitor->delay_buffer, &ts, sizeof(ts));
-	deque_push_back(&monitor->delay_buffer, frames, sizeof(*frames));
-	deque_push_back(&monitor->delay_buffer, *data, *frames * blocksize);
+	if (!wasapi_delay_push(&monitor->delay_buffer, *data, *frames, monitor->channels, ts))
+		goto invalid_packet;
 
 	if (!monitor->prev_video_ts) {
 		monitor->prev_video_ts = last_frame_ts;
@@ -82,10 +81,12 @@ static bool process_audio_delay(struct audio_monitor *monitor, float **data, uin
 	}
 
 	while (monitor->delay_buffer.size != 0) {
-		size_t size;
+		struct wasapi_delay_packet packet;
 		bool bad_diff;
 
-		deque_peek_front(&monitor->delay_buffer, &cur_ts, sizeof(ts));
+		if (!wasapi_delay_peek(&monitor->delay_buffer, monitor->channels, &packet))
+			goto invalid_packet;
+		cur_ts = packet.timestamp;
 		front_ts = cur_ts - util_mul_div64(pad, 1000000000ULL, monitor->sample_rate);
 		diff = (int64_t)front_ts - (int64_t)last_frame_ts;
 		bad_diff = !last_frame_ts || llabs(diff) > 5000000000 || monitor->time_since_prev > 100000000ULL;
@@ -102,12 +103,9 @@ static bool process_audio_delay(struct audio_monitor *monitor, float **data, uin
 			return false;
 		}
 
-		deque_pop_front(&monitor->delay_buffer, NULL, sizeof(ts));
-		deque_pop_front(&monitor->delay_buffer, frames, sizeof(*frames));
-
-		size = *frames * blocksize;
-		da_resize(monitor->buf, size);
-		deque_pop_front(&monitor->delay_buffer, monitor->buf.array, size);
+		if (!wasapi_delay_pop(&monitor->delay_buffer, monitor->channels, &monitor->buf, &packet))
+			goto invalid_packet;
+		*frames = packet.frames;
 
 		/* cut audio if dragging */
 		if (!bad_diff && diff < -75000000 && monitor->delay_buffer.size > 0) {
@@ -125,6 +123,10 @@ static bool process_audio_delay(struct audio_monitor *monitor, float **data, uin
 		return true;
 	}
 
+	return false;
+
+invalid_packet:
+	deque_free(&monitor->delay_buffer);
 	return false;
 }
 
@@ -216,6 +218,10 @@ static bool audio_monitor_init_wasapi(struct audio_monitor *monitor)
 	to.samples_per_sec = (uint32_t)wfex->nSamplesPerSec;
 	to.speakers = convert_speaker_layout(ext->dwChannelMask, wfex->nChannels);
 	to.format = AUDIO_FORMAT_FLOAT;
+	if (!wfex->nChannels || get_audio_channels(to.speakers) != wfex->nChannels) {
+		warn("%s: Unsupported monitoring channel layout", __FUNCTION__);
+		goto fail;
+	}
 
 	monitor->sample_rate = (uint32_t)wfex->nSamplesPerSec;
 	monitor->channels = wfex->nChannels;
@@ -279,6 +285,8 @@ static void audio_monitor_free_for_reconnect(struct audio_monitor *monitor)
 
 static void on_audio_playback(void *param, obs_source_t *source, const struct audio_data *audio_data, bool muted)
 {
+	UNUSED_PARAMETER(muted);
+
 	struct audio_monitor *monitor = param;
 	uint8_t *resample_data[MAX_AV_PLANES];
 	float vol = source->user_volume;
@@ -303,6 +311,12 @@ static void on_audio_playback(void *param, obs_source_t *source, const struct au
 	if (!success) {
 		goto unlock;
 	}
+	if (!resample_frames)
+		goto unlock;
+
+	struct wasapi_buffer_size size;
+	if (!resample_data[0] || !wasapi_get_buffer_size(resample_frames, monitor->channels, &size))
+		goto invalid_packet;
 
 	UINT32 pad = 0;
 	HRESULT hr = monitor->client->lpVtbl->GetCurrentPadding(monitor->client, &pad);
@@ -318,6 +332,8 @@ static void on_audio_playback(void *param, obs_source_t *source, const struct au
 		if (!process_audio_delay(monitor, (float **)(&resample_data[0]), &resample_frames, ts, pad)) {
 			goto unlock;
 		}
+		if (!wasapi_get_buffer_size(resample_frames, monitor->channels, &size))
+			goto invalid_packet;
 	}
 
 	IAudioRenderClient *const render = monitor->render;
@@ -326,23 +342,25 @@ static void on_audio_playback(void *param, obs_source_t *source, const struct au
 		goto free_for_reconnect;
 	}
 
-	if (!muted) {
-		/* apply volume */
-		if (!close_float(vol, 1.0f, EPSILON)) {
-			register float *cur = (float *)resample_data[0];
-			register float *end = cur + resample_frames * monitor->channels;
+	/* apply volume */
+	if (!close_float(vol, 1.0f, EPSILON)) {
+		register float *cur = (float *)resample_data[0];
+		register float *end = cur + size.samples;
 
-			while (cur < end)
-				*(cur++) *= vol;
-		}
-		memcpy(output, resample_data[0], resample_frames * monitor->channels * sizeof(float));
+		while (cur < end)
+			*(cur++) *= vol;
 	}
+	memcpy(output, resample_data[0], size.bytes);
 
-	hr = render->lpVtbl->ReleaseBuffer(render, resample_frames, muted ? AUDCLNT_BUFFERFLAGS_SILENT : 0);
+	hr = render->lpVtbl->ReleaseBuffer(render, resample_frames, 0);
 	if (FAILED(hr)) {
 		goto free_for_reconnect;
 	}
 
+	goto unlock;
+
+invalid_packet:
+	deque_free(&monitor->delay_buffer);
 	goto unlock;
 
 free_for_reconnect:

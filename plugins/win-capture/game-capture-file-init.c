@@ -448,7 +448,8 @@ static enum hook_shared_state update_hook_file(bool b64)
 	return HOOK_SHARED_OK;
 }
 
-#define warn(format, ...) blog(LOG_WARNING, "%s: " format, "[Vulkan Capture Init]", ##__VA_ARGS__)
+#undef warn
+#define warn(format, ...) blog(LOG_WARNING, "[Vulkan Capture Init]: " format, ##__VA_ARGS__)
 
 /* Sets vulkan layer registry if it doesn't already exist */
 static void init_vulkan_registry(bool b64)

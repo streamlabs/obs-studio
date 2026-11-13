@@ -557,6 +557,10 @@ struct obs_source_info {
 	 */
 	void (*filter_add)(void *data, obs_source_t *source);
 
+	/** Gets custom icons for dark and light themes */
+	const char *(*get_dark_icon)(void *type_data);
+	const char *(*get_light_icon)(void *type_data);
+
 	/* Append-only: mid-struct inserts shift later offsets and break module ABI. */
 
 	/** Called to send message to the source */

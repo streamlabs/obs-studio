@@ -35,8 +35,9 @@ struct ConfigState {
 struct ObsShutdownGuard {
 	~ObsShutdownGuard()
 	{
-		if (obs_initialized())
+		if (obs_initialized()) {
 			obs_shutdown();
+		}
 	}
 };
 
@@ -99,8 +100,9 @@ void submit_audio(obs_source_t *source, uint32_t rate, bool packed = false)
 	obs_source_audio audio{};
 	audio.data[0] = packed ? reinterpret_cast<const uint8_t *>(interleaved.data())
 			       : reinterpret_cast<const uint8_t *>(left.data());
-	if (!packed)
+	if (!packed) {
 		audio.data[1] = reinterpret_cast<const uint8_t *>(right.data());
+	}
 	audio.frames = rate / 100;
 	audio.speakers = SPEAKERS_STEREO;
 	audio.format = packed ? AUDIO_FORMAT_16BIT : AUDIO_FORMAT_FLOAT_PLANAR;
@@ -184,14 +186,16 @@ TEST_CASE("Audio configuration readers observe complete tuples during publicatio
 	std::array<std::thread, 3> readers;
 	for (auto &reader : readers) {
 		reader = std::thread([&] {
-			while (!start.load())
+			while (!start.load()) {
 				std::this_thread::yield();
+			}
 			for (size_t i = 0; i < 20000; ++i) {
 				audio_output_config result = surround;
 				const bool available = audio_output_config_get(&config.state, &result);
 				if (available ? (!same_config(result, stereo) && !same_config(result, surround))
-					      : !same_config(result, {}))
+					      : !same_config(result, {})) {
 					valid = false;
+				}
 			}
 		});
 	}
@@ -201,8 +205,9 @@ TEST_CASE("Audio configuration readers observe complete tuples during publicatio
 		audio_output_config_set(&config.state, nullptr);
 		audio_output_config_set(&config.state, &surround);
 	}
-	for (auto &reader : readers)
+	for (auto &reader : readers) {
 		reader.join();
+	}
 	CHECK(valid.load());
 }
 
@@ -245,6 +250,124 @@ TEST_CASE("Audio configuration follows source resets and recovers after output i
 	submit_audio(source.get(), 48000);
 	REQUIRE(capture.calls == before + 1);
 	capture.check(480, 0.375f, 0.375f);
+}
+
+TEST_CASE("Monitoring modes survive save and reload independently of mute and tracks", "[core][audio][monitoring]")
+{
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	register_audio_source();
+	const obs_audio_info info{48000, SPEAKERS_STEREO};
+	REQUIRE(obs_reset_audio(&info));
+	for (auto mode :
+	     {OBS_MONITORING_TYPE_NONE, OBS_MONITORING_TYPE_MONITOR_ONLY, OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT}) {
+		for (bool muted : {false, true}) {
+			CAPTURE(mode, muted);
+			Source source(obs_source_create("audio-config-test-input", "monitoring test", nullptr, nullptr),
+				      obs_source_release);
+			REQUIRE(source);
+			obs_source_set_muted(source.get(), muted);
+			obs_source_set_audio_mixers(source.get(), 0x15);
+			obs_source_set_monitoring_type(source.get(), mode);
+			CHECK(obs_source_get_monitoring_enabled(source.get()) == (mode != OBS_MONITORING_TYPE_NONE));
+			CHECK(obs_source_muted(source.get()) == muted);
+			CHECK(obs_source_get_audio_mixers(source.get()) == 0x15);
+			std::unique_ptr<obs_data_t, decltype(&obs_data_release)> saved(obs_save_source(source.get()),
+										       obs_data_release);
+			REQUIRE(saved);
+			source.reset();
+			Source restored(obs_load_source(saved.get()), obs_source_release);
+			REQUIRE(restored);
+			CHECK(obs_source_get_monitoring_type(restored.get()) == mode);
+			CHECK(obs_source_get_monitoring_enabled(restored.get()) == (mode != OBS_MONITORING_TYPE_NONE));
+			CHECK(obs_source_muted(restored.get()) == muted);
+			CHECK(obs_source_get_audio_mixers(restored.get()) == 0x15);
+		}
+	}
+}
+
+TEST_CASE("Boolean monitoring API preserves monitor-only mode and reports mode changes", "[core][audio][monitoring]")
+{
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	register_audio_source();
+	const obs_audio_info info{48000, SPEAKERS_STEREO};
+	REQUIRE(obs_reset_audio(&info));
+	std::vector<int64_t> modes;
+	std::vector<bool> enabled;
+	Source source(obs_source_create_private("audio-config-test-input", "monitoring test", nullptr),
+		      obs_source_release);
+	REQUIRE(source);
+	const uint32_t original_mixers = obs_source_get_audio_mixers(source.get());
+	auto *signals = obs_source_get_signal_handler(source.get());
+	signal_handler_connect(
+		signals, "audio_monitoring",
+		[](void *param, calldata_t *data) {
+			static_cast<std::vector<int64_t> *>(param)->push_back(calldata_int(data, "type"));
+		},
+		&modes);
+	signal_handler_connect(
+		signals, "monitor",
+		[](void *param, calldata_t *data) {
+			static_cast<std::vector<bool> *>(param)->push_back(calldata_bool(data, "monitor"));
+		},
+		&enabled);
+	obs_source_set_monitoring_type(source.get(), OBS_MONITORING_TYPE_MONITOR_ONLY);
+	obs_source_set_monitoring_enabled(source.get(), true);
+	CHECK(obs_source_get_monitoring_type(source.get()) == OBS_MONITORING_TYPE_MONITOR_ONLY);
+	obs_source_set_monitoring_type(source.get(), OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT);
+	obs_source_set_monitoring_enabled(source.get(), false);
+	obs_source_set_monitoring_enabled(source.get(), true);
+	CHECK(obs_source_get_monitoring_type(source.get()) == OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT);
+	CHECK(modes == std::vector<int64_t>{OBS_MONITORING_TYPE_MONITOR_ONLY, OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT,
+					    OBS_MONITORING_TYPE_NONE, OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT});
+	CHECK(enabled == std::vector<bool>{true, false, true});
+	CHECK_FALSE(obs_source_muted(source.get()));
+	CHECK(obs_source_get_audio_mixers(source.get()) == original_mixers);
+}
+
+TEST_CASE("Audio tasks allow another thread to queue work while a task is running", "[core][audio][tasks]")
+{
+	struct TaskGate {
+		std::mutex mutex;
+		std::condition_variable cv;
+		bool entered = false;
+		bool queued = false;
+		bool completed = false;
+		bool timed_out = false;
+	} gate;
+	ObsShutdownGuard shutdown;
+	REQUIRE(obs_startup("en-US", nullptr, nullptr));
+	const obs_audio_info info{48000, SPEAKERS_STEREO};
+	REQUIRE(obs_reset_audio(&info));
+	obs_queue_task(
+		OBS_TASK_AUDIO,
+		[](void *param) {
+			auto &gate = *static_cast<TaskGate *>(param);
+			std::unique_lock lock(gate.mutex);
+			gate.entered = true;
+			gate.cv.notify_all();
+			gate.timed_out = !gate.cv.wait_for(lock, 2s, [&] { return gate.queued; });
+		},
+		&gate, false);
+	{
+		std::unique_lock lock(gate.mutex);
+		REQUIRE(gate.cv.wait_for(lock, 2s, [&] { return gate.entered; }));
+	}
+	obs_queue_task(
+		OBS_TASK_AUDIO,
+		[](void *param) {
+			auto &gate = *static_cast<TaskGate *>(param);
+			std::lock_guard lock(gate.mutex);
+			gate.completed = true;
+			gate.cv.notify_all();
+		},
+		&gate, false);
+	std::unique_lock lock(gate.mutex);
+	gate.queued = true;
+	gate.cv.notify_all();
+	REQUIRE(gate.cv.wait_for(lock, 2s, [&] { return gate.completed; }));
+	CHECK_FALSE(gate.timed_out);
 }
 
 TEST_CASE("Audio configuration keeps an in-flight source submission valid after its output closes",
@@ -372,8 +495,9 @@ TEST_CASE("Audio configuration lets a source submit while the video mixes mutex 
 	// Always release the holder before joining, including when the producer regresses to using mixes_mutex.
 	gate.release();
 	holder.join();
-	if (producer.joinable())
+	if (producer.joinable()) {
 		producer.join();
+	}
 	REQUIRE(entered);
 	CHECK_FALSE(gate.timed_out);
 	CHECK(completed_while_locked);

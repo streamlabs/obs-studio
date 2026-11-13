@@ -17,8 +17,9 @@ static void probe_log(const char *format, ...)
 	vsnprintf(message, sizeof(message), format, args);
 	va_end(args);
 	for (char *p = message; *p; p++) {
-		if (*p == '\n' || *p == '\r')
+		if (*p == '\n' || *p == '\r') {
 			*p = ' ';
+		}
 	}
 	printf("# %s\n", message);
 }
@@ -45,19 +46,22 @@ static constexpr uint32_t NVENC_CONFIGURED_VERSION = (NVENCAPI_MAJOR_VERSION << 
 
 static bool check_cuda(CUresult result, const char *call, int device = -1)
 {
-	if (result == CUDA_SUCCESS)
+	if (result == CUDA_SUCCESS) {
 		return true;
+	}
 	const char *name = nullptr;
-	if (cu && cu->cuGetErrorName)
+	if (cu && cu->cuGetErrorName) {
 		cu->cuGetErrorName(result, &name);
+	}
 	probe_log("CUDA device=%d call=%s status=%d (%s)", device, call, (int)result, name ? name : "unknown");
 	return false;
 }
 
 static bool check_nvenc(NVENCSTATUS result, const char *call, int device = -1)
 {
-	if (result == NV_ENC_SUCCESS)
+	if (result == NV_ENC_SUCCESS) {
 		return true;
+	}
 	probe_log("NVENC device=%d call=%s status=%d", device, call, (int)result);
 	return false;
 }
@@ -183,8 +187,9 @@ struct NVML {
 
 	~NVML()
 	{
-		if (initialised && shutdown)
+		if (initialised && shutdown) {
 			shutdown();
+		}
 	}
 
 	bool Init()
@@ -234,12 +239,14 @@ private:
 	{
 #ifdef _WIN32
 		nvml_lib = LoadLibraryA("nvml.dll");
-		if (!nvml_lib)
+		if (!nvml_lib) {
 			probe_log("LoadLibraryA(nvml.dll) failed: win32_error=%lu", GetLastError());
+		}
 #else
 		nvml_lib = dlopen("libnvidia-ml.so.1", RTLD_LAZY);
-		if (!nvml_lib)
+		if (!nvml_lib) {
 			probe_log("dlopen(libnvidia-ml.so.1) failed: %s", dlerror());
+		}
 #endif
 		return nvml_lib != nullptr;
 	}
@@ -251,8 +258,9 @@ private:
 #else
 		void *func_ptr = dlsym(nvml_lib, func);
 #endif
-		if (!func_ptr)
+		if (!func_ptr) {
 			probe_log("NVML missing function: %s", func);
+		}
 		return func_ptr;
 	}
 };
@@ -264,16 +272,18 @@ struct CUDACtx {
 
 	~CUDACtx()
 	{
-		if (ctx)
+		if (ctx) {
 			check_cuda(cu->cuCtxDestroy(ctx), "cuCtxDestroy");
+		}
 	}
 
 	bool Init(int adapter_idx)
 	{
 		CUdevice dev;
 		probe_log("device=%d stage=cuDeviceGet", adapter_idx);
-		if (!check_cuda(cu->cuDeviceGet(&dev, adapter_idx), "cuDeviceGet", adapter_idx))
+		if (!check_cuda(cu->cuDeviceGet(&dev, adapter_idx), "cuDeviceGet", adapter_idx)) {
 			return false;
+		}
 
 		probe_log("device=%d stage=cuCtxCreate", adapter_idx);
 		return check_cuda(cu->cuCtxCreate(&ctx, 0, dev), "cuCtxCreate", adapter_idx);
@@ -286,8 +296,10 @@ struct CUDACtx {
 		bus_id.resize(16);
 
 		if (!check_cuda(cu->cuCtxGetDevice(&dev), "cuCtxGetDevice") ||
-		    !check_cuda(cu->cuDeviceGetPCIBusId(bus_id.data(), (int)bus_id.size(), dev), "cuDeviceGetPCIBusId"))
+		    !check_cuda(cu->cuDeviceGetPCIBusId(bus_id.data(), (int)bus_id.size(), dev),
+				"cuDeviceGetPCIBusId")) {
 			return {};
+		}
 		return bus_id;
 	}
 
@@ -298,8 +310,9 @@ struct CUDACtx {
 		string uuid_str;
 
 		if (!check_cuda(cu->cuCtxGetDevice(&dev), "cuCtxGetDevice") ||
-		    !check_cuda(cu->cuDeviceGetUuid_v2(&uuid, dev), "cuDeviceGetUuid_v2"))
+		    !check_cuda(cu->cuDeviceGetUuid_v2(&uuid, dev), "cuDeviceGetUuid_v2")) {
 			return {};
+		}
 
 		uuid_str.resize(32);
 		for (size_t idx = 0; idx < 16; idx++) {
@@ -317,8 +330,9 @@ struct NVSession {
 
 	~NVSession()
 	{
-		if (ptr)
+		if (ptr) {
 			check_nvenc(nv.nvEncDestroyEncoder(ptr), "nvEncDestroyEncoder");
+		}
 	}
 
 	NVENCSTATUS OpenSession(const CUDACtx &ctx)
@@ -373,8 +387,9 @@ static bool get_adapter_caps(int adapter_idx, codec_caps_map &caps, device_info 
 	CUDACtx cudaCtx;
 	NVSession nvSession;
 
-	if (!cudaCtx.Init(adapter_idx))
+	if (!cudaCtx.Init(adapter_idx)) {
 		return false;
+	}
 
 	device_info.pci_id = cudaCtx.GetPCIBusId();
 	device_info.cuda_uuid = cudaCtx.GetUUID();
@@ -384,12 +399,14 @@ static bool get_adapter_caps(int adapter_idx, codec_caps_map &caps, device_info 
 	device_info.nvml_device_status = nvml.getDeviceHandleByPCIBusId(device_info.pci_id.data(), &dev);
 	if (device_info.nvml_device_status == NVML_SUCCESS) {
 		char uuid[NVML_DEVICE_UUID_V2_BUFFER_SIZE] = {};
-		if (nvml.getDeviceUUID(dev, uuid, sizeof(uuid)) == NVML_SUCCESS)
+		if (nvml.getDeviceUUID(dev, uuid, sizeof(uuid)) == NVML_SUCCESS) {
 			device_info.nvml_uuid = uuid;
+		}
 
 		char name[NVML_DEVICE_NAME_V2_BUFFER_SIZE] = {};
-		if (nvml.getDeviceName(dev, name, sizeof(name)) == NVML_SUCCESS)
+		if (nvml.getDeviceName(dev, name, sizeof(name)) == NVML_SUCCESS) {
 			device_info.name = name;
+		}
 
 		nvml.getDevicePCIeGen(dev, &device_info.pcie_gen);
 		nvml.getDevicePCIeWidth(dev, &device_info.pcie_width);
@@ -409,21 +426,24 @@ static bool get_adapter_caps(int adapter_idx, codec_caps_map &caps, device_info 
 	probe_log("device=%d stage=nvEncOpenEncodeSessionEx", adapter_idx);
 	auto res = nvSession.OpenSession(cudaCtx);
 	session_limit = session_limit || res == NV_ENC_ERR_INCOMPATIBLE_CLIENT_KEY;
-	if (!check_nvenc(res, "nvEncOpenEncodeSessionEx", adapter_idx))
+	if (!check_nvenc(res, "nvEncOpenEncodeSessionEx", adapter_idx)) {
 		return false;
+	}
 
 	uint32_t guid_count = 0;
 	probe_log("device=%d stage=nvEncGetEncodeGUIDCount", adapter_idx);
 	if (!check_nvenc(nv.nvEncGetEncodeGUIDCount(nvSession.ptr, &guid_count), "nvEncGetEncodeGUIDCount",
-			 adapter_idx))
+			 adapter_idx)) {
 		return false;
+	}
 
 	vector<GUID> guids;
 	guids.resize(guid_count);
 	probe_log("device=%d stage=nvEncGetEncodeGUIDs count=%u", adapter_idx, guid_count);
 	NVENCSTATUS stat = nv.nvEncGetEncodeGUIDs(nvSession.ptr, guids.data(), guid_count, &guid_count);
-	if (!check_nvenc(stat, "nvEncGetEncodeGUIDs", adapter_idx))
+	if (!check_nvenc(stat, "nvEncGetEncodeGUIDs", adapter_idx)) {
 		return false;
+	}
 
 	NV_ENC_CAPS_PARAM param = {NV_ENC_CAPS_PARAM_VER};
 	probe_log("device=%d stage=codec capability queries", adapter_idx);
@@ -445,8 +465,9 @@ static bool get_adapter_caps(int adapter_idx, codec_caps_map &caps, device_info 
 		for (const auto &[cap, name] : capabilities) {
 			int v;
 			param.capsToQuery = cap;
-			if (nv.nvEncGetEncodeCaps(nvSession.ptr, *guid, &param, &v) != NV_ENC_SUCCESS)
+			if (nv.nvEncGetEncodeCaps(nvSession.ptr, *guid, &param, &v) != NV_ENC_SUCCESS) {
 				continue;
+			}
 
 			device_info.caps[codec_name][name] = v;
 			caps[codec_name][name] = std::max(v, caps[codec_name][name]);
@@ -473,16 +494,19 @@ static bool get_adapter_caps(int adapter_idx, codec_caps_map &caps, device_info 
 bool nvenc_checks(codec_caps_map &caps, vector<device_info> &device_infos)
 {
 	/* NVENC API init */
-	if (!init_nvenc())
+	if (!init_nvenc()) {
 		return false;
+	}
 
 	/* CUDA init */
-	if (!init_cuda())
+	if (!init_cuda()) {
 		return false;
+	}
 
 	NVML nvml;
-	if (!nvml.Init())
+	if (!nvml.Init()) {
 		return false;
+	}
 
 	/* --------------------------------------------------------- */
 	/* obtain adapter compatibility information                  */
@@ -530,8 +554,9 @@ bool nvenc_checks(codec_caps_map &caps, vector<device_info> &device_infos)
 
 	device_infos.resize(cuda_devices);
 	for (int idx = 0; idx < cuda_devices; idx++) {
-		if (get_adapter_caps(idx, caps, device_infos[idx], nvml, session_limit))
+		if (get_adapter_caps(idx, caps, device_infos[idx], nvml, session_limit)) {
 			nvenc_devices++;
+		}
 	}
 
 	if (session_limit) {
@@ -553,11 +578,13 @@ bool nvenc_checks(codec_caps_map &caps, vector<device_info> &device_infos)
 	uint32_t latest_architecture = 0;
 	string_view architecture = "Unknown";
 
-	for (auto &info : device_infos)
+	for (auto &info : device_infos) {
 		latest_architecture = std::max(info.architecture, latest_architecture);
+	}
 
-	if (arch_to_name.count(latest_architecture))
+	if (arch_to_name.count(latest_architecture)) {
 		architecture = arch_to_name.at(latest_architecture);
+	}
 
 	printf("latest_architecture=%u\n"
 	       "latest_architecture_name=%s\n",
@@ -598,8 +625,9 @@ int check_thread()
 	for (size_t idx = 0; idx < device_infos.size(); idx++) {
 		const auto &info = device_infos[idx];
 		string_view architecture = "Unknown";
-		if (arch_to_name.count(info.architecture))
+		if (arch_to_name.count(info.architecture)) {
 			architecture = arch_to_name.at(info.architecture);
+		}
 
 		printf("\n[device.%zu]\n"
 		       "pci_id=%s\n"

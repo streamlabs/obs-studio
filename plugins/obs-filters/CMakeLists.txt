@@ -9,6 +9,7 @@ target_sources(
     async-delay-filter.c
     chroma-key-filter.c
     color-correction-filter.c
+    color-grade-lut.c
     color-grade-filter.c
     color-key-filter.c
     compressor-filter.c
@@ -26,6 +27,7 @@ target_sources(
     obs-filters.c
     scale-filter.c
     scroll-filter.c
+    sdr-on-hdr-filter.c
     sharpness-filter.c
 )
 
