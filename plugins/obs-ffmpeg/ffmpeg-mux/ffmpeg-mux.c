@@ -464,7 +464,7 @@ static bool init_params(int *argc, char ***argv, struct main_params *params, str
 		if (!get_opt_str(argc, argv, &params->acodec, "audio codec"))
 			return false;
 
-		audio = calloc(params->tracks, sizeof(*audio));
+		audio = calloc(MAX_AUDIO_MIXES, sizeof(*audio));
 		if (!audio)
 			return false;
 
