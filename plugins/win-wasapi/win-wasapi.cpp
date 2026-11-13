@@ -460,8 +460,7 @@ void WASAPISource::Stop()
 	if (device_id.compare("does_not_exist") == 0)
 		return;
 
-	blog(LOG_INFO, "[WASAPISource::Stop][%08X] Device '%s' Stop called",
-	     this, device_id.c_str());
+	blog(LOG_INFO, "[WASAPISource::Stop][%p] Device '%s' Stop called", (void *)this, device_id.c_str());
 
 	SetEvent(stopSignal);
 
@@ -1327,8 +1326,7 @@ void WASAPISource::SetDefaultDevice(EDataFlow flow, ERole role, LPCWSTR id)
 		default_id.clear();
 	}
 
-	blog(LOG_INFO, "WASAPI:[%08X] Default %s device changed, name was '%s'",
-	     this, input ? "input" : "output",
+	blog(LOG_INFO, "WASAPI:[%p] Default %s device changed, name was '%s'", (void *)this, input ? "input" : "output",
 	     device_name.empty() ? device_id.c_str() : device_name.c_str());
 
 	SetEvent(restartSignal);
@@ -1619,9 +1617,8 @@ void patchMediaCrash()
 		     GetLastError());
 		return;
 	}
-	blog(LOG_DEBUG,
-	     "[MEDIADLLPATCH] MediaControl dll module info: start %d size %d",
-	     module_info.lpBaseOfDll, module_info.SizeOfImage);
+	blog(LOG_DEBUG, "[MEDIADLLPATCH] MediaControl dll module info: start %p size %u",
+	     (void *)module_info.lpBaseOfDll, module_info.SizeOfImage);
 
 	uint8_t *found_memory = nullptr;
 	for (size_t offset = 0;
@@ -1652,8 +1649,7 @@ void patchMediaCrash()
 	}
 
 	if (found_memory != nullptr) {
-		blog(LOG_DEBUG, "[MEDIADLLPATCH] memory pattern start %d",
-		     found_memory);
+		blog(LOG_DEBUG, "[MEDIADLLPATCH] memory pattern start %p", (void *)found_memory);
 		DWORD prev_flags = 0;
 		if (VirtualProtect(found_memory, sizeof(patchdata),
 				   PAGE_EXECUTE_READWRITE, &prev_flags)) {

@@ -1,4 +1,5 @@
 #include "nvenc-internal.h"
+#include "nvenc-roi-size.h"
 
 #include <obs-nal.h>
 #include <util/darray.h>
@@ -1257,9 +1258,10 @@ static void add_roi(struct nvenc_data *enc, NV_ENC_PIC_PARAMS *params)
 		break;
 	}
 
-	const uint32_t mb_width = (enc->cx + mb_size - 1) / mb_size;
-	const uint32_t mb_height = (enc->cy + mb_size - 1) / mb_size;
-	const size_t map_size = mb_width * mb_height * sizeof(int8_t);
+	uint32_t mb_width, mb_height;
+	size_t map_size;
+	if (!nvenc_roi_map_dimensions(enc->cx, enc->cy, mb_size, &mb_width, &mb_height, &map_size))
+		return;
 
 	if (map_size != enc->roi_map_size) {
 		enc->roi_map = brealloc(enc->roi_map, map_size);

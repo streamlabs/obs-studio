@@ -2,6 +2,7 @@
 #include <opts-parser.h>
 #include <obs-module.h>
 #include <obs-avc.h>
+#include "amf-fallback-size.h"
 
 #include <unordered_map>
 #include <cstdlib>
@@ -897,26 +898,7 @@ try {
 	return false;
 }
 
-static buf_t alloc_buf(amf_fallback *enc)
-{
-	buf_t buf;
-	size_t size;
-
-	if (enc->amf_format == AMF_SURFACE_NV12) {
-		size = enc->linesize * enc->cy * 2;
-	} else if (enc->amf_format == AMF_SURFACE_RGBA) {
-		size = enc->linesize * enc->cy * 4;
-	} else if (enc->amf_format == AMF_SURFACE_P010) {
-		size = enc->linesize * enc->cy * 2 * 2;
-	} else {
-		throw "Invalid amf_format";
-	}
-
-	buf.resize(size);
-	return buf;
-}
-
-static buf_t get_buf(amf_fallback *enc)
+static buf_t get_buf(amf_fallback *enc, size_t required)
 {
 	std::scoped_lock lock(enc->buffers_mutex);
 	buf_t buf;
@@ -924,24 +906,25 @@ static buf_t get_buf(amf_fallback *enc)
 	if (enc->available_buffers.size()) {
 		buf = std::move(enc->available_buffers.back());
 		enc->available_buffers.pop_back();
-	} else {
-		buf = alloc_buf(enc);
+	}
+	if (buf.size() != required) {
+		buf.resize(required);
 	}
 
 	return buf;
 }
 
-static inline void copy_frame_data(amf_fallback *enc, buf_t &buf, struct encoder_frame *frame)
+static inline void copy_frame_data(amf_fallback *enc, buf_t &buf, struct encoder_frame *frame, size_t plane_bytes,
+				   size_t chroma_bytes)
 {
 	uint8_t *dst = &buf[0];
 
 	if (enc->amf_format == AMF_SURFACE_NV12 || enc->amf_format == AMF_SURFACE_P010) {
-		size_t size = enc->linesize * enc->cy;
-		memcpy(&buf[0], frame->data[0], size);
-		memcpy(&buf[size], frame->data[1], size / 2);
+		memcpy(&buf[0], frame->data[0], plane_bytes);
+		memcpy(&buf[plane_bytes], frame->data[1], chroma_bytes);
 
 	} else if (enc->amf_format == AMF_SURFACE_RGBA) {
-		memcpy(dst, frame->data[0], enc->linesize * enc->cy);
+		memcpy(dst, frame->data[0], plane_bytes);
 	}
 }
 
@@ -957,9 +940,20 @@ try {
 		enc->linesize = frame->linesize[0];
 	}
 
-	buf = get_buf(enc);
-
-	copy_frame_data(enc, buf, frame);
+	size_t multiplier;
+	if (enc->amf_format == AMF_SURFACE_NV12) {
+		multiplier = 2;
+	} else if (enc->amf_format == AMF_SURFACE_RGBA || enc->amf_format == AMF_SURFACE_P010) {
+		multiplier = 4;
+	} else {
+		throw "Invalid amf_format";
+	}
+	size_t plane_bytes, chroma_bytes, buffer_bytes;
+	if (!amf_fallback_buffer_size(enc->linesize, enc->cy, multiplier, &plane_bytes, &chroma_bytes, &buffer_bytes)) {
+		throw "Invalid AMF fallback buffer size";
+	}
+	buf = get_buf(enc, buffer_bytes);
+	copy_frame_data(enc, buf, frame, plane_bytes, chroma_bytes);
 
 	res = enc->amf_context->CreateSurfaceFromHostNative(enc->amf_format, enc->cx, enc->cy, enc->linesize, 0,
 							    &buf[0], &amf_surf, enc);
@@ -1475,8 +1469,10 @@ static inline void adjust_recommended_avc_defaults(amf_base *enc, obs_data_t *se
 
 static void amf_set_codec_level(amf_base *enc)
 {
-	uint64_t luma_pic_size = enc->cx * enc->cy;
-	uint64_t luma_sample_rate = luma_pic_size * (enc->fps_num / enc->fps_den);
+	uint64_t luma_pic_size = (uint64_t)enc->cx * enc->cy;
+	uint64_t frame_rate = (uint64_t)(enc->fps_num / enc->fps_den);
+	uint64_t luma_sample_rate = frame_rate && luma_pic_size > UINT64_MAX / frame_rate ? UINT64_MAX
+											  : luma_pic_size * frame_rate;
 	std::vector<codec_level_entry> *levels;
 
 	if (enc->codec == amf_codec_type::AVC) {
@@ -1500,9 +1496,10 @@ static void amf_set_codec_level(amf_base *enc)
 		 */
 		level_it = --(levels->end());
 		blog(LOG_ERROR,
-		     "%s: Luma sample rate %u or luma pic size %u is greater than maximum "
+		     "%s: Luma sample rate %llu or luma pic size %llu is greater than maximum "
 		     "allowed. Setting to level %s.",
-		     __FUNCTION__, luma_sample_rate, luma_pic_size, level_it->level_str);
+		     __FUNCTION__, (unsigned long long)luma_sample_rate, (unsigned long long)luma_pic_size,
+		     level_it->level_str);
 	} else {
 		// Walk the table and find the lowest codec level value suitable for the given luma sample rate.
 		while (level_it != levels->end()) {
@@ -1646,7 +1643,7 @@ static bool amf_avc_init(void *data, obs_data_t *settings)
 	get_avc_property(enc, PROFILE_LEVEL, &final_level);
 	const char *level_str = nullptr;
 	if (!amf_get_level_str(enc, final_level, &level_str)) {
-		warn("AVC level string not found. Level %d may be incorrect.", final_level);
+		warn("AVC level string not found. Level %lld may be incorrect.", (long long)final_level);
 	}
 
 	info("settings:\n"
@@ -1658,8 +1655,8 @@ static bool amf_avc_init(void *data, obs_data_t *settings)
 	     "\tprofile:      %s\n"
 	     "\tlevel:        %s\n"
 	     "\tb-frames:     %d\n"
-	     "\twidth:        %d\n"
-	     "\theight:       %d\n"
+	     "\twidth:        %u\n"
+	     "\theight:       %u\n"
 	     "\tpre-analysis: %s\n"
 	     "\tparams:       %s",
 	     rc_str, bitrate, qp, gop_size, preset, profile, level_str, bf, enc->cx, enc->cy,
@@ -2016,7 +2013,7 @@ static bool amf_hevc_init(void *data, obs_data_t *settings)
 	get_hevc_property(enc, PROFILE_LEVEL, &final_level);
 	char const *level_str = nullptr;
 	if (!amf_get_level_str(enc, final_level, &level_str)) {
-		warn("HEVC level string not found. Level %d may be incorrect.", final_level);
+		warn("HEVC level string not found. Level %lld may be incorrect.", (long long)final_level);
 	}
 
 	info("settings:\n"
@@ -2027,8 +2024,8 @@ static bool amf_hevc_init(void *data, obs_data_t *settings)
 	     "\tpreset:       %s\n"
 	     "\tprofile:      %s\n"
 	     "\tlevel:        %s\n"
-	     "\twidth:        %d\n"
-	     "\theight:       %d\n"
+	     "\twidth:        %u\n"
+	     "\theight:       %u\n"
 	     "\tpre-analysis: %s\n"
 	     "\tparams:       %s",
 	     rc_str, bitrate, qp, gop_size, preset, profile, level_str, enc->cx, enc->cy, pa_enabled ? "true" : "false",
@@ -2464,7 +2461,7 @@ static bool amf_av1_init(void *data, obs_data_t *settings)
 	get_av1_property(enc, LEVEL, &final_level);
 	char const *level_str = nullptr;
 	if (!amf_get_level_str(enc, final_level, &level_str)) {
-		warn("AV1 level string not found. Level %d may be incorrect.", final_level);
+		warn("AV1 level string not found. Level %lld may be incorrect.", (long long)final_level);
 	}
 
 	info("settings:\n"
@@ -2476,8 +2473,8 @@ static bool amf_av1_init(void *data, obs_data_t *settings)
 	     "\tprofile:              %s\n"
 	     "\tlevel:                %s\n"
 	     "\tb-frames:             %d\n"
-	     "\twidth:                %d\n"
-	     "\theight:               %d\n"
+	     "\twidth:                %u\n"
+	     "\theight:               %u\n"
 	     "\tscreen content tools: %s\n"
 	     "\tpalette mode:         %s\n"
 	     "\tpre-analysis:         %s\n"

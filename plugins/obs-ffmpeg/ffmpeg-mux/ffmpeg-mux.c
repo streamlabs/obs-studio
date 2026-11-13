@@ -30,6 +30,7 @@
 #include <util/platform.h>
 #include <util/deque.h>
 #include <util/dstr.h>
+#include <media-io/audio-io.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
@@ -421,7 +422,7 @@ static bool init_params(int *argc, char ***argv, struct main_params *params, str
 		puts("Invalid number of video tracks\n");
 		return false;
 	}
-	if (params->tracks < 0) {
+	if (params->tracks < 0 || params->tracks > MAX_AUDIO_MIXES) {
 		puts("Invalid number of audio tracks\n");
 		return false;
 	}
@@ -464,6 +465,8 @@ static bool init_params(int *argc, char ***argv, struct main_params *params, str
 			return false;
 
 		audio = calloc(params->tracks, sizeof(*audio));
+		if (!audio)
+			return false;
 
 		for (int i = 0; i < params->tracks; i++) {
 			if (!get_audio_params(&audio[i], argc, argv)) {

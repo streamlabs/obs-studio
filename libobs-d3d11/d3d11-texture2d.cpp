@@ -54,14 +54,14 @@ void gs_texture_2d::BackupTexture(const uint8_t *const *data)
 	uint32_t textures = type == GS_TEXTURE_CUBE ? 6 : 1;
 	uint32_t bbp = gs_get_format_bpp(format);
 
-	this->data.resize(levels * textures);
+	this->data.resize((size_t)levels * textures);
 
 	for (uint32_t t = 0; t < textures; t++) {
 		uint32_t w = width;
 		uint32_t h = height;
 
 		for (uint32_t lv = 0; lv < levels; lv++) {
-			uint32_t i = levels * t + lv;
+			size_t i = (size_t)levels * t + lv;
 			if (!data[i]) {
 				break;
 			}
