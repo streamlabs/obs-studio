@@ -9,6 +9,7 @@ target_sources(
     async-delay-filter.c
     chroma-key-filter.c
     color-correction-filter.c
+    color-grade-lut.c
     color-grade-filter.c
     color-key-filter.c
     compressor-filter.c
