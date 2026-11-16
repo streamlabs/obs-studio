@@ -22,6 +22,7 @@ add_executable(
   test-audio-routing.cpp
   test-wasapi-buffer.cpp
   test-color-grade-lut.cpp
+  test-filter-effects.cpp
   test-util.cpp
   test-process-pipe.cpp
   test-deque.cpp
@@ -59,6 +60,10 @@ endif()
 add_dependencies(libobs_unit_tests obs-test-failure)
 target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_MODULE_DIRECTORY="$<TARGET_FILE_DIR:obs-test-failure>")
 target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/")
+target_compile_definitions(
+  libobs_unit_tests
+  PRIVATE OBS_TEST_FILTER_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/obs-filters/data/"
+)
 target_compile_definitions(
   libobs_unit_tests
   PRIVATE OBS_TEST_LUT_DIRECTORY="${CMAKE_SOURCE_DIR}/plugins/obs-filters/data/LUTs/"

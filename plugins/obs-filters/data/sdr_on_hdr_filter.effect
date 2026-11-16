@@ -45,7 +45,7 @@ float4 PSGammaPower(FragData f_in) : TARGET
 {
 	float4 rgba = image.Sample(textureSampler, f_in.uv);
 	rgba.rgb = srgb_linear_to_nonlinear(rgba.rgb);
-	rgba.rgb = pow(rgba.rgb, power);
+	rgba.rgb = pow(rgba.rgb, float3(power, power, power));
 	rgba.rgb *= multiplier;
 	return rgba;
 }
