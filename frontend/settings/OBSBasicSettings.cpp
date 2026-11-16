@@ -2890,6 +2890,9 @@ void OBSBasicSettings::LoadHotkeySettings(obs_hotkey_id ignoreKey)
 		using std::move;
 
 		switch (registerer_type) {
+		case OBS_HOTKEY_REGISTERER_NONE:
+			break;
+
 		case OBS_HOTKEY_REGISTERER_FRONTEND:
 			hotkeysLayout->addRow(label, hw);
 			break;
