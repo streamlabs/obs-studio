@@ -1570,9 +1570,11 @@ string GenerateTimeDateFilename(const char *extension, bool noSpace)
 
 string GenerateSpecifiedFilename(const char *extension, bool noSpace, const char *format)
 {
-	auto canvas = obs_get_main_canvas();
+	OBSCanvasAutoRelease canvas = obs_get_main_canvas();
 	obs_video_info ovi = {};
-	obs_canvas_get_video_info(canvas, &ovi);
+	if (canvas) {
+		obs_canvas_get_video_info(canvas, &ovi);
+	}
 	BPtr<char> filename = os_generate_formatted_filename(extension, !noSpace, format, &ovi);
 	return string(filename);
 }
