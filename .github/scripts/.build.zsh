@@ -144,7 +144,7 @@ build() {
       local package_root=${project_root}/build_macos/${InstallPath}
       local -a required_package_files=(
         'Frameworks/libobs.framework/libobs'
-        'Frameworks/libobs.framework/Resources/cmake/LibobsConfig.cmake'
+        'Frameworks/libobs.framework/Resources/cmake/libobsConfig.cmake'
         'OBS.app/Contents/Frameworks/libobs.framework/libobs'
         'OBS.app/Contents/Frameworks/libobs-opengl.dylib'
         'OBS.app/Contents/Frameworks/libobs-metal.dylib'

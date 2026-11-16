@@ -822,12 +822,6 @@ EXPORT audio_t *obs_get_audio(void);
 /** Gets the main video output handler for this OBS context */
 EXPORT video_t *obs_get_video(void);
 
-/** Gets the main video output handler for this OBS context */
-EXPORT video_t *obs_get_stream_video(void);
-
-/** Gets the main video output handler for this OBS context */
-EXPORT video_t *obs_get_record_video(void);
-
 /** Returns true if video is active, false otherwise */
 EXPORT bool obs_video_active(void);
 
