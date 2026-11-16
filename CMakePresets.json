@@ -198,7 +198,7 @@
           "value": ""
         },
         "ENABLE_BROWSER": true,
-        "ENABLE_FRONTEND": false
+        "ENABLE_FRONTEND": true
       }
     },
     {
