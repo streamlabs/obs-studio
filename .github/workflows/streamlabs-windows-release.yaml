@@ -17,7 +17,7 @@ on:
         required: false
         type: string
         # Pinned so a push to symsrv-scripts cannot change this build without a PR here
-        default: "v1.2.0"
+        default: "v1.3.0"
 
 # Both jobs run off the artifacts windows-build produced, so neither needs a rebuild and either
 # can be re-run on its own. They do not depend on each other.
@@ -85,6 +85,24 @@ jobs:
           Write-Host "Unpacked $count pdb's"
           "PDB_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Download libobs archive 📥
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: streamlabs-libobs-windows64
+          path: ${{ runner.temp }}
+
+      - name: Unpack binaries
+        run: |
+          $archive = Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'libobs-windows64-release-*.7z' | Select-Object -First 1
+          if (-Not $archive) { throw "No libobs archive in the downloaded artifact" }
+
+          $target = Join-Path $env:RUNNER_TEMP 'bins'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          7z x $archive.FullName "-o$target" -y
+          if ($LASTEXITCODE -ne 0) { throw "7z extraction failed with exit code $LASTEXITCODE" }
+
+          "BIN_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Create public CEF symbols
         run: |
           $cefPdbs = @(Get-ChildItem -LiteralPath $env:PDB_PATH -Filter 'libcef.dll.pdb' -Recurse -File)
@@ -110,6 +128,7 @@ jobs:
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           pdbPaths: ${{ env.PDB_PATH }}
+          binPaths: ${{ env.BIN_PATH }}
           symsrvRef: ${{ inputs.symsrvRef }}
           forceUpload: ${{ inputs.forceUpload }}
           symsrvDebug: ${{ inputs.symsrvDebug }}
