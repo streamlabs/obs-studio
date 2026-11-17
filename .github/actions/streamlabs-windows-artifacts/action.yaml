@@ -33,6 +33,11 @@ runs:
         $version = "${{ github.ref }}".Replace("refs/tags/", "")
         "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+    - name: Install signed game capture helpers
+      if: inputs.target == 'x64'
+      shell: pwsh
+      run: ./.github/scripts/Install-SignedCaptureBinaries.ps1 -InstallPath "build_${{ inputs.target }}/install"
+
     - name: Package OBS lib 🗜️
       shell: pwsh
       run: |

@@ -26,11 +26,15 @@ struct CompatUpdateDisabled {
 		char buffer[256];
 		const DWORD len = GetEnvironmentVariableA(kDisableCompatUpdate, buffer, sizeof(buffer));
 		hadPrevious = len > 0 && len < sizeof(buffer);
-		if (hadPrevious)
+		if (hadPrevious) {
 			previous.assign(buffer, len);
+		}
 		SetEnvironmentVariableA(kDisableCompatUpdate, "1");
 	}
-	~CompatUpdateDisabled() { SetEnvironmentVariableA(kDisableCompatUpdate, hadPrevious ? previous.c_str() : nullptr); }
+	~CompatUpdateDisabled()
+	{
+		SetEnvironmentVariableA(kDisableCompatUpdate, hadPrevious ? previous.c_str() : nullptr);
+	}
 	CompatUpdateDisabled(const CompatUpdateDisabled &) = delete;
 	CompatUpdateDisabled &operator=(const CompatUpdateDisabled &) = delete;
 };
@@ -46,10 +50,12 @@ struct UpdaterDisabledLog {
 		base_set_log_handler(
 			[](int level, const char *format, va_list args, void *data) {
 				auto &log = *static_cast<UpdaterDisabledLog *>(data);
-				if (strstr(format, "Compatibility updater disabled"))
+				if (strstr(format, "Compatibility updater disabled")) {
 					log.seen = true;
-				if (log.previous)
+				}
+				if (log.previous) {
 					log.previous(level, format, args, log.previousData);
+				}
 			},
 			this);
 	}
@@ -84,8 +90,9 @@ struct TempConfigDir {
 struct ObsShutdownGuard {
 	~ObsShutdownGuard()
 	{
-		if (obs_initialized())
+		if (obs_initialized()) {
 			obs_shutdown();
+		}
 	}
 };
 
@@ -94,6 +101,17 @@ using Data = std::unique_ptr<obs_data_t, decltype(&obs_data_release)>;
 
 void load_win_capture()
 {
+	struct DependencyDirectory {
+		DLL_DIRECTORY_COOKIE cookie =
+			AddDllDirectory(std::filesystem::path(OBS_TEST_DEPENDENCY_DIRECTORY).c_str());
+		~DependencyDirectory()
+		{
+			if (cookie) {
+				RemoveDllDirectory(cookie);
+			}
+		}
+	} dependency_directory;
+	REQUIRE(dependency_directory.cookie);
 	obs_module_t *module = nullptr;
 	REQUIRE(obs_open_module(&module, OBS_TEST_WIN_CAPTURE_MODULE, OBS_TEST_WIN_CAPTURE_DATA_PATH) ==
 		MODULE_SUCCESS);
@@ -105,9 +123,7 @@ obs_source_t *active_child(obs_source_t *parent)
 	obs_source_t *child = nullptr;
 	obs_source_enum_active_sources(
 		parent,
-		[](obs_source_t *, obs_source_t *found, void *param) {
-			*static_cast<obs_source_t **>(param) = found;
-		},
+		[](obs_source_t *, obs_source_t *found, void *param) { *static_cast<obs_source_t **>(param) = found; },
 		&child);
 	return child;
 }
