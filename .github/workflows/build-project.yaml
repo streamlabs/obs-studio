@@ -219,7 +219,7 @@ jobs:
         uses: ./.github/actions/upload-debug-symbols
         with:
           githubWorkspace: ${{ github.workspace }}
-          repoUserId: stream-labs
+          repoUserId: streamlabs
           repoName: obs-studio
           repoBranch: ${{ github.sha }}
           buildConfig: RelWithDebInfo
