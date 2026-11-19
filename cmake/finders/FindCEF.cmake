@@ -21,8 +21,12 @@ This module defines the :prop_tgt:`IMPORTED` targets:
   Chromium Embedded Library
 
 ``CEF::Sandbox``
-  Windows Chromium sandbox static library. Available when a 64-bit Windows
-  browser build requests sandbox support.
+  Windows Chromium sandbox static library for CEF before M138.
+
+``CEF::Bootstrap``
+  Windows bootstrap host interface for CEF M138 and newer. The
+  ``CEF::BootstrapWin`` and ``CEF::BootstrapConsole`` imported executable
+  targets provide the launchers.
 
 Result Variables
 ^^^^^^^^^^^^^^^^
@@ -49,6 +53,8 @@ The following cache variables may also be set:
   Path to the debug library component of CEF.
 ``CEF_SANDBOX_LIBRARY_RELEASE``
   Path to the optimized Windows CEF sandbox static library.
+``CEF_BOOTSTRAP_RELEASE`` and ``CEF_BOOTSTRAP_CONSOLE_RELEASE``
+  Paths to the Windows CEF bootstrap launchers.
 ``CEF_INCLUDE_DIR``
   Directory containing ``cef_version.h``.
 
@@ -84,6 +90,8 @@ if(NOT DEFINED _CEF_CACHED_DISCOVERY_KEY OR NOT "${_CEF_CACHED_DISCOVERY_KEY}" S
       CEF_LIBRARY_WRAPPER_RELEASE
       CEF_LIBRARY_WRAPPER_DEBUG
       CEF_SANDBOX_LIBRARY_RELEASE
+      CEF_BOOTSTRAP_RELEASE
+      CEF_BOOTSTRAP_CONSOLE_RELEASE
       CEF_LIBRARY
   )
     if(DEFINED CACHE{${_CEF_CACHED_RESULT}})
@@ -113,21 +121,6 @@ find_path(
   DOC "Chromium Embedded Framework include directory."
 )
 
-set(_CEF_WINDOWS_SANDBOX_REQUIRED FALSE)
-if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND (ENABLE_BROWSER OR CEF_REQUIRE_SANDBOX))
-  set(_CEF_WINDOWS_SANDBOX_REQUIRED TRUE)
-endif()
-
-# The CEF binary distribution carries the authoritative system-library list
-# for cef_sandbox. Use it when present instead of maintaining a second copy.
-if(_CEF_WINDOWS_SANDBOX_REQUIRED AND EXISTS "${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
-  set(_CEF_ROOT_EXPLICIT TRUE)
-  set(_CEF_ROOT "${CEF_ROOT_DIR}")
-  include("${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
-  unset(_CEF_ROOT)
-  unset(_CEF_ROOT_EXPLICIT)
-endif()
-
 if(CEF_INCLUDE_DIR)
   file(
     STRINGS "${CEF_INCLUDE_DIR}/cef_version.h"
@@ -143,6 +136,26 @@ else()
     message(AUTHOR_WARNING "Failed to find Chromium Embedded Framework version.")
   endif()
   set(CEF_VERSION 0.0.0)
+endif()
+
+set(_CEF_WINDOWS_SANDBOX_REQUIRED FALSE)
+set(_CEF_WINDOWS_BOOTSTRAP_REQUIRED FALSE)
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND (ENABLE_BROWSER OR CEF_REQUIRE_SANDBOX))
+  if(VERSION_MAJOR GREATER_EQUAL 138)
+    set(_CEF_WINDOWS_BOOTSTRAP_REQUIRED TRUE)
+  else()
+    set(_CEF_WINDOWS_SANDBOX_REQUIRED TRUE)
+  endif()
+endif()
+
+# CEF declares its runtime files; older distributions also declare the
+# authoritative static sandbox link list.
+if((_CEF_WINDOWS_SANDBOX_REQUIRED OR _CEF_WINDOWS_BOOTSTRAP_REQUIRED) AND EXISTS "${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
+  set(_CEF_ROOT_EXPLICIT TRUE)
+  set(_CEF_ROOT "${CEF_ROOT_DIR}")
+  include("${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
+  unset(_CEF_ROOT)
+  unset(_CEF_ROOT_EXPLICIT)
 endif()
 
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
@@ -237,6 +250,26 @@ endif()
 include(SelectLibraryConfigurations)
 select_library_configurations(CEF)
 
+if(_CEF_WINDOWS_BOOTSTRAP_REQUIRED)
+  find_program(
+    CEF_BOOTSTRAP_RELEASE
+    NAMES bootstrap.exe
+    NO_DEFAULT_PATH
+    PATHS "${CEF_ROOT_DIR}/Release"
+    DOC "Windows CEF sandbox bootstrap launcher."
+  )
+  find_program(
+    CEF_BOOTSTRAP_CONSOLE_RELEASE
+    NAMES bootstrapc.exe
+    NO_DEFAULT_PATH
+    PATHS "${CEF_ROOT_DIR}/Release"
+    DOC "Windows CEF sandbox console launcher."
+  )
+  if(NOT EXISTS "${CEF_ROOT_DIR}/Release/chrome_elf.dll")
+    message(FATAL_ERROR "CEF bootstrap requires Release/chrome_elf.dll beside the host launcher.")
+  endif()
+endif()
+
 if(_CEF_WINDOWS_SANDBOX_REQUIRED)
   find_library(
     CEF_SANDBOX_LIBRARY_RELEASE
@@ -302,6 +335,8 @@ endif()
 set(_CEF_REQUIRED_VARS CEF_LIBRARY_RELEASE CEF_LIBRARY_WRAPPER_RELEASE CEF_INCLUDE_DIR)
 if(_CEF_WINDOWS_SANDBOX_REQUIRED)
   list(APPEND _CEF_REQUIRED_VARS CEF_SANDBOX_LIBRARY_RELEASE)
+elseif(_CEF_WINDOWS_BOOTSTRAP_REQUIRED)
+  list(APPEND _CEF_REQUIRED_VARS CEF_BOOTSTRAP_RELEASE CEF_BOOTSTRAP_CONSOLE_RELEASE)
 endif()
 
 find_package_handle_standard_args(
@@ -315,6 +350,8 @@ mark_as_advanced(
   CEF_LIBRARY_WRAPPER_RELEASE
   CEF_LIBRARY_WRAPPER_DEBUG
   CEF_SANDBOX_LIBRARY_RELEASE
+  CEF_BOOTSTRAP_RELEASE
+  CEF_BOOTSTRAP_CONSOLE_RELEASE
   CEF_INCLUDE_DIR
 )
 
@@ -392,6 +429,17 @@ if(_CEF_WINDOWS_SANDBOX_REQUIRED AND NOT TARGET CEF::Sandbox)
         "PSAPI_VERSION=1;CEF_USE_SANDBOX;$<$<CONFIG:Debug>:NDEBUG>;$<$<CONFIG:Debug>:_HAS_ITERATOR_DEBUGGING=0>"
   )
   set_property(TARGET CEF::Sandbox PROPERTY INTERFACE_COMPILE_OPTIONS "$<$<CONFIG:Debug>:/U_DEBUG>")
+endif()
+
+if(_CEF_WINDOWS_BOOTSTRAP_REQUIRED AND NOT TARGET CEF::Bootstrap)
+  add_library(CEF::Bootstrap INTERFACE IMPORTED GLOBAL)
+  set_property(TARGET CEF::Bootstrap PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${CEF_INCLUDE_DIR}" "${CEF_ROOT_DIR}")
+  set_property(TARGET CEF::Bootstrap PROPERTY INTERFACE_COMPILE_DEFINITIONS "CEF_USE_BOOTSTRAP")
+
+  add_executable(CEF::BootstrapWin IMPORTED GLOBAL)
+  set_property(TARGET CEF::BootstrapWin PROPERTY IMPORTED_LOCATION "${CEF_BOOTSTRAP_RELEASE}")
+  add_executable(CEF::BootstrapConsole IMPORTED GLOBAL)
+  set_property(TARGET CEF::BootstrapConsole PROPERTY IMPORTED_LOCATION "${CEF_BOOTSTRAP_CONSOLE_RELEASE}")
 endif()
 
 include(FeatureSummary)
