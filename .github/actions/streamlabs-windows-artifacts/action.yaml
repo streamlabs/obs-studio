@@ -43,6 +43,13 @@ runs:
       run: |
         # obs-studio-node consumes this by name, with install/ as the archive root
         cd "build_${{ inputs.target }}"
+        if ('${{ inputs.target }}' -eq 'x64') {
+          foreach ($file in 'obs-browser-child.dll', 'obs-browser-child.pdb') {
+            if (-not (Test-Path -LiteralPath "install/core/obs-browser/$file" -PathType Leaf)) {
+              throw "Missing Windows browser subprocess file: $file"
+            }
+          }
+        }
         7z a -r "../${{ inputs.packageName }}-${{ inputs.osTag }}-${{ inputs.releaseName }}-${{ steps.version.outputs.version }}.7z" install
         if ($LASTEXITCODE -ne 0) { throw "7z failed with exit code $LASTEXITCODE" }
         cd ..
