@@ -150,7 +150,10 @@ endif()
 
 # CEF declares its runtime files; older distributions also declare the
 # authoritative static sandbox link list.
-if((_CEF_WINDOWS_SANDBOX_REQUIRED OR _CEF_WINDOWS_BOOTSTRAP_REQUIRED) AND EXISTS "${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
+if(
+  (_CEF_WINDOWS_SANDBOX_REQUIRED OR _CEF_WINDOWS_BOOTSTRAP_REQUIRED)
+  AND EXISTS "${CEF_ROOT_DIR}/cmake/cef_variables.cmake"
+)
   set(_CEF_ROOT_EXPLICIT TRUE)
   set(_CEF_ROOT "${CEF_ROOT_DIR}")
   include("${CEF_ROOT_DIR}/cmake/cef_variables.cmake")
