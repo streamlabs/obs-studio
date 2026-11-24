@@ -89,6 +89,10 @@ target_link_libraries(obs-dll-blocklist PRIVATE Detours::Detours OBS::w32-pthrea
 set_target_properties(obs-dll-blocklist PROPERTIES FOLDER core)
 target_sources(libobs PRIVATE $<TARGET_OBJECTS:obs-dll-blocklist> util/windows/dll-blocklist.h)
 target_link_libraries(libobs PRIVATE Detours::Detours)
+get_target_property(_detours_type Detours::Detours TYPE)
+if(NOT ENABLE_UI AND _detours_type STREQUAL "SHARED_LIBRARY")
+  install(FILES $<TARGET_FILE:Detours::Detours> DESTINATION ${OBS_EXECUTABLE_DESTINATION})
+endif()
 # /IGNORE:4099: obs-deps ships detours.lib without its PDB (same as graphics-hook).
 target_link_options(libobs PRIVATE /EXPORT:install_dll_blocklist_hook /EXPORT:log_blocked_dlls /IGNORE:4099)
 
