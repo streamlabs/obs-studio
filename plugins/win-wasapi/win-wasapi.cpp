@@ -1063,7 +1063,6 @@ bool WASAPISource::ProcessCaptureData()
 			return false;
 		}
 
-		// AUDCLNT_S_BUFFER_EMPTY: outputs are not filled in.
 		if (res != S_OK)
 			break;
 
