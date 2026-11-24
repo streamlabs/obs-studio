@@ -368,6 +368,7 @@ if(OS_WINDOWS)
     util/windows/ComPtr.hpp
     util/windows/CoTaskMemPtr.hpp
     util/windows/device-enum.h
+    util/windows/dll-blocklist.h
     util/windows/HRError.hpp
     util/windows/win-registry.h
     util/windows/win-version.h
