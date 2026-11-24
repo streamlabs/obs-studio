@@ -84,10 +84,7 @@ target_link_options(libobs PRIVATE /IGNORE:4098 /SAFESEH:NO)
 # Copy dll-blocklist into libobs as an object library so its functions can be exported at link time for OSN.
 find_package(Detours REQUIRED)
 add_library(obs-dll-blocklist OBJECT "${CMAKE_SOURCE_DIR}/frontend/utility/win-dll-blocklist.c")
-target_include_directories(
-  obs-dll-blocklist
-  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/config"
-)
+target_include_directories(obs-dll-blocklist PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/config")
 target_link_libraries(obs-dll-blocklist PRIVATE Detours::Detours OBS::w32-pthreads)
 set_target_properties(obs-dll-blocklist PROPERTIES FOLDER core)
 target_sources(libobs PRIVATE $<TARGET_OBJECTS:obs-dll-blocklist> util/windows/dll-blocklist.h)
