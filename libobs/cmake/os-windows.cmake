@@ -90,6 +90,21 @@ target_link_libraries(
 
 target_link_options(libobs PRIVATE /IGNORE:4098 /SAFESEH:NO)
 
+# Copy dll-blocklist into libobs as an object library so its functions can be exported at link time for OSN.
+find_package(Detours REQUIRED)
+add_library(obs-dll-blocklist OBJECT "${CMAKE_SOURCE_DIR}/frontend/utility/win-dll-blocklist.c")
+target_include_directories(obs-dll-blocklist PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/config")
+target_link_libraries(obs-dll-blocklist PRIVATE Detours::Detours OBS::w32-pthreads SIMDe::SIMDe)
+set_target_properties(obs-dll-blocklist PROPERTIES FOLDER core)
+target_sources(libobs PRIVATE $<TARGET_OBJECTS:obs-dll-blocklist> util/windows/dll-blocklist.h)
+target_link_libraries(libobs PRIVATE Detours::Detours)
+get_target_property(_detours_type Detours::Detours TYPE)
+if(NOT ENABLE_UI AND _detours_type STREQUAL "SHARED_LIBRARY")
+  install(FILES $<TARGET_FILE:Detours::Detours> DESTINATION ${OBS_EXECUTABLE_DESTINATION})
+endif()
+# /IGNORE:4099: obs-deps ships detours.lib without its PDB (same as graphics-hook).
+target_link_options(libobs PRIVATE /EXPORT:install_dll_blocklist_hook /EXPORT:log_blocked_dlls /IGNORE:4099)
+
 set_target_properties(libobs PROPERTIES PREFIX "" OUTPUT_NAME "obs")
 
 find_package(LibDataChannel 0.20 REQUIRED)
