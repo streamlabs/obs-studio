@@ -214,6 +214,8 @@ Buffered File Output Serializer Functions
 .. function:: bool buffered_file_serializer_init(struct serializer *s, const char *path, size_t max_bufsize, size_t chunk_size)
 
    Initialize buffered writer with specified buffer and chunk sizes. Setting either to `0` will use the default value.
+   The writer reduces the chunk size to fit the buffer. A buffer too small for a single queued byte and its header
+   fails initialization before the file is opened.
 
    :return:     *true* if file created successfully, *false* otherwise
 
@@ -222,3 +224,11 @@ Buffered File Output Serializer Functions
 .. function:: void buffered_file_serializer_free(struct serializer *s)
 
    Frees the file output serializer and saves the file. Will block until I/O thread completes outstanding writes.
+
+---------------------
+
+.. function:: bool buffered_file_serializer_close(struct serializer *s)
+
+   Waits for pending writes, closes the file and frees the serializer.
+
+   :return: *true* on success or if already closed, *false* if the writer reported an error.

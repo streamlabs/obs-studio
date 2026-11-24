@@ -44,6 +44,8 @@ struct chapter {
 struct mp4_output {
 	obs_output_t *output;
 	struct dstr path;
+	struct dstr last_file;
+	pthread_mutex_t last_file_mutex;
 
 	/* File serializer buffer configuration */
 	size_t buffer_size;
@@ -126,6 +128,8 @@ static void mp4_output_destroy(void *data)
 	struct mp4_output *out = data;
 
 	pthread_mutex_destroy(&out->mutex);
+	pthread_mutex_destroy(&out->last_file_mutex);
+	dstr_free(&out->last_file);
 	mp4_clear_chapters(out);
 	deque_free(&out->chapters);
 	dstr_free(&out->path);
@@ -204,17 +208,27 @@ static void split_file_proc(void *data, calldata_t *cd)
 	os_atomic_set_bool(&out->manual_split, true);
 }
 
+static void get_last_file(void *data, calldata_t *cd)
+{
+	struct mp4_output *out = data;
+	pthread_mutex_lock(&out->last_file_mutex);
+	calldata_set_string(cd, "path", out->last_file.array ? out->last_file.array : "");
+	pthread_mutex_unlock(&out->last_file_mutex);
+}
+
 static void *mp4_output_create_internal(obs_data_t *settings, obs_output_t *output, enum mp4_flavor flavor)
 {
 	struct mp4_output *out = bzalloc(sizeof(struct mp4_output));
 	out->output = output;
 	out->muxer_flavor = flavor;
 	pthread_mutex_init(&out->mutex, NULL);
+	pthread_mutex_init(&out->last_file_mutex, NULL);
 
 	signal_handler_t *sh = obs_output_get_signal_handler(output);
 	signal_handler_add(sh, "void file_changed(string next_file)");
 
 	proc_handler_t *ph = obs_output_get_proc_handler(output);
+	proc_handler_add(ph, "void get_last_file(out string path)", get_last_file, out);
 	proc_handler_add(ph, "void split_file(out bool split_file_enabled)", split_file_proc, out);
 	proc_handler_add(ph, "void add_chapter(string chapter_name)", mp4_add_chapter_proc, out);
 
@@ -293,6 +307,8 @@ static bool mp4_output_start(void *data)
 	out->allow_overwrite = obs_data_get_bool(settings, "allow_overwrite");
 	out->cur_size = 0;
 	out->start_time = 0;
+	out->received_first_keyframe = false;
+	os_atomic_set_bool(&out->manual_split, false);
 
 	/* Get path */
 	const char *path = obs_data_get_string(settings, "path");
@@ -352,7 +368,7 @@ static inline bool should_split(struct mp4_output *out, struct encoder_packet *p
 	if (out->max_time > 0) {
 		const int64_t current_runtime = packet->dts_usec - out->start_time;
 		/* Allow a small error in timestamps (up to 1 ms). */
-		return llabs(out->max_time - current_runtime) < 1000LL;
+		return current_runtime > out->max_time - 1000LL;
 	}
 
 	return false;
@@ -417,24 +433,33 @@ static void generate_filename(struct mp4_output *out, struct dstr *dst, bool ove
 	obs_data_release(settings);
 }
 
+static bool finalise_file(struct mp4_output *out)
+{
+	bool finalised = mp4_mux_finalise(out->muxer);
+	if (!buffered_file_serializer_close(&out->serializer) || !finalised)
+		return false;
+
+	pthread_mutex_lock(&out->last_file_mutex);
+	dstr_copy_dstr(&out->last_file, &out->path);
+	pthread_mutex_unlock(&out->last_file_mutex);
+	return true;
+}
+
 static bool change_file(struct mp4_output *out, struct encoder_packet *pkt)
 {
 	uint64_t start_time = os_gettime_ns();
 
-	/* finalise file */
-	mp4_mux_finalise(out->muxer);
-
-	info("Waiting for file writer to finish...");
-
-	/* flush/close file and destroy old muxer */
-	buffered_file_serializer_free(&out->serializer);
+	bool saved = finalise_file(out);
 	mp4_mux_destroy(out->muxer);
+	out->muxer = NULL;
 	mp4_clear_chapters(out);
+	if (!saved)
+		return false;
 
 	info("File split complete. Finalization took %" PRIu64 " ms.", (os_gettime_ns() - start_time) / 1000000);
 
 	/* open new file */
-	generate_filename(out, &out->path, out->allow_overwrite);
+	generate_filename(out, &out->path, false);
 	info("Changing output file to '%s'", out->path.array);
 
 	if (!buffered_file_serializer_init(&out->serializer, out->path.array, out->buffer_size, out->chunk_size)) {
@@ -469,6 +494,25 @@ static void mp4_mux_destroy_task(void *ptr)
 	mp4_mux_destroy(muxer);
 }
 
+static inline bool submit_packet(struct mp4_output *out, struct encoder_packet *pkt)
+{
+	out->total_bytes += pkt->size;
+	out->cur_size += pkt->size;
+
+	return mp4_mux_submit_packet(out->muxer, pkt);
+}
+
+static void drain_split_buffer(struct mp4_output *out)
+{
+	for (size_t i = 0; i < out->split_buffer.num; i++) {
+		struct encoder_packet *pkt = &out->split_buffer.array[i];
+		if (out->muxer)
+			submit_packet(out, pkt);
+		obs_encoder_packet_release(pkt);
+	}
+	da_free(out->split_buffer);
+}
+
 static void mp4_output_actual_stop(struct mp4_output *out, int code)
 {
 	os_atomic_set_bool(&out->active, false);
@@ -476,7 +520,13 @@ static void mp4_output_actual_stop(struct mp4_output *out, int code)
 
 	uint64_t start_time = os_gettime_ns();
 
-	mp4_mux_finalise(out->muxer);
+	drain_split_buffer(out);
+	if (out->muxer) {
+		if (!finalise_file(out) && !code)
+			code = OBS_OUTPUT_ERROR;
+		obs_queue_task(OBS_TASK_DESTROY, mp4_mux_destroy_task, out->muxer, false);
+		out->muxer = NULL;
+	}
 
 	if (out->enable_bpm) {
 		obs_output_remove_packet_callback(out->output, bpm_inject, NULL);
@@ -487,15 +537,8 @@ static void mp4_output_actual_stop(struct mp4_output *out, int code)
 		obs_output_signal_stop(out->output, code);
 	} else {
 		obs_output_end_data_capture(out->output);
+		obs_output_signal_write(out->output, "wrote");
 	}
-
-	info("Waiting for file writer to finish...");
-
-	/* Flush/close output file and destroy muxer */
-	buffered_file_serializer_free(&out->serializer);
-	obs_queue_task(OBS_TASK_DESTROY, mp4_mux_destroy_task, out->muxer,
-		       false);
-	out->muxer = NULL;
 
 	/* Clear chapter data */
 	mp4_clear_chapters(out);
@@ -508,14 +551,6 @@ static void push_back_packet(struct mp4_output *out, struct encoder_packet *pack
 	struct encoder_packet pkt;
 	obs_encoder_packet_ref(&pkt, packet);
 	da_push_back(out->split_buffer, &pkt);
-}
-
-static inline bool submit_packet(struct mp4_output *out, struct encoder_packet *pkt)
-{
-	out->total_bytes += pkt->size;
-	out->cur_size += pkt->size;
-
-	return mp4_mux_submit_packet(out->muxer, pkt);
 }
 
 static void mp4_output_packet(void *data, struct encoder_packet *packet)
@@ -571,13 +606,7 @@ static void mp4_output_packet(void *data, struct encoder_packet *packet)
 	}
 
 	if (out->split_file_ready) {
-		for (size_t i = 0; i < out->split_buffer.num; i++) {
-			struct encoder_packet *pkt = &out->split_buffer.array[i];
-			submit_packet(out, pkt);
-			obs_encoder_packet_release(pkt);
-		}
-
-		da_free(out->split_buffer);
+		drain_split_buffer(out);
 		out->split_file_ready = false;
 		os_atomic_set_bool(&out->manual_split, false);
 	}
