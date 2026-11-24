@@ -1084,6 +1084,11 @@ bool WASAPISource::ProcessCaptureData()
 			buffer = silence.data();
 		}
 
+		if (!buffer) {
+			capture->ReleaseBuffer(frames);
+			break;
+		}
+
 		obs_source_audio data = {};
 		data.data[0] = buffer;
 		data.frames = frames;
