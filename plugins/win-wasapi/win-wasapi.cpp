@@ -1063,6 +1063,10 @@ bool WASAPISource::ProcessCaptureData()
 			return false;
 		}
 
+		// AUDCLNT_S_BUFFER_EMPTY: outputs are not filled in.
+		if (res != S_OK)
+			break;
+
 		if (!sawBadTimestamp && flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) {
 			blog(LOG_WARNING, "[WASAPISource::ProcessCaptureData]"
 					  " Timestamp error!");
