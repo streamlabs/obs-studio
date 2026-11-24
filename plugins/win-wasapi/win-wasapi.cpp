@@ -1063,6 +1063,9 @@ bool WASAPISource::ProcessCaptureData()
 			return false;
 		}
 
+		if (res != S_OK)
+			break;
+
 		if (!sawBadTimestamp && flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) {
 			blog(LOG_WARNING, "[WASAPISource::ProcessCaptureData]"
 					  " Timestamp error!");
@@ -1078,6 +1081,11 @@ bool WASAPISource::ProcessCaptureData()
 				silence.resize(requiredBufSize);
 
 			buffer = silence.data();
+		}
+
+		if (!buffer) {
+			capture->ReleaseBuffer(frames);
+			break;
 		}
 
 		obs_source_audio data = {};
