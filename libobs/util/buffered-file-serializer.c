@@ -160,7 +160,10 @@ static void *io_thread(void *opaque)
 
 			// Seek if we need to
 			if (want_seek) {
-				os_fseeki64(out->io.output_file, next_seek_position, SEEK_SET);
+				if (os_fseeki64(out->io.output_file, next_seek_position, SEEK_SET) != 0) {
+					os_atomic_set_bool(&out->io.output_error, true);
+					goto error;
+				}
 
 				// Update the next virtual position, making sure to take
 				// into account the size of the chunk we're about to write.
@@ -199,7 +202,11 @@ error:
 	if (chunk)
 		bfree(chunk);
 
-	fclose(out->io.output_file);
+	if (fclose(out->io.output_file) != 0)
+		os_atomic_set_bool(&out->io.output_error, true);
+	pthread_mutex_lock(&out->io.data_mutex);
+	os_event_signal(out->io.buffer_space_available_event);
+	pthread_mutex_unlock(&out->io.data_mutex);
 	return NULL;
 }
 
@@ -258,10 +265,11 @@ static size_t file_output_write(void *opaque, const void *buf, size_t buf_size)
 	size_t remaining = buf_size;
 
 	while (remaining) {
-		if (os_atomic_load_bool(&out->io.output_error))
-			return 0;
-
 		pthread_mutex_lock(&out->io.data_mutex);
+		if (os_atomic_load_bool(&out->io.output_error)) {
+			pthread_mutex_unlock(&out->io.data_mutex);
+			return 0;
+		}
 
 		size_t next_chunk_size = min(remaining, out->io.chunk_size);
 
@@ -326,9 +334,11 @@ bool buffered_file_serializer_init_defaults(struct serializer *s, const char *pa
 
 bool buffered_file_serializer_init(struct serializer *s, const char *path, size_t max_bufsize, size_t chunk_size)
 {
-	struct file_output_data *out;
+	const size_t buffer_size = max_bufsize ? max_bufsize : DEFAULT_BUF_SIZE;
+	if (buffer_size <= sizeof(struct io_header))
+		return false;
 
-	out = bzalloc(sizeof(*out));
+	struct file_output_data *out = bzalloc(sizeof(*out));
 
 	dstr_init_copy(&out->filename, path);
 
@@ -339,12 +349,12 @@ bool buffered_file_serializer_init(struct serializer *s, const char *path, size_
 		return false;
 	}
 
-	out->io.buffer_size = max_bufsize ? max_bufsize : DEFAULT_BUF_SIZE;
-	out->io.chunk_size = chunk_size ? chunk_size : DEFAULT_CHUNK_SIZE;
+	out->io.buffer_size = buffer_size;
+	out->io.chunk_size = min(chunk_size ? chunk_size : DEFAULT_CHUNK_SIZE, buffer_size - sizeof(struct io_header));
 
 	// Start at 1MB, this can grow up to max_bufsize depending
 	// on how fast data is going in and out.
-	deque_reserve(&out->io.data, 1048576);
+	deque_reserve(&out->io.data, min(buffer_size, 1048576));
 
 	pthread_mutex_init(&out->io.data_mutex, NULL);
 
@@ -363,12 +373,12 @@ bool buffered_file_serializer_init(struct serializer *s, const char *path, size_
 	return true;
 }
 
-void buffered_file_serializer_free(struct serializer *s)
+bool buffered_file_serializer_close(struct serializer *s)
 {
 	struct file_output_data *out = s->data;
 
 	if (!out)
-		return;
+		return true;
 
 	if (out->io.active) {
 		os_atomic_set_bool(&out->io.shutdown_requested, true);
@@ -389,6 +399,14 @@ void buffered_file_serializer_free(struct serializer *s)
 		deque_free(&out->io.data);
 	}
 
+	bool success = !os_atomic_load_bool(&out->io.output_error);
 	dstr_free(&out->filename);
 	bfree(out);
+	*s = (struct serializer){0};
+	return success;
+}
+
+void buffered_file_serializer_free(struct serializer *s)
+{
+	buffered_file_serializer_close(s);
 }

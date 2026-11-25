@@ -26,6 +26,7 @@ EXPORT bool buffered_file_serializer_init_defaults(struct serializer *s, const c
 EXPORT bool buffered_file_serializer_init(struct serializer *s, const char *path, size_t max_bufsize,
 					  size_t chunk_size);
 EXPORT void buffered_file_serializer_free(struct serializer *s);
+EXPORT bool buffered_file_serializer_close(struct serializer *s);
 
 #ifdef __cplusplus
 }

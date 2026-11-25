@@ -22,8 +22,9 @@ public:
 				  std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".gif";
 		path = std::filesystem::temp_directory_path() / name;
 		std::ofstream file(path, std::ios::binary);
-		if (!contents.empty())
+		if (!contents.empty()) {
 			file.write(contents.data(), contents.size());
+		}
 	}
 
 	~TemporaryGif()
@@ -43,10 +44,12 @@ TEST_CASE("GIF image loading rejects empty and truncated files without leaking",
 		REQUIRE(std::filesystem::file_size(gif.path) == contents.size());
 
 		const long allocations = bnum_allocs();
-		gs_image_file_t image{};
-		gs_image_file_init(&image, gif.path.u8string().c_str());
+		gs_image_file_ex_t image{};
+		const auto utf8_path = gif.path.u8string();
+		gs_image_file_ex_init(&image, reinterpret_cast<const char *>(utf8_path.c_str()),
+				      GS_IMAGE_ALPHA_STRAIGHT);
 		CHECK_FALSE(image.loaded);
-		gs_image_file_free(&image);
+		gs_image_file_ex_free(&image);
 		CHECK(bnum_allocs() == allocations);
 	}
 }
@@ -63,9 +66,10 @@ TEST_CASE("GIF image loading accepts a valid animated file", "[graphics][image]"
 	TemporaryGif gif(std::string_view(valid_gif, sizeof(valid_gif) - 1));
 	REQUIRE(std::filesystem::file_size(gif.path) == sizeof(valid_gif) - 1);
 
-	gs_image_file_t image{};
-	gs_image_file_init(&image, gif.path.u8string().c_str());
+	gs_image_file_ex_t image{};
+	const auto utf8_path = gif.path.u8string();
+	gs_image_file_ex_init(&image, reinterpret_cast<const char *>(utf8_path.c_str()), GS_IMAGE_ALPHA_STRAIGHT);
 	CHECK(image.loaded);
 	CHECK(image.is_animated_gif);
-	gs_image_file_free(&image);
+	gs_image_file_ex_free(&image);
 }

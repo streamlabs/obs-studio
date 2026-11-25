@@ -2,10 +2,13 @@
 
 #include <util/array-serializer.h>
 #include <util/bitstream.h>
+#include <util/buffered-file-serializer.h>
 #include <util/darray.h>
 #include <util/platform.h>
 
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace {
@@ -77,8 +80,9 @@ TEST_CASE("Array serializer writes bytes and tracks its position", "[util][seria
 	ArraySerializer serializer;
 	CHECK(serializer_get_pos(&serializer.stream) == 0);
 	const std::array<uint8_t, 3> expected{0x01, 0xff, 0xe1};
-	for (uint8_t byte : expected)
+	for (uint8_t byte : expected) {
 		s_w8(&serializer.stream, byte);
+	}
 
 	REQUIRE(serializer.output.bytes.num == expected.size());
 	REQUIRE(serializer.output.bytes.array);
@@ -87,6 +91,37 @@ TEST_CASE("Array serializer writes bytes and tracks its position", "[util][seria
 		CHECK(serializer.output.bytes.array[i] == expected[i]);
 	}
 	CHECK(serializer_get_pos(&serializer.stream) == 3);
+}
+
+TEST_CASE("Buffered file serializer fits large writes into its queue", "[util][serializer]")
+{
+	struct TemporaryOutput {
+		std::filesystem::path path = std::filesystem::temp_directory_path() /
+					     ("obs-serializer-" + std::to_string(os_gettime_ns()) + ".bin");
+		serializer stream{};
+		~TemporaryOutput()
+		{
+			buffered_file_serializer_free(&stream);
+			std::error_code ec;
+			std::filesystem::remove(path, ec);
+		}
+	} output;
+	const auto path = output.path.u8string();
+	constexpr size_t queueSize = 1048576;
+	REQUIRE(buffered_file_serializer_init(&output.stream, path.c_str(), queueSize, 0));
+	std::string expected(queueSize + 257, '\0');
+	for (size_t i = 0; i < expected.size(); ++i) {
+		expected[i] = static_cast<char>(i % 251);
+	}
+	REQUIRE(s_write(&output.stream, expected.data(), expected.size()) == expected.size());
+	REQUIRE(buffered_file_serializer_close(&output.stream));
+
+	REQUIRE_FALSE(buffered_file_serializer_init(&output.stream, path.c_str(), 1, 0));
+	REQUIRE(std::filesystem::file_size(output.path) == expected.size());
+	std::ifstream file(output.path, std::ios::binary);
+	std::string actual(expected.size(), '\0');
+	REQUIRE(file.read(actual.data(), static_cast<std::streamsize>(actual.size())));
+	CHECK((actual == expected));
 }
 
 TEST_CASE("Path extension parsing handles Windows and Unix separators", "[util][path]")

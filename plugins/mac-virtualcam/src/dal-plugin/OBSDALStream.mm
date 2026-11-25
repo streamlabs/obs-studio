@@ -123,8 +123,8 @@
 {
     if (NSEqualSizes(_testCardSize, NSZeroSize)) {
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        NSInteger width = [[defaults objectForKey:kTestCardWidthKey] integerValue];
-        NSInteger height = [[defaults objectForKey:kTestCardHeightKey] integerValue];
+        double width = [[defaults objectForKey:kTestCardWidthKey] doubleValue];
+        double height = [[defaults objectForKey:kTestCardHeightKey] doubleValue];
         if (width == 0 || height == 0) {
             _testCardSize = NSMakeSize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         } else {

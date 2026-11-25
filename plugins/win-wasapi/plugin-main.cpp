@@ -24,11 +24,13 @@ static void default_device_changed_callback(EDataFlow flow, ERole, LPCWSTR)
 	const char *id;
 	obs_get_audio_monitoring_device(nullptr, &id);
 
-	if (!id || strcmp(id, "default") != 0)
+	if (!id || strcmp(id, "default") != 0) {
 		return;
+	}
 
-	if (flow != eRender)
+	if (flow != eRender) {
 		return;
+	}
 
 	auto task = [](void *) {
 		obs_reset_audio_monitoring();
@@ -51,8 +53,9 @@ bool obs_module_load(void)
 
 	RegisterWASAPIInput();
 	RegisterWASAPIDeviceOutput();
-	if (process_filter_supported)
+	if (process_filter_supported) {
 		RegisterWASAPIProcessOutput();
+	}
 	patchMediaCrash();
 
 	notify = new WASAPINotify();

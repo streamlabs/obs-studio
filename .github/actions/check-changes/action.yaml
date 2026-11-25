@@ -33,7 +33,7 @@ runs:
       shell: bash
       id: checks
       env:
-        GIT_BASE_REF: ${{ inputs.baseRef }}
+        GIT_BASE_REF: ${{ inputs.baseRef || (github.event_name == 'workflow_dispatch' && github.event.inputs.baseRef) || '' }}
         GIT_REF: ${{ inputs.ref }}
         GITHUB_EVENT_FORCED: ${{ github.event.forced }}
         GITHUB_REF_BEFORE: ${{ github.event.before }}

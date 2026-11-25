@@ -22,11 +22,11 @@ function(set_target_properties_obs target)
 
   if(target_type STREQUAL EXECUTABLE)
     if(target STREQUAL obs-browser-helper)
-      set(OBS_EXECUTABLE_DESTINATION "${OBS_PLUGIN_DESTINATION}")
+      set(OBS_EXECUTABLE_DESTINATION "${OBS_PLUGIN_DESTINATION}/obs-browser")
     elseif(target STREQUAL win-streamlabs-vst)
-      set(OBS_EXECUTABLE_DESTINATION "${OBS_PLUGIN_DESTINATION}")
+      set(OBS_EXECUTABLE_DESTINATION "${OBS_PLUGIN_DESTINATION}/obs-vst")
     elseif(target STREQUAL inject-helper OR target STREQUAL get-graphics-offsets)
-      set(OBS_EXECUTABLE_DESTINATION "${OBS_DATA_DESTINATION}/obs-plugins/win-capture")
+      set(OBS_EXECUTABLE_DESTINATION "${OBS_PLUGIN_DESTINATION}/win-capture/data")
 
       _target_install_obs(${target} DESTINATION ${OBS_EXECUTABLE_DESTINATION} x86)
 
@@ -68,7 +68,7 @@ function(set_target_properties_obs target)
     elseif(target STREQUAL "obspython" OR target STREQUAL "obslua")
       set(target_destination "${OBS_SCRIPT_PLUGIN_DESTINATION}")
     elseif(target STREQUAL graphics-hook)
-      set(target_destination "${OBS_DATA_DESTINATION}/obs-plugins/win-capture")
+      set(target_destination "${OBS_PLUGIN_DESTINATION}/win-capture/data")
       target_add_resource(graphics-hook "${CMAKE_CURRENT_SOURCE_DIR}/obs-vulkan64.json" "${target_destination}")
       target_add_resource(graphics-hook "${CMAKE_CURRENT_SOURCE_DIR}/obs-vulkan32.json" "${target_destination}")
 
@@ -78,7 +78,7 @@ function(set_target_properties_obs target)
         _target_install_obs(${target} DESTINATION ${target_destination} x64)
       endif()
     elseif(target STREQUAL obs-virtualcam-module)
-      set(target_destination "${OBS_DATA_DESTINATION}/obs-plugins/win-dshow")
+      set(target_destination "${OBS_PLUGIN_DESTINATION}/win-dshow/data")
 
       _target_install_obs(${target} DESTINATION ${target_destination} x86)
 
@@ -86,7 +86,7 @@ function(set_target_properties_obs target)
         _target_install_obs(${target} DESTINATION ${target_destination} x64)
       endif()
     else()
-      set(target_destination "${OBS_PLUGIN_DESTINATION}")
+      set(target_destination "${OBS_PLUGIN_DESTINATION}/${target}")
     endif()
 
     _target_install_obs(${target} DESTINATION ${target_destination})
@@ -121,8 +121,12 @@ function(set_target_properties_obs target)
             message(FATAL_ERROR "The CEF distribution does not declare its required runtime binary and resource files.")
           endif()
 
+          set(cef_required_binary_files ${CEF_BINARY_FILES})
+          if(TARGET CEF::Bootstrap)
+            list(APPEND cef_required_binary_files bootstrap.exe bootstrapc.exe)
+          endif()
           set(cef_runtime_files)
-          foreach(cef_binary_file IN LISTS CEF_BINARY_FILES)
+          foreach(cef_binary_file IN LISTS cef_required_binary_files)
             set(cef_binary_path "${cef_location}/${cef_binary_file}")
             if(NOT EXISTS "${cef_binary_path}")
               message(FATAL_ERROR "The CEF runtime is missing required binary: ${cef_binary_path}")
@@ -184,69 +188,101 @@ function(set_target_properties_obs target)
       endif()
 
       if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-        if(NOT TARGET CEF::Sandbox)
-          message(
-            FATAL_ERROR
-            "64-bit Windows obs-browser requires the CEF::Sandbox target. "
-            "Use the matching CEF distribution containing Release/cef_sandbox.lib."
-          )
-        endif()
-
-        get_target_property(cef_sandbox_release CEF::Sandbox IMPORTED_LOCATION_RELEASE)
-        if(NOT cef_sandbox_release)
-          message(FATAL_ERROR "CEF::Sandbox must provide its Release import location.")
-        endif()
-
-        set(obs_browser_sandbox_header "${CMAKE_SOURCE_DIR}/plugins/obs-browser/obs-browser-sandbox.h")
-        if(NOT EXISTS "${obs_browser_sandbox_header}")
-          message(
-            FATAL_ERROR
-            "obs-browser-sandbox.h is required for the Windows browser sandbox development package: "
-            "${obs_browser_sandbox_header}"
-          )
-        endif()
-
-        install(
-          FILES "${cef_sandbox_release}"
-          DESTINATION "${OBS_LIBRARY_DESTINATION}/cef/Release"
-          COMPONENT Development
-        )
-        install(DIRECTORY "${CEF_INCLUDE_DIR}/" DESTINATION "${OBS_INCLUDE_DESTINATION}/include" COMPONENT Development)
-        install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
-
-        # The build-tree libobs package is generated before obs-browser discovers
-        # CEF. Record the validated source paths beside its target export now.
-        get_target_property(_obs_libobs_binary_dir libobs BINARY_DIR)
-        get_target_property(_obs_cef_sandbox_includes CEF::Sandbox INTERFACE_INCLUDE_DIRECTORIES)
-        get_target_property(_OBS_BUILD_CEF_SANDBOX_LINK_LIBRARIES CEF::Sandbox INTERFACE_LINK_LIBRARIES)
-        get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_DEFINITIONS CEF::Sandbox INTERFACE_COMPILE_DEFINITIONS)
-        get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_OPTIONS CEF::Sandbox INTERFACE_COMPILE_OPTIONS)
-        cmake_path(GET obs_browser_sandbox_header PARENT_PATH _obs_browser_sandbox_include_dir)
-        set(_OBS_BUILD_CEF_SANDBOX_RELEASE "${cef_sandbox_release}")
-        set(_OBS_BUILD_CEF_SANDBOX_HEADER "${CEF_INCLUDE_DIR}/cef_sandbox_win.h")
-        set(_OBS_BUILD_BROWSER_SANDBOX_ABI_HEADER "${obs_browser_sandbox_header}")
-        set(_OBS_BUILD_CEF_SANDBOX_INCLUDE_DIRS "${_obs_cef_sandbox_includes};${_obs_browser_sandbox_include_dir}")
-        configure_file(
-          "${CMAKE_SOURCE_DIR}/cmake/windows/libobsCefSandboxBuild.cmake.in"
-          "${_obs_libobs_binary_dir}/libobsCefSandboxBuild.cmake"
-          @ONLY
-        )
-
-        if(NOT TARGET cef-sandbox-link-smoke)
-          add_executable(cef-sandbox-link-smoke "${CMAKE_SOURCE_DIR}/cmake/windows/cef-sandbox-link-smoke.cpp")
-          target_link_libraries(cef-sandbox-link-smoke PRIVATE CEF::Sandbox)
-          set_target_properties(
-            cef-sandbox-link-smoke
-            PROPERTIES FOLDER "CMake/Smoke Tests" MSVC_RUNTIME_LIBRARY "MultiThreaded"
-          )
-          if(BUILD_TESTING)
-            add_test(NAME cef-sandbox-link-smoke COMMAND cef-sandbox-link-smoke)
+        if(TARGET CEF::Bootstrap)
+          get_target_property(cef_bootstrap_win CEF::BootstrapWin IMPORTED_LOCATION)
+          get_target_property(cef_bootstrap_console CEF::BootstrapConsole IMPORTED_LOCATION)
+          set(obs_browser_sandbox_header "${CMAKE_SOURCE_DIR}/plugins/obs-browser/obs-browser-sandbox.h")
+          if(NOT EXISTS "${obs_browser_sandbox_header}")
+            message(FATAL_ERROR "obs-browser-sandbox.h is required for the Windows browser bootstrap package.")
           endif()
+
+          install(
+            FILES "${cef_bootstrap_win}" "${cef_bootstrap_console}" "${CEF_ROOT_DIR}/Release/chrome_elf.dll"
+            DESTINATION "${OBS_LIBRARY_DESTINATION}/cef/Release"
+            COMPONENT Development
+          )
+          install(
+            DIRECTORY "${CEF_INCLUDE_DIR}/"
+            DESTINATION "${OBS_INCLUDE_DESTINATION}/include"
+            COMPONENT Development
+          )
+          install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
+
+          get_target_property(_obs_libobs_binary_dir libobs BINARY_DIR)
+          get_target_property(_OBS_BUILD_CEF_BOOTSTRAP_INCLUDE_DIRS CEF::Bootstrap INTERFACE_INCLUDE_DIRECTORIES)
+          cmake_path(GET obs_browser_sandbox_header PARENT_PATH _obs_browser_sandbox_include_dir)
+          list(APPEND _OBS_BUILD_CEF_BOOTSTRAP_INCLUDE_DIRS "${_obs_browser_sandbox_include_dir}")
+          set(_OBS_BUILD_CEF_BOOTSTRAP_WIN "${cef_bootstrap_win}")
+          set(_OBS_BUILD_CEF_BOOTSTRAP_CONSOLE "${cef_bootstrap_console}")
+          set(_OBS_BUILD_CEF_BOOTSTRAP_CHROME_ELF "${CEF_ROOT_DIR}/Release/chrome_elf.dll")
+          set(_OBS_BUILD_CEF_BOOTSTRAP_HEADER "${CEF_INCLUDE_DIR}/cef_sandbox_win.h")
+          set(_OBS_BUILD_BROWSER_SANDBOX_ABI_HEADER "${obs_browser_sandbox_header}")
+          configure_file(
+            "${CMAKE_SOURCE_DIR}/cmake/windows/libobsCefBootstrapBuild.cmake.in"
+            "${_obs_libobs_binary_dir}/libobsCefBootstrapBuild.cmake"
+            @ONLY
+          )
+        elseif(TARGET CEF::Sandbox)
+          get_target_property(cef_sandbox_release CEF::Sandbox IMPORTED_LOCATION_RELEASE)
+          if(NOT cef_sandbox_release)
+            message(FATAL_ERROR "CEF::Sandbox must provide its Release import location.")
+          endif()
+
+          set(obs_browser_sandbox_header "${CMAKE_SOURCE_DIR}/plugins/obs-browser/obs-browser-sandbox.h")
+          if(NOT EXISTS "${obs_browser_sandbox_header}")
+            message(
+              FATAL_ERROR
+              "obs-browser-sandbox.h is required for the Windows browser sandbox development package: "
+              "${obs_browser_sandbox_header}"
+            )
+          endif()
+
+          install(
+            FILES "${cef_sandbox_release}"
+            DESTINATION "${OBS_LIBRARY_DESTINATION}/cef/Release"
+            COMPONENT Development
+          )
+          install(
+            DIRECTORY "${CEF_INCLUDE_DIR}/"
+            DESTINATION "${OBS_INCLUDE_DESTINATION}/include"
+            COMPONENT Development
+          )
+          install(FILES "${obs_browser_sandbox_header}" DESTINATION "${OBS_INCLUDE_DESTINATION}" COMPONENT Development)
+
+          # The build-tree libobs package is generated before obs-browser discovers
+          # CEF. Record the validated source paths beside its target export now.
+          get_target_property(_obs_libobs_binary_dir libobs BINARY_DIR)
+          get_target_property(_obs_cef_sandbox_includes CEF::Sandbox INTERFACE_INCLUDE_DIRECTORIES)
+          get_target_property(_OBS_BUILD_CEF_SANDBOX_LINK_LIBRARIES CEF::Sandbox INTERFACE_LINK_LIBRARIES)
+          get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_DEFINITIONS CEF::Sandbox INTERFACE_COMPILE_DEFINITIONS)
+          get_target_property(_OBS_BUILD_CEF_SANDBOX_COMPILE_OPTIONS CEF::Sandbox INTERFACE_COMPILE_OPTIONS)
+          cmake_path(GET obs_browser_sandbox_header PARENT_PATH _obs_browser_sandbox_include_dir)
+          set(_OBS_BUILD_CEF_SANDBOX_RELEASE "${cef_sandbox_release}")
+          set(_OBS_BUILD_CEF_SANDBOX_HEADER "${CEF_INCLUDE_DIR}/cef_sandbox_win.h")
+          set(_OBS_BUILD_BROWSER_SANDBOX_ABI_HEADER "${obs_browser_sandbox_header}")
+          set(_OBS_BUILD_CEF_SANDBOX_INCLUDE_DIRS "${_obs_cef_sandbox_includes};${_obs_browser_sandbox_include_dir}")
+          configure_file(
+            "${CMAKE_SOURCE_DIR}/cmake/windows/libobsCefSandboxBuild.cmake.in"
+            "${_obs_libobs_binary_dir}/libobsCefSandboxBuild.cmake"
+            @ONLY
+          )
+
+          if(NOT TARGET cef-sandbox-link-smoke)
+            add_executable(cef-sandbox-link-smoke "${CMAKE_SOURCE_DIR}/cmake/windows/cef-sandbox-link-smoke.cpp")
+            target_link_libraries(cef-sandbox-link-smoke PRIVATE CEF::Sandbox)
+            set_target_properties(
+              cef-sandbox-link-smoke
+              PROPERTIES FOLDER "CMake/Smoke Tests" MSVC_RUNTIME_LIBRARY "MultiThreaded"
+            )
+            if(BUILD_TESTING)
+              add_test(NAME cef-sandbox-link-smoke COMMAND cef-sandbox-link-smoke)
+            endif()
+          endif()
+        else()
+          message(FATAL_ERROR "64-bit Windows obs-browser requires a CEF sandbox library or bootstrap launcher.")
         endif()
       endif()
     endif()
-
-    set_property(GLOBAL APPEND PROPERTY OBS_MODULES_ENABLED ${target})
   endif()
 
   target_link_options(${target} PRIVATE "/PDBALTPATH:$<TARGET_PDB_FILE_NAME:${target}>")
@@ -402,9 +438,9 @@ function(target_install_resources target)
       source_group("Resources/${relative_path}" FILES "${data_file}")
     endforeach()
 
-    get_property(obs_module_list GLOBAL PROPERTY OBS_MODULES_ENABLED)
-    if(target IN_LIST obs_module_list)
-      set(target_destination "${OBS_DATA_DESTINATION}/obs-plugins/${target}")
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL MODULE_LIBRARY)
+      set(target_destination "${OBS_PLUGIN_DESTINATION}/${target}/data")
     elseif(target STREQUAL obs-studio)
       set(target_destination "${OBS_DATA_DESTINATION}/obs-studio")
     else()
@@ -434,11 +470,11 @@ endfunction()
 
 # Helper function to add a specific resource to a bundle
 function(target_add_resource target resource)
-  get_property(obs_module_list GLOBAL PROPERTY OBS_MODULES_ENABLED)
+  get_target_property(target_type ${target} TYPE)
   if(ARGN)
     set(target_destination "${ARGN}")
-  elseif(${target} IN_LIST obs_module_list)
-    set(target_destination "${OBS_DATA_DESTINATION}/obs-plugins/${target}")
+  elseif(target_type STREQUAL MODULE_LIBRARY)
+    set(target_destination "${OBS_PLUGIN_DESTINATION}/${target}/data")
   elseif(target STREQUAL obs-studio)
     set(target_destination "${OBS_DATA_DESTINATION}/obs-studio")
   else()
@@ -485,7 +521,7 @@ function(_bundle_dependencies target)
   set(plugins_list)
 
   foreach(library IN LISTS found_dependencies)
-    # CEF needs to be placed in obs-plugins directory on Windows, which is handled already
+    # CEF needs to be placed in core directory on Windows, which is handled already
     if(${library} STREQUAL CEF::Library)
       continue()
     endif()

@@ -597,7 +597,7 @@ obs_property_t *obs_properties_add_path(obs_properties_t *props, const char *nam
 	data->type = type;
 	data->default_path = bstrdup(default_path);
 
-	if (data->type == OBS_PATH_FILE)
+	if (data->type == OBS_PATH_FILE || data->type == OBS_PATH_FILE_SAVE)
 		data->filter = bstrdup(filter);
 
 	return p;
@@ -1264,7 +1264,7 @@ double obs_property_list_item_float(obs_property_t *p, size_t idx)
 bool obs_property_list_item_bool(obs_property_t *p, size_t idx)
 {
 	struct list_data *data = get_list_fmt_data(p, OBS_COMBO_FORMAT_BOOL);
-	return (data && idx < data->items.num) ? data->items.array[idx].d : false;
+	return (data && idx < data->items.num) ? data->items.array[idx].b : false;
 }
 
 enum obs_editable_list_type obs_property_editable_list_type(obs_property_t *p)

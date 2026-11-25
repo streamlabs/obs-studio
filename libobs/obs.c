@@ -43,7 +43,6 @@ enum video_info_retain_result {
 	VIDEO_INFO_RETAIN_REMOVING,
 };
 
-extern void add_default_module_paths(void);
 extern char *find_libobs_data_file(const char *file);
 static void obs_free_graphics(void);
 static void obs_free_render_textures(struct obs_core_video_mix *video);
@@ -757,8 +756,10 @@ static bool restore_canvases(void)
 		obs_canvas_t *canvas = (obs_canvas_t *)ctx;
 		if (canvas->flags & MAIN)
 			continue;
+		if (!obs_canvas_has_valid_video_info(canvas))
+			continue;
 
-		if (!obs_canvas_reset_video_internal(canvas, NULL)) {
+		if (!obs_canvas_reset_video_internal(canvas, &canvas->ovi)) {
 			blog(LOG_ERROR, "Failed restoring video mix for canvas '%s'", canvas->context.name);
 			success = false;
 		}
@@ -1517,6 +1518,8 @@ static inline void obs_free_hotkeys(void)
 	bfree(hotkeys->push_to_talk);
 	bfree(hotkeys->sceneitem_show);
 	bfree(hotkeys->sceneitem_hide);
+	bfree(hotkeys->monitor_on);
+	bfree(hotkeys->monitor_off);
 
 	obs_hotkey_name_map_free();
 
@@ -1590,7 +1593,6 @@ static bool obs_init(const char *locale, const char *module_config_path, profile
 	obs_register_source(&scene_info);
 	obs_register_source(&group_info);
 	obs_register_source(&audio_line_info);
-	add_default_module_paths();
 	obs->multiple_rendering = false;
 	obs->replay_buffer_rendering_mode = OBS_RECORDING_REPLAY_BUFFER_RENDERING;
 	obs->video_rendering_mode = OBS_MAIN_VIDEO_RENDERING;
@@ -1605,6 +1607,7 @@ static bool obs_init(const char *locale, const char *module_config_path, profile
 	if (!audio_output_config_init(&obs->audio_config))
 		return false;
 
+	obs->core_modules_loaded = false;
 	return true;
 }
 
@@ -1811,11 +1814,6 @@ void obs_shutdown(void)
 		bfree(obs->disabled_modules.array[i]);
 	}
 	da_free(obs->disabled_modules);
-
-	for (size_t i = 0; i < obs->core_modules.num; i++) {
-		bfree(obs->core_modules.array[i]);
-	}
-	da_free(obs->core_modules);
 
 	if (obs->name_store_owned)
 		profiler_name_store_free(obs->name_store);
@@ -3344,7 +3342,12 @@ static obs_source_t *obs_load_source_type(obs_data_t *source_data, bool is_priva
 			obs_source_set_audio_mixers(source, 0x3F);
 		}
 	}
-	obs_source_set_monitoring_type(source, (enum obs_monitoring_type)monitoring_type);
+
+	if (obs_data_has_user_value(source_data, "monitoring_type") || prev_ver < MAKE_SEMANTIC_VERSION(33, 0, 0)) {
+		obs_source_set_monitoring_type(source, (enum obs_monitoring_type)monitoring_type);
+	} else {
+		obs_source_set_monitoring_enabled(source, obs_data_get_bool(source_data, "monitoring_enabled"));
+	}
 
 	obs_data_release(source->private_settings);
 	source->private_settings = obs_data_get_obj(source_data, "private_settings");
@@ -3446,7 +3449,7 @@ obs_data_t *obs_save_source(obs_source_t *source)
 	uint64_t ptm_delay = obs_source_get_push_to_mute_delay(source);
 	bool push_to_talk = obs_source_push_to_talk_enabled(source);
 	uint64_t ptt_delay = obs_source_get_push_to_talk_delay(source);
-	int m_type = (int)obs_source_get_monitoring_type(source);
+	bool monitoring = obs_source_get_monitoring_enabled(source);
 	int di_mode = (int)obs_source_get_deinterlace_mode(source);
 	int di_order = (int)obs_source_get_deinterlace_field_order(source);
 	obs_canvas_t *canvas = obs_source_get_canvas(source);
@@ -3482,7 +3485,8 @@ obs_data_t *obs_save_source(obs_source_t *source)
 	obs_data_set_obj(source_data, "hotkeys", hotkey_data);
 	obs_data_set_int(source_data, "deinterlace_mode", di_mode);
 	obs_data_set_int(source_data, "deinterlace_field_order", di_order);
-	obs_data_set_int(source_data, "monitoring_type", m_type);
+	obs_data_set_int(source_data, "monitoring_type", (int)obs_source_get_monitoring_type(source));
+	obs_data_set_bool(source_data, "monitoring_enabled", monitoring);
 
 	if (canvas) {
 		obs_data_set_string(source_data, "canvas_uuid", obs_canvas_get_uuid(canvas));

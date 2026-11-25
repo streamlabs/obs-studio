@@ -31,10 +31,49 @@ unset(_OBS_DEPENDENCY_PREFIX)
 include("${CMAKE_CURRENT_LIST_DIR}/@TARGETS_EXPORT_NAME@.cmake")
 
 set(_OBS_CEF_SANDBOX_ENABLED FALSE)
-if("@CMAKE_SIZEOF_VOID_P@" EQUAL 8 AND "@ENABLE_PLUGINS@" AND "@ENABLE_BROWSER@")
+if("@CMAKE_SIZEOF_VOID_P@" EQUAL 8 AND "@ENABLE_CORE_MODULES@" AND "@ENABLE_BROWSER@")
   set(_OBS_CEF_SANDBOX_ENABLED TRUE)
 endif()
-if(WIN32 AND _OBS_CEF_SANDBOX_ENABLED AND NOT TARGET OBS::cef-sandbox)
+if(WIN32 AND _OBS_CEF_SANDBOX_ENABLED)
+  unset(OBS_CEF_CHROME_ELF)
+  set(_OBS_CEF_BOOTSTRAP_WIN "${PACKAGE_PREFIX_DIR}/lib/cef/Release/bootstrap.exe")
+  set(_OBS_CEF_BOOTSTRAP_CONSOLE "${PACKAGE_PREFIX_DIR}/lib/cef/Release/bootstrapc.exe")
+  set(_OBS_CEF_BOOTSTRAP_CHROME_ELF "${PACKAGE_PREFIX_DIR}/lib/cef/Release/chrome_elf.dll")
+  set(_OBS_CEF_BOOTSTRAP_HEADER "${PACKAGE_PREFIX_DIR}/include/include/cef_sandbox_win.h")
+  set(_OBS_BROWSER_SANDBOX_ABI_HEADER "${PACKAGE_PREFIX_DIR}/include/obs-browser-sandbox.h")
+  set(_OBS_CEF_BOOTSTRAP_INCLUDE_DIRS "${PACKAGE_PREFIX_DIR}/include")
+  if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/libobsCefBootstrapBuild.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/libobsCefBootstrapBuild.cmake")
+  endif()
+
+  if(EXISTS "${_OBS_CEF_BOOTSTRAP_CONSOLE}")
+    if(
+      NOT EXISTS "${_OBS_CEF_BOOTSTRAP_WIN}"
+      OR NOT EXISTS "${_OBS_CEF_BOOTSTRAP_CHROME_ELF}"
+      OR NOT EXISTS "${_OBS_CEF_BOOTSTRAP_HEADER}"
+      OR NOT EXISTS "${_OBS_BROWSER_SANDBOX_ABI_HEADER}"
+    )
+      message(FATAL_ERROR "The OBS CEF bootstrap package is missing a launcher, chrome_elf.dll, or required header.")
+    endif()
+    if(NOT TARGET OBS::cef-bootstrap)
+      add_library(OBS::cef-bootstrap INTERFACE IMPORTED)
+      set_target_properties(
+        OBS::cef-bootstrap
+        PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${_OBS_CEF_BOOTSTRAP_INCLUDE_DIRS}"
+          INTERFACE_COMPILE_DEFINITIONS "CEF_USE_BOOTSTRAP"
+      )
+    endif()
+    if(NOT TARGET OBS::cef-bootstrapc)
+      add_executable(OBS::cef-bootstrapc IMPORTED)
+      set_target_properties(OBS::cef-bootstrapc PROPERTIES IMPORTED_LOCATION "${_OBS_CEF_BOOTSTRAP_CONSOLE}")
+    endif()
+    if(NOT TARGET OBS::cef-bootstrap-win)
+      add_executable(OBS::cef-bootstrap-win IMPORTED)
+      set_target_properties(OBS::cef-bootstrap-win PROPERTIES IMPORTED_LOCATION "${_OBS_CEF_BOOTSTRAP_WIN}")
+    endif()
+    set(OBS_CEF_CHROME_ELF "${_OBS_CEF_BOOTSTRAP_CHROME_ELF}")
+  elseif(NOT TARGET OBS::cef-sandbox)
   set(_OBS_CEF_SANDBOX_RELEASE "${PACKAGE_PREFIX_DIR}/lib/cef/Release/cef_sandbox.lib")
   set(_OBS_CEF_SANDBOX_HEADER "${PACKAGE_PREFIX_DIR}/include/include/cef_sandbox_win.h")
   set(_OBS_BROWSER_SANDBOX_ABI_HEADER "${PACKAGE_PREFIX_DIR}/include/obs-browser-sandbox.h")
@@ -86,6 +125,13 @@ if(WIN32 AND _OBS_CEF_SANDBOX_ENABLED AND NOT TARGET OBS::cef-sandbox)
   unset(_OBS_CEF_SANDBOX_LINK_LIBRARIES)
   unset(_OBS_CEF_SANDBOX_COMPILE_DEFINITIONS)
   unset(_OBS_CEF_SANDBOX_COMPILE_OPTIONS)
+  endif()
+  unset(_OBS_CEF_BOOTSTRAP_WIN)
+  unset(_OBS_CEF_BOOTSTRAP_CONSOLE)
+  unset(_OBS_CEF_BOOTSTRAP_CHROME_ELF)
+  unset(_OBS_CEF_BOOTSTRAP_HEADER)
+  unset(_OBS_BROWSER_SANDBOX_ABI_HEADER)
+  unset(_OBS_CEF_BOOTSTRAP_INCLUDE_DIRS)
 endif()
 unset(_OBS_CEF_SANDBOX_ENABLED)
 

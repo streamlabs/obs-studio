@@ -2,13 +2,27 @@
 
 include_guard(GLOBAL)
 
-set(_obs_version ${_obs_default_version})
-set(_obs_version_canonical ${_obs_default_version})
+file(
+  STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/libobs/obs-config.h"
+  _obs_api_defines
+  REGEX "^#define LIBOBS_API_(MAJOR|MINOR|PATCH)_VER [0-9]+"
+)
+set(_obs_api_components)
+foreach(component IN ITEMS MAJOR MINOR PATCH)
+  string(REGEX MATCH "LIBOBS_API_${component}_VER ([0-9]+)" _obs_api_match "${_obs_api_defines}")
+  if(NOT _obs_api_match)
+    message(FATAL_ERROR "Unable to read libobs ${component} API version")
+  endif()
+  list(APPEND _obs_api_components "${CMAKE_MATCH_1}")
+endforeach()
+string(JOIN "." _obs_api_version ${_obs_api_components})
+set(_obs_version ${_obs_api_version})
+set(_obs_version_canonical ${_obs_api_components})
 
 # Attempt to automatically discover expected OBS version
 if(NOT DEFINED OBS_VERSION_OVERRIDE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   execute_process(
-    COMMAND git describe --always --tags --dirty=-modified
+    COMMAND git describe --always --tags --dirty=-modified --match "${_obs_api_version}*"
     OUTPUT_VARIABLE _obs_version
     ERROR_VARIABLE _git_describe_err
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
@@ -21,6 +35,9 @@ if(NOT DEFINED OBS_VERSION_OVERRIDE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git
   endif()
 
   if(_obs_version_result EQUAL 0)
+    if(NOT _obs_version MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+")
+      set(_obs_version "${_obs_api_version}-${_obs_version}")
+    endif()
     string(REGEX REPLACE "([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1;\\2;\\3" _obs_version_canonical ${_obs_version})
   endif()
 elseif(DEFINED OBS_VERSION_OVERRIDE)
@@ -72,6 +89,10 @@ elseif(OBS_BETA GREATER 0)
 endif()
 
 unset(_obs_default_version)
+unset(_obs_api_defines)
+unset(_obs_api_components)
+unset(_obs_api_match)
+unset(_obs_api_version)
 unset(_obs_version)
 unset(_obs_version_canonical)
 unset(_obs_release_candidate)

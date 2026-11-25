@@ -39,7 +39,7 @@
 
 #include "moc_AudioMixer.cpp"
 
-constexpr int GLOBAL_SOURCE_TOTAL = 6;
+constexpr int kGlobalSourceTotal = 6;
 
 namespace {
 bool isHiddenInMixer(obs_source_t *source)
@@ -454,7 +454,7 @@ void AudioMixer::updateGlobalSources()
 {
 	globalSources.clear();
 
-	for (int i = 1; i <= GLOBAL_SOURCE_TOTAL; i++) {
+	for (int i = 1; i <= kGlobalSourceTotal; i++) {
 		OBSSourceAutoRelease source = obs_get_output_source(i);
 		if (source) {
 			auto uuidPointer = obs_source_get_uuid(source);
@@ -629,8 +629,9 @@ void AudioMixer::updateVolumeLayouts()
 
 			OBSSource source = OBSGetStrongRef(control->weakSource());
 			if (!source) {
-				const char *cachedName = control->getCachedName().toUtf8().constData();
-				blog(LOG_INFO, "Tried to sort VolumeControl for '%s' but source is null", cachedName);
+				const QByteArray cachedName = control->getCachedName().toUtf8();
+				blog(LOG_INFO, "Tried to sort VolumeControl for '%s' but source is null",
+				     cachedName.constData());
 				continue;
 			}
 
@@ -708,7 +709,7 @@ void AudioMixer::updateVolumeLayouts()
 		layout->insertWidget(index, volControl);
 		volControl->setVertical(vertical);
 		volControl->updateName();
-		volControl->updateMixerState();
+		volControl->updateCategoryLabel();
 
 		bool showControl = getMixerVisibilityForControl(volControl);
 
@@ -1015,9 +1016,10 @@ void AudioMixer::obsSourceActivated(void *data, calldata_t *params)
 	uint32_t flags = obs_source_get_output_flags(source);
 
 	if (flags & OBS_SOURCE_AUDIO) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "updateControlVisibility",
-					  Qt::QueuedConnection, Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::updateControlVisibility, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
@@ -1027,9 +1029,10 @@ void AudioMixer::obsSourceDeactivated(void *data, calldata_t *params)
 	uint32_t flags = obs_source_get_output_flags(source);
 
 	if (flags & OBS_SOURCE_AUDIO) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "updateControlVisibility",
-					  Qt::QueuedConnection, Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::updateControlVisibility, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
@@ -1040,9 +1043,10 @@ void AudioMixer::obsSourceAudioActivated(void *data, calldata_t *params)
 	bool audioActive = obs_source_audio_active(source);
 
 	if (flags & OBS_SOURCE_AUDIO && audioActive) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "addSource", Qt::QueuedConnection,
-					  Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::addSource, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
@@ -1052,9 +1056,10 @@ void AudioMixer::obsSourceAudioDeactivated(void *data, calldata_t *params)
 	uint32_t flags = obs_source_get_output_flags(source);
 
 	if (flags & OBS_SOURCE_AUDIO) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "removeSource", Qt::QueuedConnection,
-					  Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::updateControlVisibility, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
@@ -1065,9 +1070,10 @@ void AudioMixer::obsSourceCreate(void *data, calldata_t *params)
 	bool audioActive = obs_source_audio_active(source);
 
 	if (flags & OBS_SOURCE_AUDIO && audioActive) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "addSource", Qt::QueuedConnection,
-					  Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::addSource, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
@@ -1077,15 +1083,18 @@ void AudioMixer::obsSourceRemove(void *data, calldata_t *params)
 	uint32_t flags = obs_source_get_output_flags(source);
 
 	if (flags & OBS_SOURCE_AUDIO) {
+		auto mixer = static_cast<AudioMixer *>(data);
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "removeSource", Qt::QueuedConnection,
-					  Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::removeSource, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }
 
 void AudioMixer::obsSourceRename(void *data, calldata_t *)
 {
-	QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "queueLayoutUpdate", Qt::QueuedConnection);
+	auto mixer = static_cast<AudioMixer *>(data);
+
+	QMetaObject::invokeMethod(mixer, &AudioMixer::queueLayoutUpdate, Qt::QueuedConnection);
 }
 
 void AudioMixer::obsSceneItemVisibleChange(void *data, calldata_t *params)
@@ -1103,11 +1112,12 @@ void AudioMixer::obsSceneItemVisibleChange(void *data, calldata_t *params)
 	uint32_t flags = obs_source_get_output_flags(source);
 
 	if (flags & OBS_SOURCE_AUDIO) {
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "updatePreviewSources",
-					  Qt::QueuedConnection);
+		auto mixer = static_cast<AudioMixer *>(data);
+
+		QMetaObject::invokeMethod(mixer, &AudioMixer::updatePreviewSources, Qt::QueuedConnection);
 
 		auto uuidPointer = obs_source_get_uuid(source);
-		QMetaObject::invokeMethod(static_cast<AudioMixer *>(data), "updateControlVisibility",
-					  Qt::QueuedConnection, Q_ARG(QString, QString::fromUtf8(uuidPointer)));
+		QMetaObject::invokeMethod(mixer, &AudioMixer::updateControlVisibility, Qt::QueuedConnection,
+					  QString::fromUtf8(uuidPointer));
 	}
 }

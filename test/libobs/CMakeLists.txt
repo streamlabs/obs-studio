@@ -20,13 +20,19 @@ add_executable(
   test-capture-status.cpp
   test-audio-config.cpp
   test-audio-routing.cpp
+  test-wasapi-buffer.cpp
+  test-color-grade-lut.cpp
+  test-filter-effects.cpp
   test-util.cpp
   test-process-pipe.cpp
   test-deque.cpp
   test-dstr.cpp
   test-calldata.cpp
   test-integer.cpp
+  test-encoder-timing.cpp
+  test-encoder-size.cpp
   test-image-file.cpp
+  test-module-loading.cpp
   test-math.cpp
   test-crc32.cpp
   test-media-helpers.cpp
@@ -34,9 +40,34 @@ add_executable(
   test-unicode.cpp
   test-lexer.cpp
   test-declarations.cpp
+  ../../plugins/obs-filters/color-grade-lut.c
 )
 add_dependencies(tests libobs_unit_tests)
+add_library(obs-test-failure MODULE module-load-failure.c)
+target_link_libraries(obs-test-failure PRIVATE OBS::libobs)
+set_target_properties(
+  obs-test-failure
+  PROPERTIES
+    PREFIX ""
+    FOLDER "Tests and Examples"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/fixtures/$<CONFIG>"
+)
+if(OS_MACOS)
+  # The macOS loader expects an extensionless binary inside a .plugin bundle.
+  set_target_properties(obs-test-failure PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION plugin)
+endif()
+add_dependencies(libobs_unit_tests obs-test-failure)
+target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_MODULE_DIRECTORY="$<TARGET_FILE_DIR:obs-test-failure>")
 target_compile_definitions(libobs_unit_tests PRIVATE OBS_TEST_DATA_PATH="${CMAKE_SOURCE_DIR}/libobs/data/")
+target_compile_definitions(
+  libobs_unit_tests
+  PRIVATE OBS_TEST_FILTER_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/obs-filters/data/"
+)
+target_compile_definitions(
+  libobs_unit_tests
+  PRIVATE OBS_TEST_LUT_DIRECTORY="${CMAKE_SOURCE_DIR}/plugins/obs-filters/data/LUTs/"
+)
 if(TARGET obs-transitions)
   add_dependencies(libobs_unit_tests obs-transitions)
   target_compile_definitions(
@@ -63,6 +94,7 @@ if(OS_WINDOWS)
       PRIVATE
         OBS_TEST_WIN_CAPTURE_MODULE="$<TARGET_FILE:win-capture>"
         OBS_TEST_WIN_CAPTURE_DATA_PATH="${CMAKE_SOURCE_DIR}/plugins/win-capture/data/"
+        OBS_TEST_DEPENDENCY_DIRECTORY="$<TARGET_FILE_DIR:FFmpeg::avformat>"
     )
   endif()
 else()
@@ -88,6 +120,18 @@ set(test_dl_paths "$<TARGET_FILE_DIR:OBS::libobs>" "$<TARGET_FILE_DIR:FFmpeg::av
 set(test_framework_paths)
 if(OS_WINDOWS)
   list(APPEND test_dl_paths "$<TARGET_FILE_DIR:OBS::w32-pthreads>")
+  # Installing the DLL blocklist affects the entire process for its lifetime.
+  add_executable(obs-dll-blocklist-test test-dll-blocklist-windows.cpp)
+  target_link_libraries(obs-dll-blocklist-test PRIVATE OBS::libobs Catch2::Catch2WithMain)
+  target_compile_definitions(obs-dll-blocklist-test PRIVATE OBS_TEST_DLL="$<TARGET_FILE:obs-test-failure>")
+  set_target_properties(obs-dll-blocklist-test PROPERTIES FOLDER "Tests and Examples")
+  add_dependencies(obs-dll-blocklist-test obs-test-failure)
+  add_dependencies(tests obs-dll-blocklist-test)
+  catch_discover_tests(
+    obs-dll-blocklist-test
+    DL_PATHS ${test_dl_paths}
+    PROPERTIES LABELS libobs TIMEOUT 30
+  )
 elseif(OS_MACOS)
   list(APPEND test_framework_paths "$<TARGET_BUNDLE_DIR:OBS::libobs>/..")
   add_custom_command(

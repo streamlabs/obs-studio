@@ -563,6 +563,13 @@ gs_texture_t *device_texture_create_from_iosurface(gs_device_t *device, void *io
             texture_type = GL_UNSIGNED_INT_8_8_8_8_REV;
             break;
         }
+        case kCVPixelFormatType_64RGBAHalf: {
+            obs_format = GS_RGBA16F;
+            gl_format = GL_RGBA;
+            internal_format = GL_RGBA_FLOAT16_APPLE;
+            texture_type = GL_HALF_APPLE;
+            break;
+        }
         default:
             blog(LOG_ERROR, "Unexpected pixel format: %d (%c%c%c%c)", pixelFormat, pixelFormat >> 24, pixelFormat >> 16,
                  pixelFormat >> 8, pixelFormat);
@@ -647,6 +654,7 @@ bool gs_texture_rebind_iosurface(gs_texture_t *texture, void *iosurf)
     switch (pixelFormat) {
         case kCVPixelFormatType_ARGB2101010LEPacked:
         case kCVPixelFormatType_32BGRA:
+        case kCVPixelFormatType_64RGBAHalf:
             break;
         case 0:
             blog(LOG_ERROR, "Invalid IOSurface Buffer");

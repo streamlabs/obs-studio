@@ -120,7 +120,7 @@ build() {
       cmake_args+=(
         --preset 'macos-ci'
         -DCMAKE_OSX_ARCHITECTURES:STRING=${target##*-}
-        -DCMAKE_INSTALL_PREFIX:STRING=${InstallPath}
+        -DCMAKE_INSTALL_PREFIX:PATH=${project_root}/build_macos/${InstallPath}
       )
 
       if (( debug )) {
@@ -139,6 +139,31 @@ build() {
       log_group "Build/Install preset ${product_name}..."
       # Run the install target to construct a packed_build that will be consumed by obs-studio-node.
       cmake --build --target install --preset macos
+      log_group "Validating OSN runtime package..."
+      # macOS still needs the frontend build to collect runtime dependencies into OBS.app; OSN excludes the OBS executable.
+      local package_root=${project_root}/build_macos/${InstallPath}
+      local -a required_package_files=(
+        'Frameworks/libobs.framework/libobs'
+        'Frameworks/libobs.framework/Resources/cmake/libobsConfig.cmake'
+        'OBS.app/Contents/Frameworks/libobs.framework/libobs'
+        'OBS.app/Contents/Frameworks/libobs-opengl.dylib'
+        'OBS.app/Contents/Frameworks/libobs-metal.dylib'
+        'OBS.app/Contents/Frameworks/Chromium Embedded Framework.framework/Chromium Embedded Framework'
+        'OBS.app/Contents/Frameworks/ffmpeg'
+        'OBS.app/Contents/Frameworks/ffprobe'
+        'OBS.app/Contents/MacOS/obs-ffmpeg-mux'
+      )
+      local module
+      for module (image-source obs-browser obs-ffmpeg obs-outputs obs-x264 mac-avcapture mac-capture mediasoup-connector) {
+        required_package_files+=("OBS.app/Contents/PlugIns/${module}.plugin/Contents/MacOS/${module}")
+      }
+      local package_file
+      for package_file (${required_package_files}) {
+        if [[ ! -s ${package_root}/${package_file} ]] {
+          log_error "Missing OSN runtime file: ${package_file}"
+          exit 1
+        }
+      }
       log_group "Building and running native tests..."
       cmake --build build_macos --config RelWithDebInfo --target tests
       ctest --test-dir build_macos -C RelWithDebInfo --output-on-failure --no-tests=error

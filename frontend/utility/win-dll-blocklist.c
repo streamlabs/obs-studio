@@ -15,8 +15,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
 
+#define WIN32_NO_STATUS
 #include <Windows.h>
-#include <psapi.h>
+#undef WIN32_NO_STATUS
+#include <ntstatus.h>
+#include <winternl.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -43,12 +46,14 @@ typedef NTSTATUS(STDMETHODCALLTYPE *fn_NtMapViewOfSection)(HANDLE, HANDLE, PVOID
 typedef NTSTATUS(STDMETHODCALLTYPE *fn_NtUnmapViewOfSection)(HANDLE, PVOID);
 
 typedef NTSTATUS(STDMETHODCALLTYPE *fn_NtQuerySection)(HANDLE, SECTION_INFORMATION_CLASS, PVOID, SIZE_T, PSIZE_T);
+typedef enum { MemoryMappedFilenameInformation = 2 } MAPPED_FILENAME_INFO_CLASS;
+typedef NTSTATUS(STDMETHODCALLTYPE *fn_NtQueryVirtualMemory)(HANDLE, PVOID, MAPPED_FILENAME_INFO_CLASS, PVOID, SIZE_T,
+							     PSIZE_T);
 
 static fn_NtMapViewOfSection ntMap;
 static fn_NtUnmapViewOfSection ntUnmap;
 static fn_NtQuerySection ntQuery;
-
-#define STATUS_UNSUCCESSFUL ((NTSTATUS)0xC0000001L)
+static fn_NtQueryVirtualMemory ntQueryMemory;
 
 // Method of matching timestamp of DLL in PE header
 typedef enum {
@@ -73,7 +78,7 @@ typedef struct {
 	const ts_compare_t method;
 
 	// Number of times we've blocked this DLL, for logging purposes
-	uint64_t blocked_count;
+	DECLSPEC_ALIGN(8) volatile LONG64 blocked_count;
 } blocked_module_t;
 
 /*
@@ -191,64 +196,73 @@ static blocked_module_t blocked_modules[] = {
 	// Different versions seem to be installed in different places, so we have to match on DLL only.
 	// Reference: https://www.hanselman.com/blog/webcam-randomly-pausing-in-obs-discord-and-websites-lsvcam-and-tiktok-studio
 	{L"\\lsvcam.dll", 0, 0, TS_IGNORE},
+
+	// Twitch Soundtrack plugin, causes issues with VOD track.
+	// The app is defunct as of July 2023 and the plugin no longer has a purpose.
+	// Reference: https://github.com/obsproject/obs-studio/issues/13636
+	{L"\\soundtrack-plugin.dll", 0, 0, TS_IGNORE},
+
+	// More Korean banking anti-screenshot "security" software that injects and crashes OBS.
+	// Found via internal crash reports. Classified as malware by some vendors.
+	// Reference: https://vms.drweb.com/virus/?i=32005995
+	{L"\\imgsf50dxfilter_x64.dll", 0, 0, TS_IGNORE},
 };
 
-static bool is_module_blocked(wchar_t *dll, uint32_t timestamp)
+static bool is_module_blocked(const wchar_t *dll, size_t len, uint32_t timestamp)
 {
 	blocked_module_t *first_allowed = NULL;
-	size_t len;
-
-	len = wcslen(dll);
-
-	wcslwr(dll);
-
-	// Default behavior is to not block
-	bool should_block = false;
 
 	for (int i = 0; i < _countof(blocked_modules); i++) {
 		blocked_module_t *b = &blocked_modules[i];
-		wchar_t *dll_ptr;
+		if (len < b->name_len || CompareStringOrdinal(dll + len - b->name_len, (int)b->name_len, b->name,
+							      (int)b->name_len, TRUE) != CSTR_EQUAL)
+			continue;
 
-		if (len >= b->name_len)
-			dll_ptr = dll + len - b->name_len;
-		else
-			dll_ptr = dll;
-
-		if (!wcscmp(dll_ptr, b->name)) {
-			if (b->method == TS_IGNORE) {
-				b->blocked_count++;
-				return true;
-			} else if (b->method == TS_EQUAL && timestamp == b->timestamp) {
-				b->blocked_count++;
-				return true;
-			} else if (b->method == TS_LESS_THAN && timestamp < b->timestamp) {
-				b->blocked_count++;
-				return true;
-			} else if (b->method == TS_GREATER_THAN && timestamp > b->timestamp) {
-				b->blocked_count++;
-				return true;
-			} else if (b->method == TS_ALLOW_ONLY_THIS) {
-				// Invert default behavior to block if
-				// we don't find any matching timestamps
-				// for this DLL.
-				should_block = true;
-
-				if (timestamp == b->timestamp)
-					return false;
-
-				// Bit of a hack to support counting of
-				// TS_ALLOW_ONLY_THIS blocks as there may
-				// be multiple entries for the same DLL.
-				if (!first_allowed)
-					first_allowed = b;
-			}
+		if (b->method == TS_ALLOW_ONLY_THIS) {
+			if (timestamp == b->timestamp)
+				return false;
+			if (!first_allowed)
+				first_allowed = b;
+		} else if (b->method == TS_IGNORE || (b->method == TS_EQUAL && timestamp == b->timestamp) ||
+			   (b->method == TS_LESS_THAN && timestamp < b->timestamp) ||
+			   (b->method == TS_GREATER_THAN && timestamp > b->timestamp)) {
+			InterlockedIncrement64(&b->blocked_count);
+			return true;
 		}
 	}
-
 	if (first_allowed)
-		first_allowed->blocked_count++;
+		InterlockedIncrement64(&first_allowed->blocked_count);
+	return first_allowed != NULL;
+}
 
-	return should_block;
+static bool is_mapped_image_blocked(HANDLE process, void *base, uint32_t timestamp)
+{
+	struct {
+		UNICODE_STRING name;
+		wchar_t path[MAX_PATH];
+	} local;
+	UNICODE_STRING *name = &local.name;
+	SIZE_T capacity = sizeof(local), bytes = 0;
+	NTSTATUS status = ntQueryMemory(process, base, MemoryMappedFilenameInformation, name, capacity, &bytes);
+	if (status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL ||
+	    status == STATUS_INFO_LENGTH_MISMATCH) {
+		// K32GetMappedFileNameW can truncate internally. Query the counted NT path without using the loader heap.
+		capacity = sizeof(*name) + (UNICODE_STRING_MAX_CHARS + 1) * sizeof(wchar_t);
+		name = VirtualAlloc(NULL, capacity, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		if (!name)
+			return true;
+		status = ntQueryMemory(process, base, MemoryMappedFilenameInformation, name, capacity, &bytes);
+	} else if (status < 0) {
+		return false;
+	}
+
+	bool blocked = true;
+	if (status >= 0 && bytes >= sizeof(*name) && bytes <= capacity && name->Buffer == (wchar_t *)(name + 1) &&
+	    name->Length % sizeof(wchar_t) == 0 && name->Length <= bytes - sizeof(*name))
+		blocked = is_module_blocked(name->Buffer, name->Length / sizeof(wchar_t), timestamp);
+	if (name != &local.name)
+		VirtualFree(name, 0, MEM_RELEASE);
+	return blocked;
 }
 
 static NTSTATUS NtMapViewOfSection_hook(HANDLE SectionHandle, HANDLE ProcessHandle, PVOID *BaseAddress,
@@ -257,7 +271,6 @@ static NTSTATUS NtMapViewOfSection_hook(HANDLE SectionHandle, HANDLE ProcessHand
 					ULONG Win32Protect)
 {
 	SECTION_BASIC_INFORMATION section_information;
-	wchar_t fileName[MAX_PATH];
 	SIZE_T wrote = 0;
 	NTSTATUS ret;
 	uint32_t timestamp = 0;
@@ -301,16 +314,15 @@ static NTSTATUS NtMapViewOfSection_hook(HANDLE SectionHandle, HANDLE ProcessHand
 		return ret;
 	}
 
-	// Get the actual filename if possible
-	if (K32GetMappedFileNameW(ProcessHandle, *BaseAddress, fileName, _countof(fileName)) == 0)
+	if (!is_mapped_image_blocked(ProcessHandle, *BaseAddress, timestamp))
 		return ret;
 
-	if (is_module_blocked(fileName, timestamp)) {
-		ntUnmap(ProcessHandle, BaseAddress);
-		ret = STATUS_UNSUCCESSFUL;
-	}
-
-	return ret;
+	ret = ntUnmap(ProcessHandle, *BaseAddress);
+	if (ret < 0)
+		return ret;
+	*BaseAddress = NULL;
+	*ViewSize = 0;
+	return STATUS_UNSUCCESSFUL;
 }
 
 void install_dll_blocklist_hook(void)
@@ -331,6 +343,10 @@ void install_dll_blocklist_hook(void)
 	if (!ntQuery)
 		return;
 
+	ntQueryMemory = (fn_NtQueryVirtualMemory)GetProcAddress(nt, "NtQueryVirtualMemory");
+	if (!ntQueryMemory)
+		return;
+
 	// Pre-compute length of all DLL names for exact matching
 	for (int i = 0; i < _countof(blocked_modules); i++) {
 		blocked_module_t *b = &blocked_modules[i];
@@ -349,9 +365,10 @@ void log_blocked_dlls(void)
 {
 	for (int i = 0; i < _countof(blocked_modules); i++) {
 		blocked_module_t *b = &blocked_modules[i];
-		if (b->blocked_count) {
-			blog(LOG_WARNING, "Blocked loading of '%S' %" PRIu64 " time%S.", b->name, b->blocked_count,
-			     b->blocked_count == 1 ? L"" : L"s");
+		const uint64_t count = (uint64_t)InterlockedCompareExchange64(&b->blocked_count, 0, 0);
+		if (count) {
+			blog(LOG_WARNING, "Blocked loading of '%S' %" PRIu64 " time%S.", b->name, count,
+			     count == 1 ? L"" : L"s");
 		}
 	}
 }

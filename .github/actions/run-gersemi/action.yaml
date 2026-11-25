@@ -35,11 +35,7 @@ runs:
         echo ::group::Install Dependencies
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
-        # Runner images ship a pinned Homebrew with auto-update off. When a
-        # formula lands that uses a newer install-step type than that Homebrew
-        # knows, installs fail with "unknown install step" until the image
-        # catches up. Update brew itself rather than wait for the image.
-        brew update --quiet
+        brew update
         brew install --quiet zsh
         echo ::endgroup::
 
@@ -55,6 +51,7 @@ runs:
         if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
         print ::group::Install gersemi
+        brew update
         brew trust obsproject/tools
         brew install --quiet obsproject/tools/gersemi@0.25
         print ::endgroup::
