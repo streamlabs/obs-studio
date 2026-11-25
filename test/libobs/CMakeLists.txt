@@ -120,6 +120,18 @@ set(test_dl_paths "$<TARGET_FILE_DIR:OBS::libobs>" "$<TARGET_FILE_DIR:FFmpeg::av
 set(test_framework_paths)
 if(OS_WINDOWS)
   list(APPEND test_dl_paths "$<TARGET_FILE_DIR:OBS::w32-pthreads>")
+  # Installing the DLL blocklist affects the entire process for its lifetime.
+  add_executable(obs-dll-blocklist-test test-dll-blocklist-windows.cpp)
+  target_link_libraries(obs-dll-blocklist-test PRIVATE OBS::libobs Catch2::Catch2WithMain)
+  target_compile_definitions(obs-dll-blocklist-test PRIVATE OBS_TEST_DLL="$<TARGET_FILE:obs-test-failure>")
+  set_target_properties(obs-dll-blocklist-test PROPERTIES FOLDER "Tests and Examples")
+  add_dependencies(obs-dll-blocklist-test obs-test-failure)
+  add_dependencies(tests obs-dll-blocklist-test)
+  catch_discover_tests(
+    obs-dll-blocklist-test
+    DL_PATHS ${test_dl_paths}
+    PROPERTIES LABELS libobs TIMEOUT 30
+  )
 elseif(OS_MACOS)
   list(APPEND test_framework_paths "$<TARGET_BUNDLE_DIR:OBS::libobs>/..")
   add_custom_command(

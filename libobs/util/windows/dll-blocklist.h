@@ -18,8 +18,8 @@
 /*
  * Streamlabs: exposes OBS's frontend DLL blocklist
  * (frontend/utility/win-dll-blocklist.c) from libobs, so hosts that don't use
- * the OBS frontend (obs-studio-node's obs64) can install it too. libobs
- * compiles the upstream file unchanged; see libobs/cmake/os-windows.cmake.
+ * the OBS frontend (obs-studio-node's obs64) can install it too. Both
+ * targets compile the same implementation; see libobs/cmake/os-windows.cmake.
  */
 
 #include "../c99defs.h"
